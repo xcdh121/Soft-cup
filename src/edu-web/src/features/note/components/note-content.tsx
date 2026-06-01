@@ -1,0 +1,54 @@
+import { Response } from '@/components/ai-elements/response'
+import { noteAtom } from '@/data-acess/note'
+import { Result, useAtomValue } from '@effect-atom/atom-react'
+import { Loader2Icon } from 'lucide-react'
+
+type NoteContentProps = {
+  noteId: string
+  projectId: string
+  className?: string
+}
+
+export const NoteContent = ({
+  noteId,
+  projectId,
+  className,
+}: NoteContentProps) => {
+  const noteResult = useAtomValue(noteAtom(`${projectId}:${noteId}`))
+
+  return Result.builder(noteResult)
+    .onInitialOrWaiting(() => (
+      <div className="flex flex-1 items-center justify-center gap-2 text-muted-foreground">
+        <Loader2Icon className="size-4 animate-spin" />
+        <span>Loading note...</span>
+      </div>
+    ))
+    .onFailure(() => (
+      <div className="flex flex-1 items-center justify-center gap-2 text-destructive">
+        <span>Failed to load note</span>
+      </div>
+    ))
+    .onSuccess((note) => {
+      if (!note) {
+        return (
+          <div className="flex flex-1 items-center justify-center text-muted-foreground">
+            <p>Note not found</p>
+          </div>
+        )
+      }
+
+      return (
+        <div className={`flex flex-col space-y-4 ${className || ''}`}>
+          {note.description && (
+            <div className="text-muted-foreground text-sm">
+              {note.description}
+            </div>
+          )}
+          <div className="prose prose-sm dark:prose-invert max-w-none">
+            <Response>{note.content}</Response>
+          </div>
+        </div>
+      )
+    })
+    .render()
+}

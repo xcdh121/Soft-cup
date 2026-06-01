@@ -1,0 +1,12 @@
+import { documentDetailRoute } from '@/routes/_config'
+import { DocumentDetailPage } from '@/features/document/document-detail-page'
+
+export const DocumentDetailRoute = () => {
+  const params = documentDetailRoute.useParams()
+  return (
+    <DocumentDetailPage
+      documentId={params.documentId}
+      projectId={params.projectId}
+    />
+  )
+}
