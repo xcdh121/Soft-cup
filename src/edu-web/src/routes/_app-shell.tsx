@@ -3,6 +3,7 @@ import { useAtomValue } from '@effect-atom/atom-react'
 import { AppSidebar } from '@/components/navigation/app-sidebar'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { isAuthenticatedAtom } from '@/data-acess/auth'
+import { ResourcePackageFloatingButton } from '@/features/resource-package/components/resource-package-floating-button'
 
 export const AppShell = () => {
   const isAuthenticated = useAtomValue(isAuthenticatedAtom)
@@ -27,6 +28,7 @@ export const AppShell = () => {
         <div className="min-h-0 flex-1 overflow-auto">
           <Outlet />
         </div>
+        <ResourcePackageFloatingButton />
       </SidebarInset>
     </SidebarProvider>
   )
