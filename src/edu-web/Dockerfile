@@ -10,21 +10,15 @@ ENV VITE_SERVER_URL=$VITE_SERVER_URL \
     VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
     VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 
-# Enable pnpm via Corepack
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
 # Copy manifest files first for better caching
-COPY package.json pnpm-lock.yaml ./
+COPY package.json package-lock.json ./
 
-# Pre-fetch dependencies to a content-addressable store
-RUN pnpm fetch
-
-# Copy source code and install deps from the store (offline)
+# Copy source code and install deps
 COPY . .
-RUN CI=true pnpm install --offline --frozen-lockfile
+RUN npm ci
 
 # Build the Vite SPA (static output in /dist)
-RUN pnpm build
+RUN npm run build
 
 # ---- Runtime stage ----
 FROM nginx:alpine

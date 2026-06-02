@@ -15,7 +15,7 @@ This guide covers how to set up and run EduAgent locally for development.
 ## Prerequisites
 
 - Python 3.12+ (for server)
-- Node.js 18+ and pnpm (for web frontend)
+- Node.js 18+ and npm (for web frontend)
 - Docker and Docker Compose (for PostgreSQL database)
 - Azure credentials (for Azure services):
   - Azure OpenAI endpoint and API key
@@ -38,8 +38,8 @@ uv run alembic upgrade head
 
 # 3. Start web frontend (in a new terminal)
 cd src/edu-web
-pnpm install
-pnpm dev
+npm install
+npm start
 ```
 
 The application will be available at:
@@ -196,7 +196,7 @@ The API will be available at `http://localhost:8000`.
 cd src/edu-web
 
 # Install dependencies
-pnpm install
+npm install
 
 # Create .env file or set environment variables
 cat > .env << EOF
@@ -206,7 +206,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 EOF
 
 # Start development server
-pnpm dev
+npm start
 ```
 
 The web application will be available at `http://localhost:3000`
@@ -225,10 +225,10 @@ To generate TypeScript types from the OpenAPI schema:
 cd src/edu-web
 
 # Make sure API server is running on localhost:8000
-pnpm gen:types
+npm run gen:client
 ```
 
-This generates types from `http://localhost:8000/openapi.json` to `src/integrations/api/types.ts`
+This generates the API client from `http://localhost:8000/openapi.json` to `src/integrations/api/client.ts`
 
 **Note:** Run this whenever the API schema changes to keep types in sync.
 
@@ -261,7 +261,7 @@ edu-agent/
 
    - Edit TypeScript/React files in `src/edu-web/src/`
    - Changes are hot-reloaded automatically
-   - Regenerate types if API changes: `pnpm gen:types`
+   - Regenerate types if API changes: `npm run gen:client`
 
 3. **Database Changes:**
 
@@ -278,7 +278,7 @@ pytest
 
 # Frontend tests
 cd src/edu-web
-pnpm test
+npm test
 ```
 
 ### Code Formatting
@@ -290,8 +290,8 @@ ruff check .
 
 # Frontend
 cd src/edu-web
-pnpm format
-pnpm lint
+npm run format
+npm run lint
 ```
 
 ## Troubleshooting
@@ -338,7 +338,7 @@ pnpm lint
 **Web frontend won't start**
 
 - Verify Node.js version: `node --version` (should be 18+)
-- Install dependencies: `pnpm install`
+- Install dependencies: `npm install`
 - Check environment variables in `.env`
 - Check for port conflicts: `lsof -i :3000`
 
@@ -351,7 +351,7 @@ pnpm lint
 
 **Type errors**
 
-- Regenerate types: `cd src/edu-web && pnpm gen:client`
+- Regenerate types: `cd src/edu-web && npm run gen:client`
 - Ensure API server is running when generating client types
 - Check TypeScript version compatibility
 

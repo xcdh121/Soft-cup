@@ -87,7 +87,7 @@ Before you begin, ensure you have the following installed:
 
 - **Python 3.12+** - [Download Python](https://www.python.org/downloads/)
 - **Node.js 18+** - [Download Node.js](https://nodejs.org/)
-- **pnpm** - `npm install -g pnpm`
+- **npm** - included with Node.js
 - **Docker & Docker Compose** - [Install Docker](https://docs.docker.com/get-docker/)
 - **Terraform** - [Install Terraform](https://developer.hashicorp.com/terraform/install)
 - **Azure and Supabase** - Provisioned via Terraform:
@@ -121,8 +121,8 @@ alembic upgrade head
 
 # In a new terminal, start the web frontend
 cd src/edu-web
-pnpm install
-pnpm dev
+npm install
+npm start
 ```
 
 Visit `http://localhost:3000` for the web app and `http://localhost:8000` for the API.
@@ -161,10 +161,10 @@ uv run python main.py
 cd src/edu-web
 
 # Install dependencies
-pnpm install
+npm install
 
 # Generate TypeScript types from OpenAPI schema (optional)
-pnpm gen:client
+npm run gen:client
 ```
 
 ## ⚙️ Configuration
@@ -259,22 +259,22 @@ uv run python main.py
 cd src/edu-web
 
 # Start development server
-pnpm dev
+npm start
 
 # Build for production
-pnpm build
+npm run build
 
 # Run linter
-pnpm lint
+npm run lint
 
 # Format code
-pnpm format
+npm run format
 
 # Run type checking
-pnpm type-check
+npm run type-check
 
 # Generate TypeScript types from OpenAPI schema
-pnpm gen:client
+npm run gen:client
 ```
 
 ### Code Quality
