@@ -84,7 +84,7 @@ const FlashcardHeaderContent = ({
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbPage className="line-clamp-1 font-medium">
-              Edit: {res.name || 'Flashcards'}
+              编辑：{res.name || '闪卡'}
             </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
@@ -96,7 +96,7 @@ const FlashcardHeaderContent = ({
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbPage className="line-clamp-1 font-medium">
-              Edit Flashcards
+              编辑闪卡
             </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
@@ -357,7 +357,7 @@ export const FlashcardEditPage = ({
                   params={{ projectId, flashcardGroupId }}
                 >
                   <ArrowLeft className="size-4" />
-                  <span className="sr-only">Back to flashcards</span>
+                  <span className="sr-only">返回闪卡</span>
                 </Link>
               </Button>
             </>
@@ -374,7 +374,7 @@ export const FlashcardEditPage = ({
         <div className="flex items-center gap-2 px-3">
           {hasUnsavedChanges && (
             <span className="text-sm text-muted-foreground">
-              Unsaved changes
+              有未保存的更改
             </span>
           )}
           <Button
@@ -386,7 +386,7 @@ export const FlashcardEditPage = ({
             }
           >
             <SaveIcon className="h-4 w-4 mr-2" />
-            Save All
+            保存全部
           </Button>
         </div>
       </header>
@@ -397,28 +397,27 @@ export const FlashcardEditPage = ({
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">
-                  Edit Flashcards
+                  编辑闪卡
                 </h1>
                 <p className="text-muted-foreground mt-2">
-                  Add, edit, and reorder your flashcards. Click "Save All" when
-                  done.
+                  添加、编辑和重新排序闪卡。完成后点击“保存全部”。
                 </p>
               </div>
               <Button onClick={() => setIsAddDialogOpen(true)}>
                 <PlusIcon className="h-4 w-4 mr-2" />
-                Add New Card
+                添加新卡片
               </Button>
             </div>
 
             {Result.builder(flashcardsResult)
               .onInitialOrWaiting(() => (
                 <div className="text-center py-12">
-                  <p className="text-muted-foreground">Loading flashcards...</p>
+                  <p className="text-muted-foreground">正在加载闪卡...</p>
                 </div>
               ))
               .onFailure(() => (
                 <div className="text-center py-12">
-                  <p className="text-destructive">Failed to load flashcards</p>
+                  <p className="text-destructive">闪卡加载失败</p>
                 </div>
               ))
               .onSuccess(() => {
@@ -426,15 +425,15 @@ export const FlashcardEditPage = ({
                   return (
                     <Card>
                       <CardHeader>
-                        <CardTitle>No flashcards yet</CardTitle>
+                        <CardTitle>还没有闪卡</CardTitle>
                         <CardDescription>
-                          Get started by adding your first flashcard
+                          添加第一张闪卡开始使用
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
                         <Button onClick={() => setIsAddDialogOpen(true)}>
                           <PlusIcon className="h-4 w-4 mr-2" />
-                          Add First Card
+                          添加第一张卡片
                         </Button>
                       </CardContent>
                     </Card>
@@ -492,32 +491,32 @@ export const FlashcardEditPage = ({
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>Add New Flashcard</DialogTitle>
+            <DialogTitle>添加新闪卡</DialogTitle>
             <DialogDescription>
-              Create a new flashcard for this group
+              为这个闪卡组创建新闪卡
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Question</label>
+              <label className="text-sm font-medium">问题</label>
               <Textarea
                 value={newQuestion}
                 onChange={(e) => setNewQuestion(e.target.value)}
-                placeholder="Enter question..."
+                placeholder="请输入问题..."
                 className="min-h-20"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Answer</label>
+              <label className="text-sm font-medium">答案</label>
               <Textarea
                 value={newAnswer}
                 onChange={(e) => setNewAnswer(e.target.value)}
-                placeholder="Enter answer..."
+                placeholder="请输入答案..."
                 className="min-h-20"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Difficulty</label>
+              <label className="text-sm font-medium">难度</label>
               <Select
                 value={newDifficulty}
                 onValueChange={(value) => setNewDifficulty(value)}
@@ -526,9 +525,9 @@ export const FlashcardEditPage = ({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="easy">Easy</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="hard">Hard</SelectItem>
+                  <SelectItem value="easy">简单</SelectItem>
+                  <SelectItem value="medium">中等</SelectItem>
+                  <SelectItem value="hard">困难</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -537,13 +536,13 @@ export const FlashcardEditPage = ({
                 variant="outline"
                 onClick={() => setIsAddDialogOpen(false)}
               >
-                Cancel
+                取消
               </Button>
               <Button
                 onClick={handleAddCard}
                 disabled={!newQuestion.trim() || !newAnswer.trim()}
               >
-                Add Card
+                添加卡片
               </Button>
             </div>
           </div>

@@ -57,16 +57,16 @@ export const SignInPage = () => {
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Sign in
+            登录
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Enter your email and password to access your account
+            输入邮箱和密码以访问你的账号
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">邮箱</Label>
             <Input
               id="email"
               type="email"
@@ -80,14 +80,14 @@ export const SignInPage = () => {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">密码</Label>
             <Input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              placeholder="Enter your password"
+              placeholder="请输入密码"
               autoComplete="current-password"
               disabled={isLoading}
             />
@@ -106,23 +106,23 @@ export const SignInPage = () => {
             className="w-full"
             disabled={isLoading || !email || !password}
           >
-            {isLoading ? 'Signing in...' : 'Sign in'}
+            {isLoading ? '正在登录...' : '登录'}
           </Button>
 
           <div className="text-center text-xs text-muted-foreground">
-            By signing in, you agree to our{' '}
+            登录即表示你同意我们的{' '}
             <a
               href="https://github.com/StudentTraineeCenter/edu-agent/blob/master/docs/PRIVACY_POLICY.md"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline"
             >
-              Privacy Policy
+              隐私政策
             </a>
           </div>
 
           <div className="text-center text-sm text-muted-foreground">
-            Don't have an account?{' '}
+            还没有账号？{' '}
             <Link
               to="/sign-up"
               search={
@@ -130,7 +130,7 @@ export const SignInPage = () => {
               }
               className="text-primary hover:underline"
             >
-              Sign up
+              注册
             </Link>
           </div>
         </form>

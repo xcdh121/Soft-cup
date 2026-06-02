@@ -68,7 +68,7 @@ export const FlashcardEditor = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">
-                Card #{flashcard.position + 1} (deleted)
+                第 {flashcard.position + 1} 张卡片（已删除）
               </span>
             </div>
           </div>
@@ -90,7 +90,7 @@ export const FlashcardEditor = ({
                   <ChevronDownIcon className="h-4 w-4 text-muted-foreground shrink-0" />
                 )}
                 <span className="text-sm text-muted-foreground shrink-0">
-                  Card #{flashcard.position + 1}
+                  第 {flashcard.position + 1} 张卡片
                 </span>
                 {!isOpen && flashcard.question && (
                   <Tooltip>
@@ -120,7 +120,7 @@ export const FlashcardEditor = ({
                   size="sm"
                   onClick={onMoveUp}
                   disabled={!canMoveUp}
-                  title="Move up"
+                  title="上移"
                 >
                   <ArrowUpIcon className="h-4 w-4" />
                 </Button>
@@ -129,7 +129,7 @@ export const FlashcardEditor = ({
                   size="sm"
                   onClick={onMoveDown}
                   disabled={!canMoveDown}
-                  title="Move down"
+                  title="下移"
                 >
                   <ArrowDownIcon className="h-4 w-4" />
                 </Button>
@@ -137,7 +137,7 @@ export const FlashcardEditor = ({
                   variant="ghost"
                   size="sm"
                   onClick={onDelete}
-                  title="Delete"
+                  title="删除"
                 >
                   <TrashIcon className="h-4 w-4" />
                 </Button>
@@ -155,25 +155,25 @@ export const FlashcardEditor = ({
         >
           <CardContent className="space-y-4 pt-0">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Question</label>
+              <label className="text-sm font-medium">问题</label>
               <Textarea
                 value={flashcard.question}
                 onChange={(e) => onQuestionChange(e.target.value)}
-                placeholder="Enter question..."
+                placeholder="请输入问题..."
                 className="min-h-20"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Answer</label>
+              <label className="text-sm font-medium">答案</label>
               <Textarea
                 value={flashcard.answer}
                 onChange={(e) => onAnswerChange(e.target.value)}
-                placeholder="Enter answer..."
+                placeholder="请输入答案..."
                 className="min-h-20"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Difficulty</label>
+              <label className="text-sm font-medium">难度</label>
               <Select
                 value={flashcard.difficulty_level}
                 onValueChange={onDifficultyChange}
@@ -182,9 +182,9 @@ export const FlashcardEditor = ({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="easy">Easy</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="hard">Hard</SelectItem>
+                  <SelectItem value="easy">简单</SelectItem>
+                  <SelectItem value="medium">中等</SelectItem>
+                  <SelectItem value="hard">困难</SelectItem>
                 </SelectContent>
               </Select>
             </div>

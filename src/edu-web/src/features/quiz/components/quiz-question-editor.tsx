@@ -84,7 +84,7 @@ export const QuizQuestionEditor = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">
-                Question #{question.position + 1} (deleted)
+                第 {question.position + 1} 题（已删除）
               </span>
             </div>
           </div>
@@ -106,7 +106,7 @@ export const QuizQuestionEditor = ({
                   <ChevronDownIcon className="h-4 w-4 text-muted-foreground shrink-0" />
                 )}
                 <span className="text-sm text-muted-foreground shrink-0">
-                  Question #{question.position + 1}
+                  第 {question.position + 1} 题
                 </span>
                 {!isOpen && question.question_text && (
                   <Tooltip>
@@ -136,7 +136,7 @@ export const QuizQuestionEditor = ({
                   size="sm"
                   onClick={onMoveUp}
                   disabled={!canMoveUp}
-                  title="Move up"
+                  title="上移"
                 >
                   <ArrowUpIcon className="h-4 w-4" />
                 </Button>
@@ -145,7 +145,7 @@ export const QuizQuestionEditor = ({
                   size="sm"
                   onClick={onMoveDown}
                   disabled={!canMoveDown}
-                  title="Move down"
+                  title="下移"
                 >
                   <ArrowDownIcon className="h-4 w-4" />
                 </Button>
@@ -153,7 +153,7 @@ export const QuizQuestionEditor = ({
                   variant="ghost"
                   size="sm"
                   onClick={onDelete}
-                  title="Delete"
+                  title="删除"
                 >
                   <TrashIcon className="h-4 w-4" />
                 </Button>
@@ -171,50 +171,50 @@ export const QuizQuestionEditor = ({
         >
           <CardContent className="space-y-4 pt-0">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Question</label>
+              <label className="text-sm font-medium">题目</label>
               <Textarea
                 value={question.question_text}
                 onChange={(e) => onQuestionTextChange(e.target.value)}
-                placeholder="Enter question..."
+                placeholder="请输入题目..."
                 className="min-h-20"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Option A</label>
+                <label className="text-sm font-medium">选项 A</label>
                 <Input
                   value={question.option_a}
                   onChange={(e) => onOptionAChange(e.target.value)}
-                  placeholder="Option A"
+                  placeholder="选项 A"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Option B</label>
+                <label className="text-sm font-medium">选项 B</label>
                 <Input
                   value={question.option_b}
                   onChange={(e) => onOptionBChange(e.target.value)}
-                  placeholder="Option B"
+                  placeholder="选项 B"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Option C</label>
+                <label className="text-sm font-medium">选项 C</label>
                 <Input
                   value={question.option_c}
                   onChange={(e) => onOptionCChange(e.target.value)}
-                  placeholder="Option C"
+                  placeholder="选项 C"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Option D</label>
+                <label className="text-sm font-medium">选项 D</label>
                 <Input
                   value={question.option_d}
                   onChange={(e) => onOptionDChange(e.target.value)}
-                  placeholder="Option D"
+                  placeholder="选项 D"
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Correct Option</label>
+              <label className="text-sm font-medium">正确选项</label>
               <Select
                 value={question.correct_option}
                 onValueChange={onCorrectOptionChange}
@@ -232,17 +232,17 @@ export const QuizQuestionEditor = ({
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                Explanation (optional)
+                解析（可选）
               </label>
               <Textarea
                 value={question.explanation || ''}
                 onChange={(e) => onExplanationChange(e.target.value)}
-                placeholder="Enter explanation..."
+                placeholder="请输入解析..."
                 className="min-h-20"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Difficulty</label>
+              <label className="text-sm font-medium">难度</label>
               <Select
                 value={question.difficulty_level}
                 onValueChange={onDifficultyChange}
@@ -251,9 +251,9 @@ export const QuizQuestionEditor = ({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="easy">Easy</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="hard">Hard</SelectItem>
+                  <SelectItem value="easy">简单</SelectItem>
+                  <SelectItem value="medium">中等</SelectItem>
+                  <SelectItem value="hard">困难</SelectItem>
                 </SelectContent>
               </Select>
             </div>

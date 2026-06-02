@@ -30,7 +30,7 @@ const PlanContext = createContext<PlanContextValue | null>(null)
 const usePlan = () => {
   const context = useContext(PlanContext)
   if (!context) {
-    throw new Error('Plan components must be used within Plan')
+    throw new Error('Plan 组件必须在 Plan 内使用')
   }
   return context
 }
@@ -136,7 +136,7 @@ export const PlanTrigger = ({ className, ...props }: PlanTriggerProps) => (
       {...props}
     >
       <ChevronsUpDownIcon className="size-4" />
-      <span className="sr-only">Toggle plan</span>
+      <span className="sr-only">展开或收起计划</span>
     </Button>
   </CollapsibleTrigger>
 )

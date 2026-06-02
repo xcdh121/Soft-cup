@@ -44,9 +44,9 @@ export const FlashcardProgress = ({
     <>
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <span>
-          {completedInSession} of {initialQueueSize} completed
+          已完成 {completedInSession} / {initialQueueSize}
         </span>
-        <span>{Math.round(progressPercentage)}% complete</span>
+        <span>完成 {Math.round(progressPercentage)}%</span>
       </div>
 
       <Progress value={progressPercentage} className="h-2" />

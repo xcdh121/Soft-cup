@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 
 const providers = {
   github: {
-    title: 'Open in GitHub',
+    title: '在 GitHub 中打开',
     createUrl: (url: string) => url,
     icon: (
       <svg fill="currentColor" role="img" viewBox="0 0 24 24">
@@ -30,7 +30,7 @@ const providers = {
     ),
   },
   scira: {
-    title: 'Open in Scira',
+    title: '在 Scira 中打开',
     createUrl: (q: string) =>
       `https://scira.ai/?${new URLSearchParams({
         q,
@@ -95,7 +95,7 @@ const providers = {
     ),
   },
   chatgpt: {
-    title: 'Open in ChatGPT',
+    title: '在 ChatGPT 中打开',
     createUrl: (prompt: string) =>
       `https://chatgpt.com/?${new URLSearchParams({
         hints: 'search',
@@ -114,7 +114,7 @@ const providers = {
     ),
   },
   claude: {
-    title: 'Open in Claude',
+    title: '在 Claude 中打开',
     createUrl: (q: string) =>
       `https://claude.ai/new?${new URLSearchParams({
         q,
@@ -136,7 +136,7 @@ const providers = {
     ),
   },
   t3: {
-    title: 'Open in T3 Chat',
+    title: '在 T3 Chat 中打开',
     createUrl: (q: string) =>
       `https://t3.chat/new?${new URLSearchParams({
         q,
@@ -144,7 +144,7 @@ const providers = {
     icon: <MessageCircleIcon />,
   },
   v0: {
-    title: 'Open in v0',
+    title: '在 v0 中打开',
     createUrl: (q: string) =>
       `https://v0.app?${new URLSearchParams({
         q,
@@ -162,7 +162,7 @@ const providers = {
     ),
   },
   cursor: {
-    title: 'Open in Cursor',
+    title: '在 Cursor 中打开',
     createUrl: (text: string) => {
       const url = new URL('https://cursor.com/link/prompt')
       url.searchParams.set('text', text)
@@ -238,7 +238,7 @@ export const OpenInTrigger = ({ children, ...props }: OpenInTriggerProps) => (
   <DropdownMenuTrigger {...props} asChild>
     {children ?? (
       <Button type="button" variant="outline">
-        Open in chat
+        在聊天中打开
         <ChevronDownIcon className="size-4" />
       </Button>
     )}

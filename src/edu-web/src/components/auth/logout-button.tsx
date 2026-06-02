@@ -17,7 +17,7 @@ export const LogoutButton = () => {
       className="flex items-center gap-2"
     >
       <LogOut className="h-4 w-4" />
-      {isLoading ? 'Signing out...' : 'Sign out'}
+      {isLoading ? '正在退出...' : '退出登录'}
     </Button>
   )
 }

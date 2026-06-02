@@ -26,10 +26,10 @@ export const ChatListItem = ({ chat }: Props) => {
     e.stopPropagation()
 
     const confirmed = await confirmationDialog.open({
-      title: 'Delete Chat',
-      description: `Are you sure you want to delete "${chat.title ?? 'Untitled chat'}"? This action cannot be undone.`,
-      confirmLabel: 'Delete',
-      cancelLabel: 'Cancel',
+      title: '删除聊天',
+      description: `确定要删除“${chat.title ?? '未命名聊天'}”吗？此操作无法撤销。`,
+      confirmLabel: '删除',
+      cancelLabel: '取消',
       variant: 'destructive',
     })
 
@@ -54,7 +54,7 @@ export const ChatListItem = ({ chat }: Props) => {
         >
           <div className="grid grid-cols-6 items-center">
             <div className="flex flex-col w-full col-span-5 overflow-hidden">
-              <span className="truncate">{chat.title ?? 'Untitled chat'}</span>
+              <span className="truncate">{chat.title ?? '未命名聊天'}</span>
               {chat.last_message_content && (
                 <span className="text-xs text-muted-foreground truncate">
                   {chat.last_message_content}
@@ -85,7 +85,7 @@ export const ChatListItem = ({ chat }: Props) => {
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={handleDelete} variant="destructive">
               <TrashIcon className="size-4" />
-              <span>Delete</span>
+              <span>删除</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

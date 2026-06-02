@@ -225,7 +225,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                                   rel="noopener noreferrer"
                                   className="text-xs text-primary hover:underline"
                                 >
-                                  View
+                                  查看
                                 </a>
                               </div>
                             ))}
@@ -261,7 +261,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                                 title={
                                   sourceDoc.title ||
                                   sourceDoc.filename ||
-                                  'Document'
+                                  '文档'
                                 }
                               />
                             )
@@ -296,7 +296,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                                         handleCopy(part.text_content)
                                       }
                                       className="p-1 hover:bg-muted rounded"
-                                      title="Copy"
+                                      title="复制"
                                     >
                                       <CopyIcon className="size-3" />
                                     </button>
@@ -494,7 +494,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                 onClick={() => setWebSearch(!webSearch)}
               >
                 <GlobeIcon size={16} />
-                <span>Search</span>
+                <span>搜索</span>
               </PromptInputButton>
               <PromptInputSelect
                 onValueChange={(value) => {

@@ -33,7 +33,7 @@ const ChatItem = ({ chat }: { chat: ChatDto }) => {
             chatId: chat.id,
           }}
         >
-          <span>{chat.title ?? "Unnamed Chat"}</span>
+          <span>{chat.title ?? "未命名聊天"}</span>
         </Link>
       </SidebarMenuSubButton>
     </SidebarMenuSubItem>
@@ -54,7 +54,7 @@ const ChatList = ({ projectId }: { projectId: string }) => {
           <SidebarMenuSubItem>
             <SidebarMenuSubButton size="md">
               <span className="text-sm text-muted-foreground">
-                No chats yet
+                还没有聊天
               </span>
             </SidebarMenuSubButton>
           </SidebarMenuSubItem>
@@ -64,7 +64,7 @@ const ChatList = ({ projectId }: { projectId: string }) => {
     .onInitialOrWaiting(() => (
       <SidebarMenuSubItem>
         <SidebarMenuSubButton size="md">
-          <span className="text-sm text-muted-foreground">Loading...</span>
+          <span className="text-sm text-muted-foreground">正在加载...</span>
         </SidebarMenuSubButton>
       </SidebarMenuSubItem>
     ))
@@ -72,7 +72,7 @@ const ChatList = ({ projectId }: { projectId: string }) => {
       <SidebarMenuSubItem>
         <SidebarMenuSubButton size="md">
           <span className="text-sm text-muted-foreground">
-            Error: {Cause.pretty(cause)}
+            错误：{Cause.pretty(cause)}
           </span>
         </SidebarMenuSubButton>
       </SidebarMenuSubItem>
@@ -88,14 +88,14 @@ export function NavProjects() {
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-      <SidebarGroupLabel>Projects</SidebarGroupLabel>
+      <SidebarGroupLabel>项目</SidebarGroupLabel>
       <SidebarMenu>
         <SidebarMenuButton
-          tooltip="New project"
+          tooltip="新建项目"
           onClick={() => openCreateProjectDialog()}
         >
           <PlusIcon className="size-4 opacity-70" />
-          <span>New project</span>
+          <span>新建项目</span>
         </SidebarMenuButton>
 
         {Result.builder(projectsResult)

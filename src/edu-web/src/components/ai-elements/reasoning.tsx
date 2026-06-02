@@ -25,7 +25,7 @@ const ReasoningContext = createContext<ReasoningContextValue | null>(null)
 export const useReasoning = () => {
   const context = useContext(ReasoningContext)
   if (!context) {
-    throw new Error('Reasoning components must be used within Reasoning')
+    throw new Error('Reasoning 组件必须在 Reasoning 内使用')
   }
   return context
 }
@@ -119,12 +119,12 @@ export type ReasoningTriggerProps = ComponentProps<
 
 const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
   if (isStreaming || duration === 0) {
-    return <Shimmer duration={1}>Thinking...</Shimmer>
+    return <Shimmer duration={1}>思考中...</Shimmer>
   }
   if (duration === undefined) {
-    return <p>Thought for a few seconds</p>
+    return <p>思考了几秒</p>
   }
-  return <p>Thought for {duration} seconds</p>
+  return <p>思考了 {duration} 秒</p>
 }
 
 export const ReasoningTrigger = memo(

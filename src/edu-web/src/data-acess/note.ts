@@ -134,7 +134,7 @@ export const createNoteAtom = runtime.fn(
     const resp = yield* apiClient.createNoteApiV1ProjectsProjectIdNotesPost(
       input.projectId,
       new NoteCreate({
-        title: input.title ?? 'New Note',
+        title: input.title ?? '新笔记',
         content: input.content ?? '',
         description: input.description,
       }),
@@ -158,9 +158,9 @@ export const deleteNoteAtom = runtime.fn(
       registry.refresh(notesAtom(input.projectId))
     },
     withToast({
-      onWaiting: () => 'Deleting note...',
-      onSuccess: 'Note deleted',
-      onFailure: 'Failed to delete note',
+      onWaiting: () => '正在删除笔记...',
+      onSuccess: '笔记已删除',
+      onFailure: '笔记删除失败',
     }),
   ),
 )

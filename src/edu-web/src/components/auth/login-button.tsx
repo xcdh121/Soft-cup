@@ -44,19 +44,19 @@ export const LoginButton = () => {
       <DialogTrigger asChild>
         <Button className="flex items-center gap-2">
           <LogIn className="h-4 w-4" />
-          Sign in
+          登录
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Sign in</DialogTitle>
+          <DialogTitle>登录</DialogTitle>
           <DialogDescription>
-            Sign in with your email and password, or use a magic link.
+            使用邮箱和密码登录，或使用魔法链接。
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">邮箱</Label>
             <Input
               id="email"
               type="email"
@@ -67,13 +67,13 @@ export const LoginButton = () => {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">密码</Label>
             <Input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
+              placeholder="请输入密码"
             />
           </div>
           {(loginError || magicLinkError) && (
@@ -82,12 +82,12 @@ export const LoginButton = () => {
                 ? loginError.message
                 : magicLinkError instanceof Error
                   ? magicLinkError.message
-                  : 'Login failed'}
+                  : '登录失败'}
             </p>
           )}
           <div className="flex gap-2">
             <Button type="submit" disabled={isLoading || !email}>
-              {isLoading ? 'Signing in...' : 'Sign in'}
+              {isLoading ? '正在登录...' : '登录'}
             </Button>
             <Button
               type="button"
@@ -95,7 +95,7 @@ export const LoginButton = () => {
               onClick={handleMagicLink}
               disabled={isLoading || !email}
             >
-              Send magic link
+              发送魔法链接
             </Button>
           </div>
         </form>

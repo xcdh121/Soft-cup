@@ -155,7 +155,7 @@ export const createQuizAtom = runtime.fn(
     const resp = yield* apiClient.createQuizApiV1ProjectsProjectIdQuizzesPost(
       input.projectId,
       new QuizCreate({
-        name: input.name ?? 'New Quiz',
+        name: input.name ?? '新测验',
         description: input.description,
       }),
     )
@@ -178,9 +178,9 @@ export const deleteQuizAtom = runtime.fn(
       registry.refresh(quizzesAtom(input.projectId))
     },
     withToast({
-      onWaiting: () => 'Deleting quiz...',
-      onSuccess: 'Quiz deleted',
-      onFailure: 'Failed to delete quiz',
+      onWaiting: () => '正在删除测验...',
+      onSuccess: '测验已删除',
+      onFailure: '测验删除失败',
     }),
   ),
 )
@@ -195,7 +195,7 @@ export const exportQuizAtom = runtime.fn(
     // For now, commenting out as the endpoint doesn't exist in the client
     // const client = yield* makeApiClient
     // const response = yield* client.exportQuiz(...)
-    throw new Error('Quiz export not supported in current API')
+    throw new Error('当前 API 不支持导出测验')
   }),
 )
 
@@ -209,7 +209,7 @@ export const importQuizAtom = runtime.fn(
     // const response = yield* client.importQuiz(...)
 
     registry.refresh(quizzesAtom(input.projectId))
-    throw new Error('Quiz import not supported in current API')
+    throw new Error('当前 API 不支持导入测验')
   }),
 )
 

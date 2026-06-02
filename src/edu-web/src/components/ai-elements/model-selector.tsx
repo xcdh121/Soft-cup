@@ -37,7 +37,7 @@ export type ModelSelectorContentProps = ComponentProps<typeof DialogContent> & {
 export const ModelSelectorContent = ({
   className,
   children,
-  title = 'Model Selector',
+  title = '模型选择器',
   ...props
 }: ModelSelectorContentProps) => (
   <DialogContent className={cn('p-0', className)} {...props}>
@@ -172,7 +172,7 @@ export const ModelSelectorLogo = ({
 }: ModelSelectorLogoProps) => (
   <img
     {...props}
-    alt={`${provider} logo`}
+    alt={`${provider} 标志`}
     className={cn('size-3 dark:invert', className)}
     height={12}
     src={`https://models.dev/logos/${provider}.svg`}

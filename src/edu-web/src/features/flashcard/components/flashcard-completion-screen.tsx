@@ -56,9 +56,9 @@ export const FlashcardCompletionScreen = ({
             <div className="flex items-center justify-center">
               <CheckCheck className="h-12 w-12 text-green-600" />
             </div>
-            <h2 className="text-2xl font-semibold">Session Complete</h2>
+            <h2 className="text-2xl font-semibold">学习已完成</h2>
             <p className="text-muted-foreground">
-              You've reviewed all {total} flashcards
+              你已复习全部 {total} 张闪卡
             </p>
           </div>
 
@@ -71,7 +71,7 @@ export const FlashcardCompletionScreen = ({
                   {correct.length}
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground">Correct</div>
+              <div className="text-xs text-muted-foreground">正确</div>
             </div>
 
             <div className="text-center space-y-1">
@@ -81,12 +81,12 @@ export const FlashcardCompletionScreen = ({
                   {incorrect.length}
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground">Incorrect</div>
+              <div className="text-xs text-muted-foreground">错误</div>
             </div>
 
             <div className="text-center space-y-1">
               <div className="text-2xl font-bold">{percentage}%</div>
-              <div className="text-xs text-muted-foreground">Accuracy</div>
+              <div className="text-xs text-muted-foreground">准确率</div>
             </div>
           </div>
 
@@ -98,7 +98,7 @@ export const FlashcardCompletionScreen = ({
                 size="lg"
                 className="w-full"
               >
-                Practice incorrect cards ({incorrect.length})
+                练习错误闪卡（{incorrect.length}）
               </Button>
             )}
 
@@ -110,7 +110,7 @@ export const FlashcardCompletionScreen = ({
                 className="flex-1"
               >
                 <RotateCcw className="h-4 w-4 mr-2" />
-                Retry All
+                全部重试
               </Button>
 
               <Button
@@ -120,7 +120,7 @@ export const FlashcardCompletionScreen = ({
                 className="flex-1"
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                {hasPendingPracticeRecords ? 'Save & Close' : 'Close'}
+                {hasPendingPracticeRecords ? '保存并关闭' : '关闭'}
               </Button>
             </div>
           </div>

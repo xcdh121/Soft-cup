@@ -67,7 +67,7 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
           className="flex items-center gap-2"
         >
           <ChevronLeft className="h-4 w-4" />
-          Previous
+          上一题
         </Button>
 
         {currentIndex === totalQuestions - 1 ? (
@@ -77,7 +77,7 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
             size="lg"
             className="px-8"
           >
-            Submit Quiz
+            提交测验
           </Button>
         ) : (
           <Button
@@ -86,7 +86,7 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
             variant="default"
             className="flex items-center gap-2"
           >
-            Next
+            下一题
             <ChevronRight className="h-4 w-4" />
           </Button>
         )}

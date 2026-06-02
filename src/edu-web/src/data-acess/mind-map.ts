@@ -133,7 +133,7 @@ export const generateMindMapAtom = runtime.fn(
       yield* apiClient.createMindMapApiV1ProjectsProjectIdMindMapsPost(
         input.projectId,
         new MindMapCreate({
-          title: input.title ?? 'New Mind Map',
+          title: input.title ?? '新思维导图',
           description: input.description,
           custom_instructions: input.customInstructions,
         }),

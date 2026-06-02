@@ -20,19 +20,19 @@ const DocumentContent = ({ projectId, documentId }: DocumentContentProps) => {
           .onInitialOrWaiting(() => (
             <div className="flex flex-1 items-center justify-center gap-2 text-muted-foreground">
               <Loader2Icon className="size-4 animate-spin" />
-              <span>Loading preview...</span>
+              <span>正在加载预览...</span>
             </div>
           ))
           .onFailure(() => (
             <div className="flex flex-1 items-center justify-center gap-2 text-destructive">
-              <span>Failed to load preview</span>
+              <span>预览加载失败</span>
             </div>
           ))
           .onSuccess((preview) => (
             <iframe
               src={preview.url}
               className="w-full h-full border-0"
-              title="Document preview"
+              title="文档预览"
             />
           ))
           .render()}

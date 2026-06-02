@@ -142,7 +142,7 @@ export const CodeBlockCopyButton = ({
 
   const copyToClipboard = async () => {
     if (typeof window === 'undefined' || !navigator?.clipboard?.writeText) {
-      onError?.(new Error('Clipboard API not available'))
+      onError?.(new Error('剪贴板 API 不可用'))
       return
     }
 

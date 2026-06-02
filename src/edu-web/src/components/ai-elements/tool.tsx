@@ -38,14 +38,14 @@ export type ToolHeaderProps = {
 
 const getStatusBadge = (status: ToolUIPart['state']) => {
   const labels: Record<ToolUIPart['state'], string> = {
-    'input-streaming': 'Pending',
-    'input-available': 'Running',
+    'input-streaming': '等待中',
+    'input-available': '运行中',
     // @ts-expect-error state only available in AI SDK v6
-    'approval-requested': 'Awaiting Approval',
-    'approval-responded': 'Responded',
-    'output-available': 'Completed',
-    'output-error': 'Error',
-    'output-denied': 'Denied',
+    'approval-requested': '等待批准',
+    'approval-responded': '已响应',
+    'output-available': '已完成',
+    'output-error': '错误',
+    'output-denied': '已拒绝',
   }
 
   const icons: Record<ToolUIPart['state'], ReactNode> = {
@@ -111,7 +111,7 @@ export type ToolInputProps = ComponentProps<'div'> & {
 export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
   <div className={cn('space-y-2 overflow-hidden p-4', className)} {...props}>
     <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-      Parameters
+      参数
     </h4>
     <div className="rounded-md bg-muted/50">
       <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
@@ -147,7 +147,7 @@ export const ToolOutput = ({
   return (
     <div className={cn('space-y-2 p-4', className)} {...props}>
       <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-        {errorText ? 'Error' : 'Result'}
+        {errorText ? '错误' : '结果'}
       </h4>
       <div
         className={cn(

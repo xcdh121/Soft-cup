@@ -39,7 +39,7 @@ export const SignUpPage = () => {
       setError(
         signUpError instanceof Error
           ? signUpError.message
-          : 'Sign up failed. Please try again.',
+          : '注册失败，请重试。',
       )
       setHasSubmitted(false)
     }
@@ -83,17 +83,17 @@ export const SignUpPage = () => {
     setHasSubmitted(false)
 
     if (!email || !password || !confirmPassword) {
-      setError('Please fill in all fields')
+      setError('请填写所有字段')
       return
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match')
+      setError('两次输入的密码不一致')
       return
     }
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters long')
+      setError('密码长度至少需要 6 个字符')
       return
     }
 
@@ -112,21 +112,20 @@ export const SignUpPage = () => {
         <div className="w-full max-w-md space-y-8">
           <div className="text-center space-y-4">
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              Check your email
+              请检查你的邮箱
             </h1>
             <p className="text-sm text-muted-foreground">
-              We've sent a confirmation link to <strong>{email}</strong>
+              我们已向 <strong>{email}</strong> 发送确认链接
             </p>
             <p className="text-sm text-muted-foreground">
-              Please click the link in the email to verify your account and
-              complete sign up.
+              请点击邮件中的链接验证账号并完成注册。
             </p>
             <div className="pt-4">
               <Link
                 to="/sign-in"
                 className="text-sm text-primary hover:underline"
               >
-                Back to sign in
+                返回登录
               </Link>
             </div>
           </div>
@@ -140,16 +139,16 @@ export const SignUpPage = () => {
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Create an account
+            创建账号
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Enter your email and password to create your account
+            输入邮箱和密码来创建账号
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">邮箱</Label>
             <Input
               id="email"
               type="email"
@@ -163,28 +162,28 @@ export const SignUpPage = () => {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">密码</Label>
             <Input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              placeholder="At least 6 characters"
+              placeholder="至少 6 个字符"
               autoComplete="new-password"
               disabled={isLoading}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <Label htmlFor="confirmPassword">确认密码</Label>
             <Input
               id="confirmPassword"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              placeholder="Confirm your password"
+              placeholder="请再次输入密码"
               autoComplete="new-password"
               disabled={isLoading}
             />
@@ -201,23 +200,23 @@ export const SignUpPage = () => {
             className="w-full"
             disabled={isLoading || !email || !password || !confirmPassword}
           >
-            {isLoading ? 'Creating account...' : 'Create account'}
+            {isLoading ? '正在创建账号...' : '创建账号'}
           </Button>
 
           <div className="text-center text-xs text-muted-foreground">
-            By creating an account, you agree to our{' '}
+            创建账号即表示你同意我们的{' '}
             <a
               href="https://github.com/StudentTraineeCenter/edu-agent/blob/master/docs/PRIVACY_POLICY.md"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline"
             >
-              Privacy Policy
+              隐私政策
             </a>
           </div>
 
           <div className="text-center text-sm text-muted-foreground">
-            Already have an account?{' '}
+            已有账号？{' '}
             <Link
               to="/sign-in"
               search={
@@ -225,7 +224,7 @@ export const SignUpPage = () => {
               }
               className="text-primary hover:underline"
             >
-              Sign in
+              登录
             </Link>
           </div>
         </form>

@@ -20,7 +20,7 @@ export const ChatPage = ({ projectId, chatId }: ChatPageProps) => {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        <span>Loading chat...</span>
+        <span>正在加载聊天...</span>
       </div>
     )
   }
@@ -28,7 +28,7 @@ export const ChatPage = ({ projectId, chatId }: ChatPageProps) => {
   if (isError) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-destructive">
-        <span>Failed to load chat</span>
+        <span>聊天加载失败</span>
       </div>
     )
   }

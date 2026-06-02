@@ -38,7 +38,7 @@ export const FlashcardContent = ({
     return (
       <div className="flex flex-1 items-center justify-center min-h-screen gap-2 text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        <span>Loading flashcards...</span>
+        <span>正在加载闪卡...</span>
       </div>
     )
   }
@@ -60,7 +60,7 @@ export const FlashcardContent = ({
   if (!currentCard) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-screen">
-        <p className="text-muted-foreground">No flashcards available</p>
+        <p className="text-muted-foreground">没有可用闪卡</p>
       </div>
     )
   }
@@ -80,7 +80,7 @@ export const FlashcardContent = ({
         .onInitialOrWaiting(() => (
           <div className="flex flex-1 items-center justify-center">
             <Loader2Icon className="size-4 animate-spin" />
-            <span>Loading flashcard...</span>
+            <span>正在加载闪卡...</span>
           </div>
         ))
         .render()}

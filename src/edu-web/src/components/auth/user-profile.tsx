@@ -25,7 +25,7 @@ export const UserProfile = () => {
             to="/dashboard"
             className={cn(buttonVariants({ variant: 'default' }))}
           >
-            Dashboard
+            仪表盘
           </Link>
         </div>
         <LogoutButton />
@@ -34,15 +34,15 @@ export const UserProfile = () => {
     .onError(() => (
       <div className="flex items-center gap-3 p-3 border rounded-lg">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">User</p>
-          <p className="text-xs text-gray-500 truncate">Not signed in</p>
+          <p className="text-sm font-medium truncate">用户</p>
+          <p className="text-xs text-gray-500 truncate">未登录</p>
         </div>
         <div className="flex items-center gap-2">
           <Link
             to="/dashboard"
             className={cn(buttonVariants({ variant: 'default' }))}
           >
-            Dashboard
+            仪表盘
           </Link>
         </div>
         <LogoutButton />

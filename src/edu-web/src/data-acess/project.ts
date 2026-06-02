@@ -94,9 +94,9 @@ export const upsertProjectAtom = runtime.fn(
       }
     },
     withToast({
-      onWaiting: () => 'Creating project...',
-      onSuccess: 'Project created',
-      onFailure: 'Failed to create project',
+      onWaiting: () => '正在创建项目...',
+      onSuccess: '项目已创建',
+      onFailure: '项目创建失败',
     }),
   ),
 )
@@ -112,9 +112,9 @@ export const deleteProjectAtom = runtime.fn(
       registry.refresh(projectsRemoteAtom)
     },
     withToast({
-      onWaiting: () => 'Deleting project...',
-      onSuccess: 'Project deleted',
-      onFailure: 'Failed to delete project',
+      onWaiting: () => '正在删除项目...',
+      onSuccess: '项目已删除',
+      onFailure: '项目删除失败',
     }),
   ),
 )

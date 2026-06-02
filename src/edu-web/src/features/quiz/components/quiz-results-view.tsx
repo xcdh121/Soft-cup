@@ -45,10 +45,10 @@ const CompletionHeader = ({ total }: CompletionHeaderProps) => (
   <div className="text-center space-y-2">
     <div className="flex items-center justify-center gap-2 mb-2">
       <Trophy className="h-8 w-8 text-yellow-500" />
-      <h2 className="text-3xl font-bold">Quiz Complete!</h2>
+      <h2 className="text-3xl font-bold">测验已完成！</h2>
     </div>
     <p className="text-muted-foreground">
-      You've completed all {total} questions
+      你已完成全部 {total} 道题
     </p>
   </div>
 )
@@ -86,19 +86,19 @@ const StatsGrid = ({
           <StatCard
             icon={<CheckCircle className="h-6 w-6 text-green-600" />}
             value={stats.correct}
-            label="Correct"
+            label="正确"
             valueColor="text-green-600"
           />
           <StatCard
             icon={<XCircle className="h-6 w-6 text-red-600" />}
             value={stats.incorrect}
-            label="Incorrect"
+            label="错误"
             valueColor="text-red-600"
           />
           <StatCard
             icon={null}
             value={`${stats.percentage}%`}
-            label="Success Rate"
+            label="正确率"
             valueColor="text-blue-600"
           />
         </div>
@@ -131,13 +131,13 @@ const QuizQuestionListItem = ({
         </p>
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground">You:</span>
+            <span className="text-muted-foreground">你的答案：</span>
             <span
               className={`font-medium ${
                 isCorrect ? 'text-green-600' : 'text-red-600'
               }`}
             >
-              {userAnswer?.toUpperCase() || 'No answer'}
+              {userAnswer?.toUpperCase() || '未作答'}
               {userAnswer && ` - ${getOptionText(question, userAnswer)}`}
             </span>
           </div>
@@ -145,7 +145,7 @@ const QuizQuestionListItem = ({
             <>
               <span className="text-muted-foreground">•</span>
               <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground">Correct:</span>
+                <span className="text-muted-foreground">正确答案：</span>
                 <span className="font-medium text-green-700">
                   {question.correct_option.toUpperCase()} -{' '}
                   {getOptionText(
@@ -273,8 +273,8 @@ const CompletionActions = ({ quizId, projectId }: CompletionActionsProps) => {
           size="lg"
         >
           <Upload className="h-4 w-4" />
-          Submit Practice Records (
-          {Object.keys(stateResult.value.pendingPracticeRecords).length})
+          提交练习记录（
+          {Object.keys(stateResult.value.pendingPracticeRecords).length}）
         </Button>
       )}
 
@@ -286,7 +286,7 @@ const CompletionActions = ({ quizId, projectId }: CompletionActionsProps) => {
           size="lg"
         >
           <RotateCcw className="h-4 w-4" />
-          Retry
+          再试一次
         </Button>
         <Button
           onClick={handleClose}
@@ -295,7 +295,7 @@ const CompletionActions = ({ quizId, projectId }: CompletionActionsProps) => {
           size="lg"
         >
           <X className="h-4 w-4" />
-          Close
+          关闭
         </Button>
       </div>
     </div>
@@ -373,7 +373,7 @@ export const QuizResultsView = ({
 
           <div className="space-y-4">
             <QuizReviewSection
-              title="Correct Answers"
+              title="正确答案"
               questions={correct}
               icon={<CheckCircle className="h-5 w-5 text-green-600" />}
               isOpen={showCorrect}
@@ -381,7 +381,7 @@ export const QuizResultsView = ({
             />
 
             <QuizReviewSection
-              title="Incorrect Answers"
+              title="错误答案"
               questions={incorrect}
               icon={<XCircle className="h-5 w-5 text-red-600" />}
               isOpen={showIncorrect}

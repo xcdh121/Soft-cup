@@ -32,7 +32,7 @@ export function NavMain({ items }: { items: Array<NavItem> }) {
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Platform</SidebarGroupLabel>
+      <SidebarGroupLabel>平台</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => {
           const active = item.isActive ?? location.pathname === item.url

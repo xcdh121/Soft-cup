@@ -89,10 +89,10 @@ export const StudyResourceListItem = ({ studyResource }: Props) => {
         e.stopPropagation()
 
         const confirmed = await confirmationDialog.open({
-          title: 'Delete Flashcard Group',
-          description: `Are you sure you want to delete "${flashcardGroup.name}"? This action cannot be undone.`,
-          confirmLabel: 'Delete',
-          cancelLabel: 'Cancel',
+          title: '删除闪卡组',
+          description: `确定要删除“${flashcardGroup.name}”吗？此操作无法撤销。`,
+          confirmLabel: '删除',
+          cancelLabel: '取消',
           variant: 'destructive',
         })
 
@@ -187,16 +187,16 @@ export const StudyResourceListItem = ({ studyResource }: Props) => {
                     }}
                   >
                     <PencilIcon className="size-4" />
-                    <span>Edit</span>
+                    <span>编辑</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleExport} disabled={isExporting}>
                   <DownloadIcon className="size-4" />
-                  <span>Export CSV</span>
+                  <span>导出 CSV</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                   <UploadIcon className="size-4" />
-                  <span>Import CSV</span>
+                  <span>导入 CSV</span>
                 </DropdownMenuItem>
                 <input
                   ref={fileInputRef}
@@ -207,7 +207,7 @@ export const StudyResourceListItem = ({ studyResource }: Props) => {
                 />
                 <DropdownMenuItem onClick={handleDelete} variant="destructive">
                   <TrashIcon className="size-4" />
-                  <span>Delete</span>
+                  <span>删除</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -226,10 +226,10 @@ export const StudyResourceListItem = ({ studyResource }: Props) => {
         e.stopPropagation()
 
         const confirmed = await confirmationDialog.open({
-          title: 'Delete Quiz',
-          description: `Are you sure you want to delete "${quiz.name}"? This action cannot be undone.`,
-          confirmLabel: 'Delete',
-          cancelLabel: 'Cancel',
+          title: '删除测验',
+          description: `确定要删除“${quiz.name}”吗？此操作无法撤销。`,
+          confirmLabel: '删除',
+          cancelLabel: '取消',
           variant: 'destructive',
         })
 
@@ -325,16 +325,16 @@ export const StudyResourceListItem = ({ studyResource }: Props) => {
                     }}
                   >
                     <PencilIcon className="size-4" />
-                    <span>Edit</span>
+                    <span>编辑</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleExport} disabled={isExporting}>
                   <DownloadIcon className="size-4" />
-                  <span>Export CSV</span>
+                  <span>导出 CSV</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                   <UploadIcon className="size-4" />
-                  <span>Import CSV</span>
+                  <span>导入 CSV</span>
                 </DropdownMenuItem>
                 <input
                   ref={fileInputRef}
@@ -345,7 +345,7 @@ export const StudyResourceListItem = ({ studyResource }: Props) => {
                 />
                 <DropdownMenuItem onClick={handleDelete} variant="destructive">
                   <TrashIcon className="size-4" />
-                  <span>Delete</span>
+                  <span>删除</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -359,10 +359,10 @@ export const StudyResourceListItem = ({ studyResource }: Props) => {
         e.stopPropagation()
 
         const confirmed = await confirmationDialog.open({
-          title: 'Delete Note',
-          description: `Are you sure you want to delete "${note.title}"? This action cannot be undone.`,
-          confirmLabel: 'Delete',
-          cancelLabel: 'Cancel',
+          title: '删除笔记',
+          description: `确定要删除“${note.title}”吗？此操作无法撤销。`,
+          confirmLabel: '删除',
+          cancelLabel: '取消',
           variant: 'destructive',
         })
 
@@ -405,7 +405,7 @@ export const StudyResourceListItem = ({ studyResource }: Props) => {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={handleDelete} variant="destructive">
                   <TrashIcon className="size-4" />
-                  <span>Delete</span>
+                  <span>删除</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

@@ -40,12 +40,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain
           items={[
             {
-              title: 'Documentation',
+              title: '文档',
               url: 'https://github.com/StudentTraineeCenter/edu-agent/tree/master/docs',
               icon: BookOpen,
             },
             {
-              title: 'Settings',
+              title: '设置',
               url: '/dashboard/settings',
               icon: Settings2,
             },

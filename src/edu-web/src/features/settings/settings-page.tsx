@@ -39,8 +39,8 @@ const UserSection = () => {
       return (
         <Card>
           <CardHeader>
-            <CardTitle>Account</CardTitle>
-            <CardDescription>Your account information</CardDescription>
+            <CardTitle>账号</CardTitle>
+            <CardDescription>你的账号信息</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-4">
@@ -60,8 +60,8 @@ const UserSection = () => {
       return (
         <Card>
           <CardHeader>
-            <CardTitle>Account</CardTitle>
-            <CardDescription>Your account information</CardDescription>
+            <CardTitle>账号</CardTitle>
+            <CardDescription>你的账号信息</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-4">
@@ -71,7 +71,7 @@ const UserSection = () => {
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
-                <p className="font-semibold">Loading...</p>
+                <p className="font-semibold">正在加载...</p>
               </div>
             </div>
           </CardContent>
@@ -89,11 +89,11 @@ export function SettingsPage() {
 
   const handleDeleteAllChats = async () => {
     const confirmed = await confirmationDialog.open({
-      title: 'Delete All Chats',
+      title: '删除所有聊天',
       description:
-        'This is a mock action. Your chats will not actually be deleted. Are you sure you want to proceed?',
-      confirmLabel: 'Delete All',
-      cancelLabel: 'Cancel',
+        '这是一个模拟操作。你的聊天不会真的被删除。确定要继续吗？',
+      confirmLabel: '全部删除',
+      cancelLabel: '取消',
       variant: 'destructive',
     })
 
@@ -104,23 +104,23 @@ export function SettingsPage() {
     // Mock action - simulate delay
     await new Promise((resolve) => setTimeout(resolve, 1500))
 
-    alert('Delete all chats is not implemented. This is a mock action.')
+    alert('删除所有聊天尚未实现。这是一个模拟操作。')
     setIsDeletingAllChats(false)
   }
 
   const handleDeleteAccount = async () => {
     const confirmed = await confirmationDialog.open({
-      title: 'Delete Account',
+      title: '删除账号',
       description:
-        'This is a mock action. Your account will not actually be deleted. Are you sure you want to proceed?',
-      confirmLabel: 'Delete',
-      cancelLabel: 'Cancel',
+        '这是一个模拟操作。你的账号不会真的被删除。确定要继续吗？',
+      confirmLabel: '删除',
+      cancelLabel: '取消',
       variant: 'destructive',
     })
 
     if (confirmed) {
       // Mock action - just show an alert
-      alert('Account deletion is not implemented. This is a mock action.')
+      alert('删除账号尚未实现。这是一个模拟操作。')
     }
   }
 
@@ -137,7 +137,7 @@ export function SettingsPage() {
             <BreadcrumbList>
               <BreadcrumbItem>
                 <BreadcrumbPage className="font-medium">
-                  Settings
+                  设置
                 </BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
@@ -151,8 +151,8 @@ export function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Appearance</CardTitle>
-              <CardDescription>Choose your preferred theme</CardDescription>
+              <CardTitle>外观</CardTitle>
+              <CardDescription>选择你偏好的主题</CardDescription>
             </CardHeader>
             <CardContent>
               <Select
@@ -160,12 +160,12 @@ export function SettingsPage() {
                 onValueChange={(value) => setTheme(value as typeof theme)}
               >
                 <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Select theme" />
+                  <SelectValue placeholder="选择主题" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="light">Light</SelectItem>
-                  <SelectItem value="dark">Dark</SelectItem>
-                  <SelectItem value="system">System</SelectItem>
+                  <SelectItem value="light">浅色</SelectItem>
+                  <SelectItem value="dark">深色</SelectItem>
+                  <SelectItem value="system">跟随系统</SelectItem>
                 </SelectContent>
               </Select>
             </CardContent>
@@ -173,28 +173,28 @@ export function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Usage</CardTitle>
+              <CardTitle>使用情况</CardTitle>
               <CardDescription>
-                Your daily usage statistics and limits
+                你的每日使用统计和限制
               </CardDescription>
             </CardHeader>
             <CardContent>
               {Result.builder(usageResult)
                 .onInitialOrWaiting(() => (
                   <div className="text-muted-foreground text-sm">
-                    Loading usage statistics...
+                    正在加载使用统计...
                   </div>
                 ))
                 .onFailure(() => (
                   <div className="text-destructive text-sm">
-                    Failed to load usage statistics
+                    使用统计加载失败
                   </div>
                 ))
                 .onSuccess((usage) => (
                   <div className="space-y-6">
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">Chat Messages</span>
+                        <span className="font-medium">聊天消息</span>
                         <span className="text-muted-foreground">
                           {usage.chat_messages.used} /{' '}
                           {usage.chat_messages.limit}
@@ -212,7 +212,7 @@ export function SettingsPage() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="font-medium">
-                          Flashcard Generations
+                          闪卡生成
                         </span>
                         <span className="text-muted-foreground">
                           {usage.flashcard_generations.used} /{' '}
@@ -230,7 +230,7 @@ export function SettingsPage() {
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">Quiz Generations</span>
+                        <span className="font-medium">测验生成</span>
                         <span className="text-muted-foreground">
                           {usage.quiz_generations.used} /{' '}
                           {usage.quiz_generations.limit}
@@ -248,7 +248,7 @@ export function SettingsPage() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="font-medium">
-                          Mind Map Generations
+                          思维导图生成
                         </span>
                         <span className="text-muted-foreground">
                           {usage.mindmap_generations.used} /{' '}
@@ -266,7 +266,7 @@ export function SettingsPage() {
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">Document Uploads</span>
+                        <span className="font-medium">文档上传</span>
                         <span className="text-muted-foreground">
                           {usage.document_uploads.used} /{' '}
                           {usage.document_uploads.limit}
@@ -288,18 +288,18 @@ export function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Danger Zone</CardTitle>
+              <CardTitle>危险操作</CardTitle>
               <CardDescription>
-                Irreversible and destructive actions
+                不可撤销的破坏性操作
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium">Delete All Chats</p>
+                    <p className="font-medium">删除所有聊天</p>
                     <p className="text-sm text-muted-foreground">
-                      Permanently delete all your chat conversations (mock)
+                      永久删除你的所有聊天对话（模拟）
                     </p>
                   </div>
                   <Button
@@ -310,12 +310,12 @@ export function SettingsPage() {
                     {isDeletingAllChats ? (
                       <>
                         <Loader2Icon className="size-4 mr-2 animate-spin" />
-                        Deleting...
+                        正在删除...
                       </>
                     ) : (
                       <>
                         <Trash2Icon className="size-4 mr-2" />
-                        Delete All
+                        全部删除
                       </>
                     )}
                   </Button>
@@ -327,15 +327,14 @@ export function SettingsPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium">Delete Account</p>
+                    <p className="font-medium">删除账号</p>
                     <p className="text-sm text-muted-foreground">
-                      Permanently delete your account and all associated data
-                      (mock)
+                      永久删除你的账号和所有关联数据（模拟）
                     </p>
                   </div>
                   <Button variant="destructive" onClick={handleDeleteAccount}>
                     <Trash2Icon className="size-4 mr-2" />
-                    Delete Account
+                    删除账号
                   </Button>
                 </div>
               </div>

@@ -31,13 +31,13 @@ const UsageSection = () => {
   const usageResult = useAtomValue(usageAtom)
 
   return Result.builder(usageResult)
-    .onFailure(() => <div>Failed to load usage data.</div>)
+    .onFailure(() => <div>使用数据加载失败。</div>)
     .onSuccess((usage) => (
       <>
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs">Chat Messages</span>
+            <span className="text-xs">聊天消息</span>
           </div>
           <span className="text-xs font-medium">
             {usage.chat_messages.used} / {usage.chat_messages.limit}
@@ -46,7 +46,7 @@ const UsageSection = () => {
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center gap-2">
             <Brain className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs">Flashcards</span>
+            <span className="text-xs">闪卡</span>
           </div>
           <span className="text-xs font-medium">
             {usage.flashcard_generations.used} /{' '}
@@ -56,7 +56,7 @@ const UsageSection = () => {
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center gap-2">
             <Brain className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs">Mind Maps</span>
+            <span className="text-xs">思维导图</span>
           </div>
           <span className="text-xs font-medium">
             {usage.mindmap_generations.used} / {usage.mindmap_generations.limit}
@@ -65,7 +65,7 @@ const UsageSection = () => {
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center gap-2">
             <HelpCircle className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs">Quizzes</span>
+            <span className="text-xs">测验</span>
           </div>
           <span className="text-xs font-medium">
             {usage.quiz_generations.used} / {usage.quiz_generations.limit}
@@ -74,7 +74,7 @@ const UsageSection = () => {
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs">Documents</span>
+            <span className="text-xs">文档</span>
           </div>
           <span className="text-xs font-medium">
             {usage.document_uploads.used} / {usage.document_uploads.limit}
@@ -99,7 +99,7 @@ export function NavUser() {
   }
 
   return Result.builder(currentUserResult)
-    .onFailure(() => <div>Failed to load user data.</div>)
+    .onFailure(() => <div>用户数据加载失败。</div>)
     .onSuccess(({ name, initials, email }) => {
       return (
         <SidebarMenu>
@@ -145,7 +145,7 @@ export function NavUser() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                  Usage Today
+                  今日使用情况
                 </DropdownMenuLabel>
                 <div className="px-2 py-1.5 space-y-2">
                   <UsageSection />
@@ -153,7 +153,7 @@ export function NavUser() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOutIcon />
-                  Sign out
+                  退出登录
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

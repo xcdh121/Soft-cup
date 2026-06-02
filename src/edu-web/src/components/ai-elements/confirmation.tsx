@@ -46,7 +46,7 @@ const useConfirmation = () => {
   const context = useContext(ConfirmationContext)
 
   if (!context) {
-    throw new Error('Confirmation components must be used within Confirmation')
+    throw new Error('Confirmation 组件必须在 Confirmation 内使用')
   }
 
   return context

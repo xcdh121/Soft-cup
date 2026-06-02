@@ -45,7 +45,7 @@ export const HomePage = () => {
               >
                 <Button className="flex items-center gap-2">
                   <LogIn className="h-4 w-4" />
-                  Sign in
+                  登录
                 </Button>
               </Link>
               <Link
@@ -54,7 +54,7 @@ export const HomePage = () => {
                   search?.redirect ? { redirect: search.redirect } : undefined
                 }
               >
-                <Button variant="outline">Sign up</Button>
+                <Button variant="outline">注册</Button>
               </Link>
             </div>
           )}
@@ -65,8 +65,7 @@ export const HomePage = () => {
               EduAgent
             </h1>
             <p className="mt-4 text-lg text-muted-foreground">
-              An AI‑powered study copilot to organize materials, chat with your
-              content, and accelerate learning.
+              AI 学习助手，帮你整理资料、围绕内容对话，并提升学习效率。
             </p>
           </div>
         </div>

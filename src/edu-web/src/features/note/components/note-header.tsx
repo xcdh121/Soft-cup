@@ -27,7 +27,7 @@ const NoteHeaderContent = ({ noteId, projectId }: NoteHeaderContentProps) => {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbPage className="line-clamp-1 font-medium">
-              {note.title || 'Note'}
+              {note.title || '笔记'}
             </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
@@ -39,7 +39,7 @@ const NoteHeaderContent = ({ noteId, projectId }: NoteHeaderContentProps) => {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbPage className="line-clamp-1 font-medium">
-              Note
+              笔记
             </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
@@ -65,7 +65,7 @@ export const NoteHeader = ({ noteId, projectId }: NoteHeaderProps) => {
             <Button variant="ghost" size="icon" className="size-7" asChild>
               <Link to="/dashboard/p/$projectId" params={{ projectId }}>
                 <ArrowLeft className="size-4" />
-                <span className="sr-only">Back to project</span>
+                <span className="sr-only">返回项目</span>
               </Link>
             </Button>
           </>

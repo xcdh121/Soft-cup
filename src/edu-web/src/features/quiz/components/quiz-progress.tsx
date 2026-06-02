@@ -37,9 +37,9 @@ export const QuizProgress = ({ quizId, projectId }: QuizProgressProps) => {
     <>
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <span>
-          Question {currentQuestionIdx + 1} of {totalCount}
+          第 {currentQuestionIdx + 1} 题，共 {totalCount} 题
         </span>
-        <span>{Math.round(progressPercentage)}% complete</span>
+        <span>完成 {Math.round(progressPercentage)}%</span>
       </div>
 
       <Progress value={progressPercentage} className="h-2" />

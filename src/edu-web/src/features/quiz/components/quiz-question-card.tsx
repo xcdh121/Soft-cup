@@ -90,14 +90,14 @@ export const QuizQuestionCard = ({
                     <>
                       <CheckCircle className="h-5 w-5 text-green-600 shrink-0" />
                       <span className="text-sm text-green-600 font-medium">
-                        Correct
+                        正确
                       </span>
                     </>
                   ) : (
                     <>
                       <XCircle className="h-5 w-5 text-red-600 shrink-0" />
                       <span className="text-sm text-red-600 font-medium">
-                        Incorrect
+                        错误
                       </span>
                     </>
                   )}
@@ -129,7 +129,7 @@ export const QuizQuestionCard = ({
               <div className="pt-4 space-y-2 border-t">
                 <div className="text-sm">
                   <span className="text-muted-foreground">
-                    Correct answer:{' '}
+                    正确答案：{' '}
                   </span>
                   <span className="font-semibold text-green-700">
                     {currentQuestion.correct_option}.{' '}
@@ -138,7 +138,7 @@ export const QuizQuestionCard = ({
                 </div>
                 {currentQuestion.explanation && (
                   <div className="text-sm text-muted-foreground leading-relaxed">
-                    <span className="font-medium">Explanation: </span>
+                    <span className="font-medium">解析：</span>
                     {currentQuestion.explanation}
                   </div>
                 )}

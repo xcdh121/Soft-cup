@@ -54,11 +54,11 @@ export const ProjectHeader = ({ projectId }: ProjectHeaderProps) => {
 
   const handleDelete = async () => {
     const confirmed = await confirmationDialog.open({
-      title: 'Delete Project',
+      title: '删除项目',
       description:
-        'Are you sure you want to delete this project? This action cannot be undone and will delete all associated chats, documents, and AI content.',
-      confirmLabel: 'Delete',
-      cancelLabel: 'Cancel',
+        '确定要删除这个项目吗？此操作无法撤销，并会删除所有相关聊天、文档和 AI 内容。',
+      confirmLabel: '删除',
+      cancelLabel: '取消',
       variant: 'destructive',
     })
 
@@ -87,7 +87,7 @@ export const ProjectHeader = ({ projectId }: ProjectHeaderProps) => {
             }}
             className={cn(buttonVariants({ variant: 'ghost' }))}
           >
-            Study Plan
+            学习计划
           </Link>
           <Button
             variant="ghost"

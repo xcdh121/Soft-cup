@@ -23,12 +23,12 @@ export const QuizContent = ({ quizId, projectId }: QuizContentProps) => {
     .onInitialOrWaiting(() => (
       <div className="flex flex-1 items-center justify-center gap-2 text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        <span>Loading questions...</span>
+        <span>正在加载题目...</span>
       </div>
     ))
     .onFailure(() => (
       <div className="flex flex-1 items-center justify-center gap-2 text-destructive">
-        <span>Failed to load questions</span>
+        <span>题目加载失败</span>
       </div>
     ))
     .onSuccess((quizQuestions) => {
@@ -38,7 +38,7 @@ export const QuizContent = ({ quizId, projectId }: QuizContentProps) => {
       if (quizQuestions.length === 0) {
         return (
           <div className="flex flex-1 items-center justify-center text-muted-foreground">
-            No questions
+            没有题目
           </div>
         )
       }

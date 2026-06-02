@@ -24,7 +24,7 @@ export const FlashcardCard = ({
         <div className="space-y-10">
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-2">
-              Question
+              问题
             </h3>
             <p className="text-lg leading-relaxed">{question}</p>
           </div>
@@ -32,7 +32,7 @@ export const FlashcardCard = ({
           {showAnswer && (
             <div className="border-t pt-8">
               <h3 className="text-sm font-medium text-muted-foreground mb-2">
-                Answer
+                答案
               </h3>
               <p className="text-lg leading-relaxed text-primary">{answer}</p>
             </div>

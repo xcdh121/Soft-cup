@@ -221,16 +221,15 @@ export function GenerationDialog() {
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="sm:max-w-[600px] max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0">
-          <DialogTitle>Generate AI Content</DialogTitle>
+          <DialogTitle>生成 AI 内容</DialogTitle>
           <DialogDescription>
-            Choose a resource type, enter custom instructions, and select
-            relevant documents to generate.
+            选择资源类型，输入自定义要求，并选择相关文档来生成内容。
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-hidden">
           <div className="space-y-2 shrink-0">
-            <Label>Resource Type</Label>
+            <Label>资源类型</Label>
             <div className="grid grid-cols-2 gap-2">
               <Button
                 type="button"
@@ -238,7 +237,7 @@ export function GenerationDialog() {
                 onClick={() => setSelectedType('note')}
                 disabled={isGenerating}
               >
-                Note
+                笔记
               </Button>
               <Button
                 type="button"
@@ -246,7 +245,7 @@ export function GenerationDialog() {
                 onClick={() => setSelectedType('quiz')}
                 disabled={isGenerating}
               >
-                Quiz
+                测验
               </Button>
               <Button
                 type="button"
@@ -254,7 +253,7 @@ export function GenerationDialog() {
                 onClick={() => setSelectedType('flashcard')}
                 disabled={isGenerating}
               >
-                Flashcards
+                闪卡
               </Button>
               <Button
                 type="button"
@@ -262,16 +261,16 @@ export function GenerationDialog() {
                 onClick={() => setSelectedType('mindmap')}
                 disabled={isGenerating}
               >
-                Mind Map
+                思维导图
               </Button>
             </div>
           </div>
 
           <div className="space-y-2 shrink-0">
-            <Label htmlFor="customInstructions">Custom Instructions</Label>
+            <Label htmlFor="customInstructions">自定义要求</Label>
             <Textarea
               id="customInstructions"
-              placeholder="e.g., Explain the key concepts of machine learning... Format preferences: length (less, normal, more), difficulty (easy, medium, hard)"
+              placeholder="例如：解释机器学习的核心概念... 可说明格式偏好：长度（少、正常、多），难度（简单、中等、困难）"
               value={customInstructions}
               onChange={(e) => setCustomInstructions(e.target.value)}
               className="min-h-[100px] resize-none"
@@ -281,7 +280,7 @@ export function GenerationDialog() {
 
           {hasCustomSettings && (
             <div className="space-y-3 shrink-0 border rounded-md p-4">
-              <Label className="sr-only">Custom Settings</Label>
+              <Label className="sr-only">自定义设置</Label>
               <div
                 className={`grid gap-4 ${
                   selectedType === 'quiz' || selectedType === 'flashcard'
@@ -290,7 +289,7 @@ export function GenerationDialog() {
                 }`}
               >
                 <div className="space-y-2">
-                  <Label htmlFor="length">Length</Label>
+                  <Label htmlFor="length">长度</Label>
                   <Select
                     value={length}
                     onValueChange={(value) => setLength(value as LengthOption)}
@@ -300,15 +299,15 @@ export function GenerationDialog() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="less">Less</SelectItem>
-                      <SelectItem value="normal">Normal</SelectItem>
-                      <SelectItem value="more">More</SelectItem>
+                      <SelectItem value="less">少</SelectItem>
+                      <SelectItem value="normal">正常</SelectItem>
+                      <SelectItem value="more">多</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {(selectedType === 'quiz' || selectedType === 'flashcard') && (
                   <div className="space-y-2">
-                    <Label htmlFor="difficulty">Difficulty</Label>
+                    <Label htmlFor="difficulty">难度</Label>
                     <Select
                       value={difficulty}
                       onValueChange={(value) =>
@@ -320,9 +319,9 @@ export function GenerationDialog() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="easy">Easy</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="hard">Hard</SelectItem>
+                        <SelectItem value="easy">简单</SelectItem>
+                        <SelectItem value="medium">中等</SelectItem>
+                        <SelectItem value="hard">困难</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -333,7 +332,7 @@ export function GenerationDialog() {
 
           <div className="space-y-2 flex-1 min-h-0 flex flex-col">
             <div className="flex items-center justify-between shrink-0">
-              <Label>Select Documents</Label>
+              <Label>选择文档</Label>
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -347,7 +346,7 @@ export function GenerationDialog() {
                     allDocumentsSelected
                   }
                 >
-                  Select All
+                  全选
                 </Button>
                 <Button
                   type="button"
@@ -356,7 +355,7 @@ export function GenerationDialog() {
                   onClick={handleDeselectAll}
                   disabled={isGenerating || !hasSelectedDocuments}
                 >
-                  Deselect All
+                  取消全选
                 </Button>
               </div>
             </div>
@@ -367,19 +366,19 @@ export function GenerationDialog() {
                   .onInitialOrWaiting(() => (
                     <div className="flex items-center gap-2 text-muted-foreground py-4">
                       <Loader2Icon className="size-4 animate-spin" />
-                      <span>Loading documents…</span>
+                      <span>正在加载文档...</span>
                     </div>
                   ))
                   .onFailure(() => (
                     <div className="text-destructive py-4">
-                      Failed to load documents
+                      文档加载失败
                     </div>
                   ))
                   .onSuccess((documents) => {
                     if (documents.length === 0) {
                       return (
                         <div className="text-muted-foreground py-4 text-center">
-                          No documents available. Upload documents first.
+                          没有可用文档。请先上传文档。
                         </div>
                       )
                     }
@@ -423,7 +422,7 @@ export function GenerationDialog() {
             onClick={handleClose}
             disabled={isGenerating}
           >
-            Cancel
+            取消
           </Button>
           <Button
             type="button"
@@ -433,25 +432,25 @@ export function GenerationDialog() {
             {isGenerating ? (
               <>
                 <Loader2Icon className="size-4 mr-2 animate-spin" />
-                Generating{' '}
+                正在生成
                 {selectedType === 'note'
-                  ? 'Note'
+                  ? '笔记'
                   : selectedType === 'quiz'
-                    ? 'Quiz'
+                    ? '测验'
                     : selectedType === 'flashcard'
-                      ? 'Flashcards'
-                      : 'Mind Map'}
+                      ? '闪卡'
+                      : '思维导图'}
                 ...
               </>
             ) : (
-              `Generate ${
+              `生成${
                 selectedType === 'note'
-                  ? 'Note'
+                  ? '笔记'
                   : selectedType === 'quiz'
-                    ? 'Quiz'
+                    ? '测验'
                     : selectedType === 'flashcard'
-                      ? 'Flashcards'
-                      : 'Mind Map'
+                      ? '闪卡'
+                      : '思维导图'
               }`
             )}
           </Button>
@@ -499,9 +498,9 @@ function DocumentCheckbox({
 }
 
 function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes'
+  if (bytes === 0) return '0 字节'
   const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const sizes = ['字节', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
 }

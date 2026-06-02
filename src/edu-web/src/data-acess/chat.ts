@@ -425,7 +425,7 @@ export const streamMessageAtom = runtime
         )
         registry.refresh(usageAtom)
         return yield* new UsageLimitExceededError({
-          message: 'Usage limit exceeded',
+          message: '已超出使用限制',
         })
       }
 
@@ -634,9 +634,9 @@ export const deleteChatAtom = runtime.fn(
       )
     },
     withToast({
-      onWaiting: () => 'Deleting chat...',
-      onSuccess: 'Chat deleted',
-      onFailure: 'Failed to delete chat',
+      onWaiting: () => '正在删除聊天...',
+      onSuccess: '聊天已删除',
+      onFailure: '聊天删除失败',
     }),
   ),
 )

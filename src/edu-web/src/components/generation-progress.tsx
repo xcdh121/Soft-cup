@@ -33,14 +33,14 @@ const stageProgress: Record<ProgressStage, number> = {
 }
 
 const stageLabels: Record<ProgressStage, string> = {
-  searching: 'Searching',
-  analyzing: 'Analyzing',
-  generating: 'Generating',
-  mapping: 'Mapping',
-  structuring: 'Structuring',
-  writing: 'Writing',
-  building: 'Building',
-  done: 'Complete',
+  searching: '正在搜索',
+  analyzing: '正在分析',
+  generating: '正在生成',
+  mapping: '正在绘制',
+  structuring: '正在整理结构',
+  writing: '正在写入',
+  building: '正在构建',
+  done: '已完成',
 }
 
 export function GenerationProgress({
@@ -62,7 +62,7 @@ export function GenerationProgress({
         <div className="flex-1">
           <div className="flex items-center justify-between mb-1">
             <span className="text-sm font-medium">
-              {hasError ? 'Error' : stageLabels[status]}
+              {hasError ? '错误' : stageLabels[status]}
             </span>
             <span className="text-xs text-muted-foreground">{progress}%</span>
           </div>

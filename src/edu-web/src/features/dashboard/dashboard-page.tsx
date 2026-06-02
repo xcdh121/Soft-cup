@@ -24,15 +24,15 @@ export const DashboardPage = () => {
       <div className="max-w-7xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+            <h1 className="text-3xl font-bold tracking-tight">仪表盘</h1>
             <p className="text-muted-foreground mt-2">
-              Manage your projects and organize your learning materials
+              管理项目并整理你的学习资料
             </p>
           </div>
           {hasProjects && (
             <Button onClick={() => openCreateProjectDialog()}>
               <PlusIcon className="h-4 w-4 mr-2" />
-              New Project
+              新建项目
             </Button>
           )}
         </div>
@@ -40,12 +40,12 @@ export const DashboardPage = () => {
         {Result.builder(projectsResult)
           .onInitialOrWaiting(() => (
             <div className="text-center py-12">
-              <p className="text-muted-foreground">Loading projects...</p>
+              <p className="text-muted-foreground">正在加载项目...</p>
             </div>
           ))
           .onFailure(() => (
             <div className="text-center py-12">
-              <p className="text-destructive">Failed to load projects</p>
+              <p className="text-destructive">项目加载失败</p>
             </div>
           ))
           .onSuccess((projects) => {
@@ -53,15 +53,15 @@ export const DashboardPage = () => {
               return (
                 <Card>
                   <CardHeader>
-                    <CardTitle>No projects yet</CardTitle>
+                    <CardTitle>还没有项目</CardTitle>
                     <CardDescription>
-                      Get started by creating your first project
+                      创建第一个项目开始使用
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <Button onClick={() => openCreateProjectDialog()}>
                       <PlusIcon className="h-4 w-4 mr-2" />
-                      Create Project
+                      创建项目
                     </Button>
                   </CardContent>
                 </Card>
@@ -96,7 +96,7 @@ export const DashboardPage = () => {
                         params={{ projectId: project.id }}
                       >
                         <Button variant="outline" className="w-full">
-                          Open Project
+                          打开项目
                         </Button>
                       </Link>
                     </CardContent>

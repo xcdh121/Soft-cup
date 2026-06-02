@@ -56,7 +56,7 @@ export const FlashcardControls = ({
           className="px-8 bg-red-600 hover:bg-red-700 text-white"
         >
           <XCircle className="h-4 w-4 mr-2" />
-          <span>Not yet</span>
+          <span>还没掌握</span>
           <span className="ml-2 text-xs opacity-70">(W)</span>
         </Button>
 
@@ -69,14 +69,14 @@ export const FlashcardControls = ({
           {showAnswer ? (
             <>
               <EyeOff className="h-4 w-4 mr-2" />
-              <span>Hide</span>
-              <span className="ml-2 text-xs opacity-70">(Space)</span>
+              <span>隐藏</span>
+              <span className="ml-2 text-xs opacity-70">(空格)</span>
             </>
           ) : (
             <>
               <Eye className="h-4 w-4 mr-2" />
-              <span>Show Answer</span>
-              <span className="ml-2 text-xs opacity-70">(Space)</span>
+              <span>显示答案</span>
+              <span className="ml-2 text-xs opacity-70">(空格)</span>
             </>
           )}
         </Button>
@@ -88,7 +88,7 @@ export const FlashcardControls = ({
           className="px-8 bg-green-600 hover:bg-green-700 text-white"
         >
           <CheckCircle className="h-4 w-4 mr-2" />
-          <span>Got it</span>
+          <span>已掌握</span>
           <span className="ml-2 text-xs opacity-70">(R)</span>
         </Button>
       </div>

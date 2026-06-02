@@ -93,7 +93,7 @@ export const ChatInput: React.FC<Props> = ({
             onValueChange={setSelectedModel}
           >
             <PromptInputSelectTrigger>
-              <PromptInputSelectValue placeholder="Select model" />
+              <PromptInputSelectValue placeholder="选择模型" />
             </PromptInputSelectTrigger>
             <PromptInputSelectContent>
               {models.map((model) => (

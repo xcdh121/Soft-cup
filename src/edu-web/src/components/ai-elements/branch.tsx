@@ -22,7 +22,7 @@ const useBranch = () => {
   const context = useContext(BranchContext)
 
   if (!context) {
-    throw new Error('Branch components must be used within Branch')
+    throw new Error('Branch 组件必须在 Branch 内使用')
   }
 
   return context
@@ -144,7 +144,7 @@ export const BranchPrevious = ({
 
   return (
     <Button
-      aria-label="Previous branch"
+      aria-label="上一个分支"
       className={cn(
         'size-7 shrink-0 rounded-full text-muted-foreground transition-colors',
         'hover:bg-accent hover:text-foreground',
@@ -174,7 +174,7 @@ export const BranchNext = ({
 
   return (
     <Button
-      aria-label="Next branch"
+      aria-label="下一个分支"
       className={cn(
         'size-7 shrink-0 rounded-full text-muted-foreground transition-colors',
         'hover:bg-accent hover:text-foreground',
@@ -206,7 +206,7 @@ export const BranchPage = ({ className, ...props }: BranchPageProps) => {
       )}
       {...props}
     >
-      {currentBranch + 1} of {totalBranches}
+      第 {currentBranch + 1} / {totalBranches} 个
     </span>
   )
 }

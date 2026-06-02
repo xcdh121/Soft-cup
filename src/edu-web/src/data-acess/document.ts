@@ -145,9 +145,9 @@ export const deleteDocumentAtom = runtime.fn(
       )
     },
     withToast({
-      onWaiting: () => 'Deleting document...',
-      onSuccess: 'Document deleted',
-      onFailure: 'Failed to delete document',
+      onWaiting: () => '正在删除文档...',
+      onSuccess: '文档已删除',
+      onFailure: '文档删除失败',
     }),
   ),
 )

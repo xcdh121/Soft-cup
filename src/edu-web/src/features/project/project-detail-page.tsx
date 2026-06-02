@@ -26,17 +26,17 @@ const ChatsSection = ({ projectId }: { projectId: string }) => {
     .onInitialOrWaiting(() => (
       <div className="flex items-center gap-2 text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        <span>Loading chats…</span>
+        <span>正在加载聊天...</span>
       </div>
     ))
     .onFailure(() => (
-      <div className="text-destructive">Failed to load chats</div>
+      <div className="text-destructive">聊天加载失败</div>
     ))
     .onSuccess((chats) => (
       <>
         {chats.length === 0 && (
           <div className="text-center text-muted-foreground py-8">
-            <p>No chats yet. Create your first chat to get started.</p>
+            <p>还没有聊天。创建第一个聊天开始使用。</p>
           </div>
         )}
 
@@ -57,17 +57,17 @@ const DocumentsSection = ({ projectId }: { projectId: string }) => {
     .onInitialOrWaiting(() => (
       <div className="flex items-center gap-2 text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        <span>Loading documents…</span>
+        <span>正在加载文档...</span>
       </div>
     ))
     .onFailure(() => (
-      <div className="text-destructive">Failed to load documents</div>
+      <div className="text-destructive">文档加载失败</div>
     ))
     .onSuccess((documents) => (
       <>
         {documents.length === 0 && (
           <div className="text-center text-muted-foreground py-8">
-            <p>No documents yet. Upload your first document to get started.</p>
+            <p>还没有文档。上传第一个文档开始使用。</p>
           </div>
         )}
 
@@ -88,7 +88,7 @@ const AIContentSection = ({ projectId }: { projectId: string }) => {
     .onInitialOrWaiting(() => (
       <div className="flex items-center gap-2 text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        <span>Loading AI content…</span>
+        <span>正在加载 AI 内容...</span>
       </div>
     ))
     .onSuccess((resources) => {
@@ -96,7 +96,7 @@ const AIContentSection = ({ projectId }: { projectId: string }) => {
         <>
           {resources.length === 0 && (
             <div className="text-center text-muted-foreground py-8">
-              <p>No AI content yet.</p>
+              <p>还没有 AI 内容。</p>
             </div>
           )}
 
@@ -156,10 +156,10 @@ const ProjectContent = ({ projectId }: ProjectContentProps) => {
     <div className="flex flex-1 p-4 gap-4 overflow-hidden min-h-0">
       <div className="flex flex-col w-1/2 border rounded-lg p-4 min-h-0">
         <div className="flex items-center justify-between shrink-0 mb-2">
-          <h3 className="text-lg font-semibold">Chats</h3>
+          <h3 className="text-lg font-semibold">聊天</h3>
           <Button onClick={handleCreateChat} size="sm">
             <PlusIcon className="size-4" />
-            <span>New chat</span>
+            <span>新建聊天</span>
           </Button>
         </div>
         <div
@@ -182,7 +182,7 @@ const ProjectContent = ({ projectId }: ProjectContentProps) => {
         {/* Documents */}
         <div className="flex flex-col border rounded-lg p-4 min-h-0 flex-1">
           <div className="flex items-center justify-between shrink-0 mb-2">
-            <h3 className="text-lg font-semibold">Documents</h3>
+            <h3 className="text-lg font-semibold">文档</h3>
             <div className="flex items-center gap-2">
               <Button
                 onClick={handleRefreshDocuments}
@@ -194,7 +194,7 @@ const ProjectContent = ({ projectId }: ProjectContentProps) => {
               </Button>
               <Button onClick={handleCreateDocument} size="sm">
                 <PlusIcon className="size-4" />
-                <span>Upload</span>
+                <span>上传</span>
               </Button>
             </div>
           </div>
@@ -217,11 +217,11 @@ const ProjectContent = ({ projectId }: ProjectContentProps) => {
         {/* AI Content */}
         <div className="flex flex-col border rounded-lg p-4 min-h-0 flex-1">
           <div className="flex items-center justify-between shrink-0 mb-2">
-            <h3 className="text-lg font-semibold">AI Content</h3>
+            <h3 className="text-lg font-semibold">AI 内容</h3>
             <div className="flex items-center gap-2">
               <Button size="sm" onClick={handleGenerateResource}>
                 <PlusIcon className="size-4" />
-                <span>Generate</span>
+                <span>生成</span>
               </Button>
             </div>
           </div>

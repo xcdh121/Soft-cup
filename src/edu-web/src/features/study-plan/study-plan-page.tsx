@@ -74,11 +74,10 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
             <div>
               <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
                 <BrainCircuit className="h-8 w-8 text-primary" />
-                Personalized Study Plan
+                个性化学习计划
               </h1>
               <p className="text-muted-foreground mt-1">
-                AI-driven analysis of your performance to optimize your learning
-                path.
+                基于 AI 分析你的学习表现，优化学习路径。
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -91,10 +90,10 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                 >
                   <SelectTrigger className="w-[180px]">
                     <History className="mr-2 h-4 w-4" />
-                    <SelectValue placeholder="History" />
+                    <SelectValue placeholder="历史记录" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="latest">Latest Plan</SelectItem>
+                    <SelectItem value="latest">最新计划</SelectItem>
                     {historyPlans.map((plan) => (
                       <SelectItem key={plan.id} value={plan.id}>
                         {new Date(plan.created_at).toLocaleDateString()}
@@ -112,12 +111,12 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                 {isGenerating ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Analyzing...
+                    正在分析...
                   </>
                 ) : (
                   <>
                     <Sparkles className="mr-2 h-4 w-4" />
-                    Generate New Plan
+                    生成新计划
                   </>
                 )}
               </Button>
@@ -132,17 +131,17 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                     <CardHeader className="border-b">
                       <CardTitle className="text-xl flex items-center gap-2">
                         <CalendarDays className="h-5 w-5 text-primary" />
-                        Your Structured Plan
+                        你的结构化计划
                       </CardTitle>
                       <CardDescription>
-                        Generated on{' '}
+                        生成时间：{' '}
                         {new Date(displayedPlan.created_at).toLocaleString()}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-6">
                       {/* Analysis */}
                       <div>
-                        <h3 className="text-lg font-semibold mb-2">Analysis</h3>
+                        <h3 className="text-lg font-semibold mb-2">分析</h3>
                         <p className="text-muted-foreground">
                           {displayedPlan.content.analysis}
                         </p>
@@ -151,7 +150,7 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                       {/* Focus Areas */}
                       <div>
                         <h3 className="text-lg font-semibold mb-2">
-                          Focus Areas
+                          重点关注
                         </h3>
                         <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                           {displayedPlan.content.focus_areas.map((area, i) => (
@@ -163,7 +162,7 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                       {/* Action Items */}
                       <div>
                         <h3 className="text-lg font-semibold mb-2">
-                          Action Items
+                          行动项
                         </h3>
                         <div className="grid gap-2">
                           {displayedPlan.content.action_items.map((item, i) => {
@@ -219,7 +218,7 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                       {/* Schedule */}
                       <div>
                         <h3 className="text-lg font-semibold mb-2">
-                          Weekly Schedule
+                          每周安排
                         </h3>
                         <div className="space-y-4">
                           {displayedPlan.content.schedule.map((day, i) => (
@@ -253,9 +252,9 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                 <div className="space-y-6">
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-lg">Weak Topics</CardTitle>
+                      <CardTitle className="text-lg">薄弱主题</CardTitle>
                       <CardDescription>
-                        Areas needing improvement
+                        需要提升的领域
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -273,8 +272,7 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">
-                          No specific weak topics identified yet. Keep
-                          practicing!
+                          暂未识别出具体薄弱主题。继续练习吧！
                         </p>
                       )}
                     </CardContent>
@@ -282,19 +280,17 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
 
                   <Card className="bg-muted/50">
                     <CardHeader>
-                      <CardTitle className="text-lg">How it works</CardTitle>
+                      <CardTitle className="text-lg">工作原理</CardTitle>
                     </CardHeader>
                     <CardContent className="text-sm text-muted-foreground space-y-2">
                       <p>
-                        1. We analyze your quiz results and flashcard
-                        performance.
+                        1. 分析你的测验结果和闪卡表现。
                       </p>
                       <p>
-                        2. We identify topics where your accuracy is below 70%.
+                        2. 找出正确率低于 70% 的主题。
                       </p>
                       <p>
-                        3. Our AI agent creates a custom schedule and recommends
-                        specific resources.
+                        3. AI 智能体生成定制日程，并推荐具体学习资源。
                       </p>
                     </CardContent>
                   </Card>
@@ -306,20 +302,19 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                   <BrainCircuit className="h-12 w-12 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold mb-2">
-                  No Study Plan Yet
+                  还没有学习计划
                 </h3>
                 <p className="text-muted-foreground max-w-md mb-6">
-                  Generate your first personalized study plan to get a tailored
-                  roadmap for your learning journey based on your performance.
+                  生成第一个个性化学习计划，根据你的表现获得定制学习路线。
                 </p>
                 <Button onClick={handleGenerate} disabled={isGenerating}>
                   {isGenerating ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating...
+                      正在生成...
                     </>
                   ) : (
-                    'Generate My First Plan'
+                    '生成我的第一个计划'
                   )}
                 </Button>
               </div>

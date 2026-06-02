@@ -86,7 +86,7 @@ const QuizHeaderContent = ({
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbPage className="line-clamp-1 font-medium">
-              Edit: {quiz.name || 'Quiz'}
+              编辑：{quiz.name || '测验'}
             </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
@@ -98,7 +98,7 @@ const QuizHeaderContent = ({
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbPage className="line-clamp-1 font-medium">
-              Edit Quiz
+              编辑测验
             </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
@@ -407,7 +407,7 @@ export const QuizEditPage = ({ quizId, projectId }: QuizEditPageProps) => {
                   params={{ projectId, quizId }}
                 >
                   <ArrowLeft className="size-4" />
-                  <span className="sr-only">Back to quiz</span>
+                  <span className="sr-only">返回测验</span>
                 </Link>
               </Button>
             </>
@@ -421,7 +421,7 @@ export const QuizEditPage = ({ quizId, projectId }: QuizEditPageProps) => {
         <div className="flex items-center gap-2 px-3">
           {hasUnsavedChanges && (
             <span className="text-sm text-muted-foreground">
-              Unsaved changes
+              有未保存的更改
             </span>
           )}
           <Button
@@ -433,7 +433,7 @@ export const QuizEditPage = ({ quizId, projectId }: QuizEditPageProps) => {
             }
           >
             <SaveIcon className="h-4 w-4 mr-2" />
-            Save All
+            保存全部
           </Button>
         </div>
       </header>
@@ -444,28 +444,27 @@ export const QuizEditPage = ({ quizId, projectId }: QuizEditPageProps) => {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">
-                  Edit Quiz Questions
+                  编辑测验题目
                 </h1>
                 <p className="text-muted-foreground mt-2">
-                  Add, edit, and reorder your quiz questions. Click "Save All"
-                  when done.
+                  添加、编辑和重新排序测验题目。完成后点击“保存全部”。
                 </p>
               </div>
               <Button onClick={() => setIsAddDialogOpen(true)}>
                 <PlusIcon className="h-4 w-4 mr-2" />
-                Add New Question
+                添加新题目
               </Button>
             </div>
 
             {Result.builder(questionsResult)
               .onInitialOrWaiting(() => (
                 <div className="text-center py-12">
-                  <p className="text-muted-foreground">Loading questions...</p>
+                  <p className="text-muted-foreground">正在加载题目...</p>
                 </div>
               ))
               .onFailure(() => (
                 <div className="text-center py-12">
-                  <p className="text-destructive">Failed to load questions</p>
+                  <p className="text-destructive">题目加载失败</p>
                 </div>
               ))
               .onSuccess(() => {
@@ -473,15 +472,15 @@ export const QuizEditPage = ({ quizId, projectId }: QuizEditPageProps) => {
                   return (
                     <Card>
                       <CardHeader>
-                        <CardTitle>No questions yet</CardTitle>
+                        <CardTitle>还没有题目</CardTitle>
                         <CardDescription>
-                          Get started by adding your first question
+                          添加第一个题目开始使用
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
                         <Button onClick={() => setIsAddDialogOpen(true)}>
                           <PlusIcon className="h-4 w-4 mr-2" />
-                          Add First Question
+                          添加第一个题目
                         </Button>
                       </CardContent>
                     </Card>
@@ -559,57 +558,57 @@ export const QuizEditPage = ({ quizId, projectId }: QuizEditPageProps) => {
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
         <DialogContent className="sm:max-w-[700px]">
           <DialogHeader>
-            <DialogTitle>Add New Question</DialogTitle>
+            <DialogTitle>添加新题目</DialogTitle>
             <DialogDescription>
-              Create a new question for this quiz
+              为这个测验创建新题目
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Question</label>
+              <label className="text-sm font-medium">题目</label>
               <Textarea
                 value={newQuestionText}
                 onChange={(e) => setNewQuestionText(e.target.value)}
-                placeholder="Enter question..."
+                placeholder="请输入题目..."
                 className="min-h-20"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Option A</label>
+                <label className="text-sm font-medium">选项 A</label>
                 <Input
                   value={newOptionA}
                   onChange={(e) => setNewOptionA(e.target.value)}
-                  placeholder="Option A"
+                  placeholder="选项 A"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Option B</label>
+                <label className="text-sm font-medium">选项 B</label>
                 <Input
                   value={newOptionB}
                   onChange={(e) => setNewOptionB(e.target.value)}
-                  placeholder="Option B"
+                  placeholder="选项 B"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Option C</label>
+                <label className="text-sm font-medium">选项 C</label>
                 <Input
                   value={newOptionC}
                   onChange={(e) => setNewOptionC(e.target.value)}
-                  placeholder="Option C"
+                  placeholder="选项 C"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Option D</label>
+                <label className="text-sm font-medium">选项 D</label>
                 <Input
                   value={newOptionD}
                   onChange={(e) => setNewOptionD(e.target.value)}
-                  placeholder="Option D"
+                  placeholder="选项 D"
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Correct Option</label>
+              <label className="text-sm font-medium">正确选项</label>
               <Select
                 value={newCorrectOption}
                 onValueChange={(value) => setNewCorrectOption(value)}
@@ -627,17 +626,17 @@ export const QuizEditPage = ({ quizId, projectId }: QuizEditPageProps) => {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                Explanation (optional)
+                解析（可选）
               </label>
               <Textarea
                 value={newExplanation}
                 onChange={(e) => setNewExplanation(e.target.value)}
-                placeholder="Enter explanation..."
+                placeholder="请输入解析..."
                 className="min-h-20"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Difficulty</label>
+              <label className="text-sm font-medium">难度</label>
               <Select
                 value={newDifficulty}
                 onValueChange={(value) => setNewDifficulty(value)}
@@ -646,9 +645,9 @@ export const QuizEditPage = ({ quizId, projectId }: QuizEditPageProps) => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="easy">Easy</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="hard">Hard</SelectItem>
+                  <SelectItem value="easy">简单</SelectItem>
+                  <SelectItem value="medium">中等</SelectItem>
+                  <SelectItem value="hard">困难</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -657,7 +656,7 @@ export const QuizEditPage = ({ quizId, projectId }: QuizEditPageProps) => {
                 variant="outline"
                 onClick={() => setIsAddDialogOpen(false)}
               >
-                Cancel
+                取消
               </Button>
               <Button
                 onClick={handleAddQuestion}
@@ -669,7 +668,7 @@ export const QuizEditPage = ({ quizId, projectId }: QuizEditPageProps) => {
                   !newOptionD.trim()
                 }
               >
-                Add Question
+                添加题目
               </Button>
             </div>
           </div>

@@ -26,7 +26,7 @@ const useChainOfThought = () => {
   const context = useContext(ChainOfThoughtContext)
   if (!context) {
     throw new Error(
-      'ChainOfThought components must be used within ChainOfThought',
+      'ChainOfThought 组件必须在 ChainOfThought 内使用',
     )
   }
   return context
@@ -90,7 +90,7 @@ export const ChainOfThoughtHeader = memo(
         >
           <BrainIcon className="size-4" />
           <span className="flex-1 text-left">
-            {children ?? 'Chain of Thought'}
+            {children ?? '思考过程'}
           </span>
           <ChevronDownIcon
             className={cn(

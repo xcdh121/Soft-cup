@@ -121,7 +121,7 @@ const useMessageBranch = () => {
 
   if (!context) {
     throw new Error(
-      'MessageBranch components must be used within MessageBranch',
+      'MessageBranch 组件必须在 MessageBranch 内使用',
     )
   }
 
@@ -243,7 +243,7 @@ export const MessageBranchPrevious = ({
 
   return (
     <Button
-      aria-label="Previous branch"
+      aria-label="上一个分支"
       disabled={totalBranches <= 1}
       onClick={goToPrevious}
       size="icon-sm"
@@ -267,7 +267,7 @@ export const MessageBranchNext = ({
 
   return (
     <Button
-      aria-label="Next branch"
+      aria-label="下一个分支"
       disabled={totalBranches <= 1}
       onClick={goToNext}
       size="icon-sm"
@@ -296,7 +296,7 @@ export const MessageBranchPage = ({
       )}
       {...props}
     >
-      {currentBranch + 1} of {totalBranches}
+      第 {currentBranch + 1} / {totalBranches} 个
     </ButtonGroupText>
   )
 }
@@ -334,7 +334,7 @@ export function MessageAttachment({
   const mediaType =
     data.mediaType?.startsWith('image/') && data.url ? 'image' : 'file'
   const isImage = mediaType === 'image'
-  const attachmentLabel = filename || (isImage ? 'Image' : 'Attachment')
+  const attachmentLabel = filename || (isImage ? '图片' : '附件')
 
   // Convert blob URL to app proxy URL for preview (if it's an Azure blob URL)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -369,7 +369,7 @@ export function MessageAttachment({
         <>
           {previewUrl && (
             <img
-              alt={filename || 'attachment'}
+              alt={filename || '附件'}
               className="size-full object-cover"
               height={100}
               src={previewUrl}
@@ -378,7 +378,7 @@ export function MessageAttachment({
           )}
           {onRemove && (
             <Button
-              aria-label="Remove attachment"
+              aria-label="移除附件"
               className="absolute top-2 right-2 size-6 rounded-full bg-background/80 p-0 opacity-0 backdrop-blur-sm transition-opacity hover:bg-background group-hover:opacity-100 [&>svg]:size-3"
               onClick={(e) => {
                 e.stopPropagation()
@@ -388,7 +388,7 @@ export function MessageAttachment({
               variant="ghost"
             >
               <XIcon />
-              <span className="sr-only">Remove</span>
+              <span className="sr-only">移除</span>
             </Button>
           )}
         </>
@@ -406,7 +406,7 @@ export function MessageAttachment({
           </Tooltip>
           {onRemove && (
             <Button
-              aria-label="Remove attachment"
+              aria-label="移除附件"
               className="size-6 shrink-0 rounded-full p-0 opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100 [&>svg]:size-3"
               onClick={(e) => {
                 e.stopPropagation()
@@ -416,7 +416,7 @@ export function MessageAttachment({
               variant="ghost"
             >
               <XIcon />
-              <span className="sr-only">Remove</span>
+              <span className="sr-only">移除</span>
             </Button>
           )}
         </>

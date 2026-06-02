@@ -155,8 +155,8 @@ export const createFlashcardGroupAtom = runtime.fn(
       yield* apiClient.createFlashcardGroupApiV1ProjectsProjectIdFlashcardGroupsPost(
         input.projectId,
         {
-          name: 'New Flashcard Group',
-          description: 'Description of the flashcard group',
+          name: '新闪卡组',
+          description: '闪卡组描述',
         },
       )
 
@@ -178,9 +178,9 @@ export const deleteFlashcardGroupAtom = runtime.fn(
       registry.refresh(flashcardGroupsAtom(input.projectId))
     },
     withToast({
-      onWaiting: () => 'Deleting flashcard group...',
-      onSuccess: 'Flashcard group deleted',
-      onFailure: 'Failed to delete flashcard group',
+      onWaiting: () => '正在删除闪卡组...',
+      onSuccess: '闪卡组已删除',
+      onFailure: '闪卡组删除失败',
     }),
   ),
 )
@@ -190,7 +190,7 @@ export const exportFlashcardGroupAtom = runtime.fn(
     // Note: Flashcard group export endpoints may not be available in the new API
     // const client = yield* makeApiClient
     // const response = yield* client.exportFlashcardGroup(...)
-    throw new Error('Flashcard group export not supported in current API')
+    throw new Error('当前 API 不支持导出闪卡组')
   }),
 )
 
@@ -202,7 +202,7 @@ export const importFlashcardGroupAtom = runtime.fn(
     // const response = yield* client.importFlashcardGroup(...)
 
     registry.refresh(flashcardGroupsAtom(input.projectId))
-    throw new Error('Flashcard group import not supported in current API')
+    throw new Error('当前 API 不支持导入闪卡组')
   }),
 )
 
@@ -283,7 +283,7 @@ export const reorderFlashcardsAtom = runtime.fn(
       flashcardsAtom(`${input.projectId}:${input.flashcardGroupId}`),
     )
     // return resp.data
-    throw new Error('Flashcard reordering not supported in current API')
+    throw new Error('当前 API 不支持闪卡重新排序')
   }),
 )
 

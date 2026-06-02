@@ -59,15 +59,15 @@ const schema = S.Struct({
 type UpsertProjectSchema = typeof schema.Type
 
 const languages = [
-  { code: 'cs', name: 'Czech' },
-  { code: 'en', name: 'English' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'fr', name: 'French' },
-  { code: 'de', name: 'German' },
-  { code: 'it', name: 'Italian' },
-  { code: 'pt', name: 'Portuguese' },
-  { code: 'ru', name: 'Russian' },
-  { code: 'zh', name: 'Chinese' },
+  { code: 'cs', name: '捷克语' },
+  { code: 'en', name: '英语' },
+  { code: 'es', name: '西班牙语' },
+  { code: 'fr', name: '法语' },
+  { code: 'de', name: '德语' },
+  { code: 'it', name: '意大利语' },
+  { code: 'pt', name: '葡萄牙语' },
+  { code: 'ru', name: '俄语' },
+  { code: 'zh', name: '中文' },
 ]
 
 export function UpsertProjectDialog() {
@@ -114,12 +114,12 @@ export function UpsertProjectDialog() {
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>
-            {isEditMode ? 'Edit Project' : 'Create Project'}
+            {isEditMode ? '编辑项目' : '创建项目'}
           </DialogTitle>
           <DialogDescription>
             {isEditMode
-              ? 'Update your project details.'
-              : 'Create a new project to organize your learning materials and conversations.'}
+              ? '更新项目详情。'
+              : '创建新项目，用来整理学习资料和对话。'}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -129,9 +129,9 @@ export function UpsertProjectDialog() {
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Name</FormLabel>
+                  <FormLabel>名称</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., My Project" {...field} />
+                    <Input placeholder="例如：我的项目" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -142,9 +142,9 @@ export function UpsertProjectDialog() {
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description (Optional)</FormLabel>
+                  <FormLabel>描述（可选）</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Project description" {...field} />
+                    <Input placeholder="例如：项目描述" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -155,11 +155,11 @@ export function UpsertProjectDialog() {
               name="language_code"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Language Code</FormLabel>
+                  <FormLabel>语言</FormLabel>
                   <FormControl>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select a language" />
+                        <SelectValue placeholder="选择语言" />
                       </SelectTrigger>
                       <SelectContent>
                         {languages.map((language) => (
@@ -181,16 +181,16 @@ export function UpsertProjectDialog() {
                 onClick={handleClose}
                 disabled={isLoading}
               >
-                Cancel
+                取消
               </Button>
               <Button type="submit" disabled={isLoading}>
                 {isLoading
                   ? isEditMode
-                    ? 'Updating...'
-                    : 'Creating...'
+                    ? '正在更新...'
+                    : '正在创建...'
                   : isEditMode
-                    ? 'Update Project'
-                    : 'Create Project'}
+                    ? '更新项目'
+                    : '创建项目'}
               </Button>
             </DialogFooter>
           </form>

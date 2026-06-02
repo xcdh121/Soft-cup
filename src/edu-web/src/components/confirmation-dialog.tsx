@@ -35,8 +35,8 @@ export const useConfirmationDialog = create<ConfirmationDialogStore>((set) => ({
   isOpen: false,
   title: '',
   description: '',
-  confirmLabel: 'Confirm',
-  cancelLabel: 'Cancel',
+  confirmLabel: '确认',
+  cancelLabel: '取消',
   variant: 'default',
   open: (options) => {
     return new Promise<boolean>((resolve) => {
@@ -44,8 +44,8 @@ export const useConfirmationDialog = create<ConfirmationDialogStore>((set) => ({
         isOpen: true,
         title: options.title,
         description: options.description,
-        confirmLabel: options.confirmLabel || 'Confirm',
-        cancelLabel: options.cancelLabel || 'Cancel',
+        confirmLabel: options.confirmLabel || '确认',
+        cancelLabel: options.cancelLabel || '取消',
         variant: options.variant || 'default',
         resolve,
       })
@@ -58,8 +58,8 @@ export const useConfirmationDialog = create<ConfirmationDialogStore>((set) => ({
         isOpen: false,
         title: '',
         description: '',
-        confirmLabel: 'Confirm',
-        cancelLabel: 'Cancel',
+        confirmLabel: '确认',
+        cancelLabel: '取消',
         variant: 'default',
         resolve: undefined,
       }

@@ -6,7 +6,7 @@ import { z } from 'zod'
 
 const LoadingPage = () => {
   return (
-    <div className="flex h-screen items-center justify-center">Loading...</div>
+    <div className="flex h-screen items-center justify-center">正在加载...</div>
   )
 }
 

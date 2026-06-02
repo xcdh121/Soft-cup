@@ -78,7 +78,7 @@ function convertToTree(
   if (rootNodes.length > 1) {
     const syntheticRoot: MindMapNodeData = {
       id: 'root',
-      label: 'Root',
+      label: '根节点',
       children: rootNodes
         .map((node) => buildNode(node.id))
         .filter((node): node is MindMapNodeData => node !== null),
@@ -128,7 +128,7 @@ const MindMapNode = ({
                 e.stopPropagation()
                 setIsExpanded(!isExpanded)
               }}
-              aria-label={isExpanded ? 'Collapse' : 'Expand'}
+              aria-label={isExpanded ? '折叠' : '展开'}
             >
               {isExpanded ? (
                 isRoot ? (
@@ -221,7 +221,7 @@ export const MindMapView = ({ mapData }: MindMapViewProps) => {
   if (!rootNode) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
-        <p>No mind map data available</p>
+        <p>没有可用的思维导图数据</p>
       </div>
     )
   }

@@ -20,19 +20,19 @@ export const NoteContent = ({
     .onInitialOrWaiting(() => (
       <div className="flex flex-1 items-center justify-center gap-2 text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        <span>Loading note...</span>
+        <span>正在加载笔记...</span>
       </div>
     ))
     .onFailure(() => (
       <div className="flex flex-1 items-center justify-center gap-2 text-destructive">
-        <span>Failed to load note</span>
+        <span>笔记加载失败</span>
       </div>
     ))
     .onSuccess((note) => {
       if (!note) {
         return (
           <div className="flex flex-1 items-center justify-center text-muted-foreground">
-            <p>Note not found</p>
+            <p>未找到笔记</p>
           </div>
         )
       }

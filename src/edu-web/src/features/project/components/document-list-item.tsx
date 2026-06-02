@@ -43,26 +43,26 @@ const getDocumentStatus = (
     case 'uploaded':
     case 'processing':
       return {
-        label: 'In progress',
+        label: '处理中',
         variant: 'secondary',
         icon: Loader2Icon,
       }
     case 'processed':
     case 'indexed':
       return {
-        label: 'Ready',
+        label: '就绪',
         variant: 'default',
         icon: CheckCircle2Icon,
       }
     case 'failed':
       return {
-        label: 'Failed',
+        label: '失败',
         variant: 'destructive',
         icon: XCircleIcon,
       }
     default:
       return {
-        label: 'In progress',
+        label: '处理中',
         variant: 'secondary',
         icon: Loader2Icon,
       }
@@ -81,10 +81,10 @@ export const DocumentListItem = ({ document }: Props) => {
     e.stopPropagation()
 
     const confirmed = await confirmationDialog.open({
-      title: 'Delete Document',
-      description: `Are you sure you want to delete "${document.file_name}"? This action cannot be undone.`,
-      confirmLabel: 'Delete',
-      cancelLabel: 'Cancel',
+      title: '删除文档',
+      description: `确定要删除“${document.file_name}”吗？此操作无法撤销。`,
+      confirmLabel: '删除',
+      cancelLabel: '取消',
       variant: 'destructive',
     })
 
@@ -147,7 +147,7 @@ export const DocumentListItem = ({ document }: Props) => {
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={handleDelete} variant="destructive">
               <TrashIcon className="size-4" />
-              <span>Delete</span>
+              <span>删除</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

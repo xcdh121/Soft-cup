@@ -45,7 +45,7 @@ export const useEditChatDialog = create<EditChatDialogStore>((set) => ({
 }))
 
 const editChatSchema = z.object({
-  title: z.string().min(1, 'Title is required').max(100, 'Title too long'),
+  title: z.string().min(1, '请输入标题').max(100, '标题过长'),
 })
 
 type EditChatForm = z.infer<typeof editChatSchema>
@@ -92,9 +92,9 @@ export function EditChatDialog() {
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Edit Chat</DialogTitle>
+          <DialogTitle>编辑聊天</DialogTitle>
           <DialogDescription>
-            Update the name of your chat conversation.
+            更新聊天会话名称。
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -104,9 +104,9 @@ export function EditChatDialog() {
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Chat Name</FormLabel>
+                  <FormLabel>聊天名称</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., My Chat" {...field} />
+                    <Input placeholder="例如：我的聊天" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -119,10 +119,10 @@ export function EditChatDialog() {
                 onClick={handleClose}
                 disabled={updateChatResult.waiting}
               >
-                Cancel
+                取消
               </Button>
               <Button type="submit" disabled={updateChatResult.waiting}>
-                {updateChatResult.waiting ? 'Updating...' : 'Update Chat'}
+                {updateChatResult.waiting ? '正在更新...' : '更新聊天'}
               </Button>
             </DialogFooter>
           </form>

@@ -43,7 +43,7 @@ const MindMapHeaderContent = ({
             <BreadcrumbList>
               <BreadcrumbItem>
                 <BreadcrumbPage className="line-clamp-1 font-medium">
-                  Mind Maps
+                  思维导图
                 </BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
@@ -63,7 +63,7 @@ const MindMapHeaderContent = ({
             </BreadcrumbList>
           </Breadcrumb>
           <span className="text-xs text-muted-foreground">
-            Generated:{' '}
+            生成时间：{' '}
             {format(new Date(mindMap.generated_at), 'MMM dd, yyyy HH:mm')}
           </span>
         </div>
@@ -75,7 +75,7 @@ const MindMapHeaderContent = ({
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbPage className="line-clamp-1 font-medium">
-              Mind Maps
+              思维导图
             </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
@@ -116,7 +116,7 @@ export const MindMapHeader = ({ projectId, mindMapId }: MindMapHeaderProps) => {
         <Button variant="ghost" size="icon" className="size-7" asChild>
           <Link to="/dashboard/p/$projectId" params={{ projectId }}>
             <ArrowLeft className="size-4" />
-            <span className="sr-only">Back to project</span>
+            <span className="sr-only">返回项目</span>
           </Link>
         </Button>
         <Separator
@@ -130,25 +130,24 @@ export const MindMapHeader = ({ projectId, mindMapId }: MindMapHeaderProps) => {
           <DialogTrigger asChild>
             <Button variant="default" size="sm">
               <PlusIcon className="size-4 mr-2" />
-              <span>Generate Mind Map</span>
+              <span>生成思维导图</span>
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Generate Mind Map</DialogTitle>
+              <DialogTitle>生成思维导图</DialogTitle>
               <DialogDescription>
-                Create a new mind map from your project documents. Optionally
-                specify a topic or focus area.
+                根据项目文档创建新的思维导图。也可以指定主题或关注方向。
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="customInstructions">
-                  Custom Instructions (Optional)
+                  自定义要求（可选）
                 </Label>
                 <Textarea
                   id="customInstructions"
-                  placeholder="e.g., Machine Learning, Data Structures, History of Art... Format preferences: structure, detail level, etc."
+                  placeholder="例如：机器学习、数据结构、艺术史... 也可以说明结构、详细程度等格式偏好。"
                   value={customInstructions}
                   onChange={(e) => setCustomInstructions(e.target.value)}
                   rows={3}
@@ -161,16 +160,16 @@ export const MindMapHeader = ({ projectId, mindMapId }: MindMapHeaderProps) => {
                 onClick={() => setIsDialogOpen(false)}
                 disabled={isGenerating}
               >
-                Cancel
+                取消
               </Button>
               <Button onClick={handleGenerate} disabled={isGenerating}>
                 {isGenerating ? (
                   <>
                     <Loader2Icon className="size-4 mr-2 animate-spin" />
-                    <span>Generating...</span>
+                    <span>正在生成...</span>
                   </>
                 ) : (
-                  <span>Generate</span>
+                  <span>生成</span>
                 )}
               </Button>
             </DialogFooter>

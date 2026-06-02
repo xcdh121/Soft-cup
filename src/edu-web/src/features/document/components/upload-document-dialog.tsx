@@ -71,9 +71,9 @@ export function UploadDocumentDialog() {
   }, [isOpen])
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes'
+    if (bytes === 0) return '0 字节'
     const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const sizes = ['字节', 'KB', 'MB', 'GB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
   }
@@ -110,9 +110,9 @@ export function UploadDocumentDialog() {
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Upload Document</DialogTitle>
+          <DialogTitle>上传文档</DialogTitle>
           <DialogDescription>
-            Drag and drop files here, or click to select files.
+            将文件拖放到这里，或点击选择文件。
           </DialogDescription>
         </DialogHeader>
 
@@ -129,14 +129,14 @@ export function UploadDocumentDialog() {
             <input {...getInputProps()} />
             <UploadIcon className="mx-auto size-12 mb-4 text-muted-foreground" />
             {isDragActive ? (
-              <p className="text-sm font-medium">Drop the files here...</p>
+              <p className="text-sm font-medium">把文件放到这里...</p>
             ) : (
               <div className="space-y-2">
                 <p className="text-sm font-medium">
-                  Drag and drop files here, or click to select
+                  将文件拖放到这里，或点击选择
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  PDF, DOCX, TXT, and other document formats
+                  支持 PDF、DOCX、TXT 等文档格式
                 </p>
               </div>
             )}
@@ -144,7 +144,7 @@ export function UploadDocumentDialog() {
 
           {files.length > 0 && (
             <div className="space-y-2">
-              <p className="text-sm font-medium">Selected files:</p>
+              <p className="text-sm font-medium">已选择文件：</p>
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {files.map((file, index) => (
                   <div
@@ -183,9 +183,9 @@ export function UploadDocumentDialog() {
           {uploadDocumentResult.waiting && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Uploading...</span>
+                <span className="text-muted-foreground">正在上传...</span>
                 <span className="text-muted-foreground">
-                  {uploadProgress > 0 ? `${uploadProgress}%` : 'Processing...'}
+                  {uploadProgress > 0 ? `${uploadProgress}%` : '处理中...'}
                 </span>
               </div>
               <Progress
@@ -200,7 +200,7 @@ export function UploadDocumentDialog() {
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>
-            Cancel
+            取消
           </Button>
           <Button
             onClick={handleUpload}
@@ -209,7 +209,7 @@ export function UploadDocumentDialog() {
             {uploadDocumentResult.waiting && (
               <Loader2Icon className="size-4 animate-spin" />
             )}
-            <span>Upload</span>
+            <span>上传</span>
           </Button>
         </DialogFooter>
       </DialogContent>

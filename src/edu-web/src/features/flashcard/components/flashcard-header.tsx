@@ -36,7 +36,7 @@ const FlashcardHeaderContent = ({
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbPage className="line-clamp-1 font-medium">
-              {res.name || 'Flashcards'}
+              {res.name || '闪卡'}
             </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
@@ -48,7 +48,7 @@ const FlashcardHeaderContent = ({
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbPage className="line-clamp-1 font-medium">
-              Flashcards
+              闪卡
             </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
@@ -92,7 +92,7 @@ export const FlashcardHeader = ({
             <Button variant="ghost" size="icon" className="size-7" asChild>
               <Link to="/dashboard/p/$projectId" params={{ projectId }}>
                 <ArrowLeft className="size-4" />
-                <span className="sr-only">Back to project</span>
+                <span className="sr-only">返回项目</span>
               </Link>
             </Button>
           </>
@@ -112,10 +112,10 @@ export const FlashcardHeader = ({
           size="sm"
           className="gap-2"
           onClick={handleShuffle}
-          title="Shuffle flashcards"
+          title="打乱闪卡"
         >
           <Shuffle className="h-4 w-4" />
-          <span className="hidden sm:inline">Shuffle</span>
+          <span className="hidden sm:inline">打乱</span>
         </Button>
       </div>
     </header>
