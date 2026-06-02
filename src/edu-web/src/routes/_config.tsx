@@ -84,6 +84,12 @@ const DashboardPage = lazy(() =>
 )
 
 const requireAuth = async () => {
+  const { isSupabaseConfigured } = await import('@/lib/supabase')
+
+  if (!isSupabaseConfigured) {
+    return
+  }
+
   // Check if user is authenticated by checking Supabase session
   const { supabase } = await import('@/lib/supabase')
 

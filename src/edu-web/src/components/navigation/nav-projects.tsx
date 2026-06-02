@@ -99,8 +99,36 @@ export function NavProjects() {
         </SidebarMenuButton>
 
         {Result.builder(projectsResult)
+          .onInitialOrWaiting(() => (
+            <SidebarMenuItem>
+              <SidebarMenuButton disabled>
+                <span className="text-sm text-muted-foreground">
+                  正在加载项目...
+                </span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))
+          .onFailure((cause) => (
+            <SidebarMenuItem>
+              <SidebarMenuButton disabled>
+                <span className="text-sm text-muted-foreground">
+                  项目加载失败：{Cause.pretty(cause)}
+                </span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))
           .onSuccess((projects) => (
             <>
+              {projects.length === 0 && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton disabled>
+                    <span className="text-sm text-muted-foreground">
+                      暂无项目，后端未启动时会显示为空
+                    </span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
               {projects.map((project) => {
                 const isActive = project.id === currentProjectId
                 if (isActive) {

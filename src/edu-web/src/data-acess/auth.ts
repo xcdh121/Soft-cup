@@ -2,10 +2,26 @@ import { Atom } from '@effect-atom/atom-react'
 import { Effect } from 'effect'
 import type { Session, User } from '@supabase/supabase-js'
 import { ApiClientService } from '@/integrations/api/http'
-import { supabase } from '@/lib/supabase'
+import { isSupabaseConfigured, supabase } from '@/lib/supabase'
+
+const authBypassedUser = {
+  id: 'local-dev-user',
+  email: 'local@dev.test',
+  user_metadata: {
+    name: 'Local Developer',
+  },
+} as User
 
 export const currentUserAtom = Atom.make(
   Effect.gen(function* () {
+    if (!isSupabaseConfigured) {
+      return {
+        ...authBypassedUser,
+        name: 'Local Developer',
+        initials: 'LD',
+      }
+    }
+
     const { apiClient } = yield* ApiClientService
     const resp = yield* apiClient.getCurrentUserInfoApiV1AuthMeGet()
 
@@ -30,6 +46,13 @@ export const authAtom: Atom.Atom<{
   session: Session | null
   user: User | null
 }> = Atom.make((get) => {
+  if (!isSupabaseConfigured) {
+    return {
+      session: null,
+      user: authBypassedUser,
+    }
+  }
+
   supabase.auth.getSession().then(({ data: { session } }) => {
     get.setSelf({ session, user: session?.user ?? null })
   })
@@ -46,6 +69,10 @@ export const authAtom: Atom.Atom<{
 })
 
 export const isAuthenticatedAtom = Atom.make((get) => {
+  if (!isSupabaseConfigured) {
+    return true
+  }
+
   const auth = get(authAtom)
   return !!auth.session && !!auth.user
 })
@@ -60,6 +87,10 @@ type SignInPayload =
 
 export const signInAtom = Atom.fn(
   Effect.fn(function* (payload: SignInPayload) {
+    if (!isSupabaseConfigured) {
+      return payload
+    }
+
     if (payload.type === 'password') {
       yield* Effect.promise(async () => {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -86,6 +117,10 @@ export const signInAtom = Atom.fn(
 
 export const signUpAtom = Atom.fn(
   Effect.fn(function* (payload: { email: string; password: string }) {
+    if (!isSupabaseConfigured) {
+      return payload
+    }
+
     yield* Effect.promise(async () => {
       const { data, error } = await supabase.auth.signUp({
         email: payload.email,
@@ -102,6 +137,10 @@ export const signUpAtom = Atom.fn(
 
 export const signOutAtom = Atom.fn(
   Effect.fn(function* () {
+    if (!isSupabaseConfigured) {
+      return
+    }
+
     yield* Effect.promise(async () => {
       const { error } = await supabase.auth.signOut()
       if (error) throw error

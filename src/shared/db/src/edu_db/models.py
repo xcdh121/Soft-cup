@@ -35,6 +35,12 @@ class User(Base):
     usage = relationship(
         "UserUsage", back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
+    resource_packages = relationship(
+        "ResourcePackage", back_populates="user", cascade="all, delete-orphan"
+    )
+    generated_resources = relationship(
+        "GeneratedResource", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Project(Base):
@@ -57,6 +63,9 @@ class Project(Base):
         "Document", back_populates="project", cascade="all, delete-orphan"
     )
     chats = relationship("Chat", back_populates="project", cascade="all, delete-orphan")
+    resource_packages = relationship(
+        "ResourcePackage", back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 class Document(Base):
@@ -542,3 +551,109 @@ class StudyPlan(Base):
     # Relationships
     user = relationship("User")
     project = relationship("Project")
+
+
+class ResourcePackage(Base):
+    __tablename__ = "resource_packages"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    profile_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    learning_path_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    title: Mapped[str] = mapped_column(String, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    generation_mode: Mapped[str] = mapped_column(String, default="manual")
+    status: Mapped[str] = mapped_column(String, default="draft", index=True)
+    target_topic: Mapped[str] = mapped_column(String, index=True)
+    target_goal: Mapped[str | None] = mapped_column(Text, nullable=True)
+    difficulty_level: Mapped[str] = mapped_column(String, default="intermediate")
+    estimated_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    source_document_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    knowledge_point_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    weak_knowledge_point_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    preferred_resource_types: Mapped[list[str]] = mapped_column(JSON, default=list)
+    generation_params: Mapped[dict] = mapped_column(JSON, default=dict)
+    agent_trace: Mapped[list[dict]] = mapped_column(JSON, default=list)
+
+    resource_count: Mapped[int] = mapped_column(Integer, default=0)
+    completed_resource_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_resource_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    project = relationship("Project", back_populates="resource_packages")
+    user = relationship("User", back_populates="resource_packages")
+    resources = relationship(
+        "GeneratedResource",
+        back_populates="resource_package",
+        cascade="all, delete-orphan",
+        order_by="GeneratedResource.generation_order",
+    )
+
+
+class GeneratedResource(Base):
+    __tablename__ = "generated_resources"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    resource_package_id: Mapped[str] = mapped_column(
+        String, ForeignKey("resource_packages.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    resource_type: Mapped[str] = mapped_column(String, index=True)
+    title: Mapped[str] = mapped_column(String, index=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="pending", index=True)
+    format: Mapped[str] = mapped_column(String, default="markdown")
+    content_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    file_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    preview_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    cover_image_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_document_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    knowledge_point_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    difficulty_level: Mapped[str] = mapped_column(String, default="intermediate")
+    estimated_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    generation_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    generator_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+    generation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    resource_package = relationship("ResourcePackage", back_populates="resources")
+    project = relationship("Project")
+    user = relationship("User", back_populates="generated_resources")

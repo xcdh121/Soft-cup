@@ -12,6 +12,7 @@ from edu_core.services import (
     PracticeService,
     ProjectService,
     QuizService,
+    ResourcePackageService,
     SearchService,
     StudyPlanService,
     UsageService,
@@ -72,6 +73,11 @@ def get_usage_service(
 def get_project_service() -> ProjectService:
     """Get ProjectService instance."""
     return ProjectService()
+
+
+def get_resource_package_service() -> ResourcePackageService:
+    """Get ResourcePackageService instance."""
+    return ResourcePackageService()
 
 
 def get_document_service() -> DocumentService:

@@ -28,11 +28,17 @@ type ProjectsAction = Data.TaggedEnum<{
 const ProjectsAction = Data.taggedEnum<ProjectsAction>()
 
 export const projectsRemoteAtom = runtime.atom(
-  Effect.fn(function* () {
+  Effect.gen(function* () {
     const { apiClient } = yield* ApiClientService
     const resp = yield* apiClient.listProjectsApiV1ProjectsGet()
     return resp
-  }),
+  }).pipe(
+    // Allow frontend-only work when the local API is not running yet.
+    Effect.catchAll((error) => {
+      console.warn('Failed to load projects, falling back to empty list.', error)
+      return Effect.succeed([] as Array<ProjectDto>)
+    }),
+  ),
 )
 
 export const projectAtom = Atom.family((projectId: string) =>

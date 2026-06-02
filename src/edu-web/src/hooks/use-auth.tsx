@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAtomValue } from '@effect-atom/atom-react'
-import { supabase } from '@/lib/supabase'
+import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import { authAtom } from '@/data-acess/auth'
 
 export const useAuth = () => {
@@ -98,7 +98,7 @@ export const useAuth = () => {
   }
 
   return {
-    isAuthenticated: !!session && !!user,
+    isAuthenticated: !isSupabaseConfigured || (!!session && !!user),
     session,
     user,
     login: loginMutation.mutate,

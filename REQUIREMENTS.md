@@ -266,9 +266,117 @@ PlannerAgent 生成学习路径
 
 7. resource_packages
    - 存储一次性生成的个性化资源包。
+   - 建议字段：
+     - `id`: 资源包唯一 ID。
+     - `project_id`: 所属项目 ID。
+     - `user_id`: 发起生成的用户 ID。
+     - `profile_id`: 生成时关联的学生画像 ID，可为空。
+     - `learning_path_id`: 生成后关联的学习路径 ID，可为空。
+     - `title`: 资源包标题，如“机器学习基础入门资源包”。
+     - `description`: 资源包简介，说明本次生成目标和适用对象。
+     - `generation_mode`: 生成模式，建议取值 `manual`、`recommended`、`remedial`。
+     - `status`: 资源包状态，建议取值 `draft`、`generating`、`completed`、`failed`。
+     - `target_topic`: 本次资源包聚焦主题。
+     - `target_goal`: 本次学习目标或任务目标。
+     - `difficulty_level`: 目标难度，建议取值 `beginner`、`intermediate`、`advanced`。
+     - `estimated_minutes`: 预计完成整个资源包所需时长。
+     - `source_document_ids`: 参与生成的文档 ID 列表。
+     - `knowledge_point_ids`: 关联知识点 ID 列表。
+     - `weak_knowledge_point_ids`: 薄弱知识点 ID 列表，用于解释“为什么生成这些资源”。
+     - `preferred_resource_types`: 用户偏好的资源类型列表。
+     - `generation_params`: 生成参数 JSON，记录轮数、篇幅、语言风格、多模态开关等。
+     - `agent_trace`: Agent 协作摘要 JSON，记录各 Agent 的输入、输出和耗时。
+     - `resource_count`: 包内资源数量。
+     - `completed_resource_count`: 已成功生成资源数量。
+     - `failed_resource_count`: 生成失败资源数量。
+     - `created_at`: 创建时间。
+     - `updated_at`: 更新时间。
+     - `completed_at`: 生成完成时间，可为空。
 
 8. generated_resources
    - 存储讲义、PPT、题库、代码案例、动画脚本等生成资源。
+   - 建议字段：
+     - `id`: 生成资源唯一 ID。
+     - `resource_package_id`: 所属资源包 ID。
+     - `project_id`: 所属项目 ID。
+     - `user_id`: 资源所属用户 ID。
+     - `resource_type`: 资源类型，建议取值 `lecture_note`、`mind_map`、`practice_set`、`ppt_outline`、`pptx`、`code_lab`、`reading_material`、`video_script`。
+     - `title`: 资源标题。
+     - `summary`: 资源摘要，用于列表页快速预览。
+     - `status`: 资源状态，建议取值 `pending`、`generating`、`completed`、`failed`。
+     - `format`: 资源格式，建议取值 `markdown`、`json`、`mermaid`、`pptx`、`python`、`typescript`、`html`。
+     - `content_text`: 文本主体，可用于讲解文档、PPT 大纲、脚本等。
+     - `content_json`: 结构化内容 JSON，可用于题库、思维导图节点、PPT 页结构等。
+     - `file_url`: 导出文件地址，可为空。
+     - `preview_url`: 在线预览地址，可为空。
+     - `cover_image_url`: 封面或缩略图地址，可为空。
+     - `source_document_ids`: 该资源直接引用的文档 ID 列表。
+     - `knowledge_point_ids`: 该资源关联的知识点 ID 列表。
+     - `difficulty_level`: 资源难度，建议取值 `beginner`、`intermediate`、`advanced`。
+     - `estimated_minutes`: 学生完成该资源所需的预估时间。
+     - `version`: 资源版本号，便于重生成和回溯。
+     - `generation_order`: 在资源包中的排序位置。
+     - `generator_agent`: 主要生成该资源的 Agent 名称，如 `ContentAgent`、`MediaAgent`、`PracticeAgent`。
+     - `generation_reason`: 生成理由，用于向用户解释推荐依据。
+     - `error_message`: 失败原因，可为空。
+     - `created_at`: 创建时间。
+     - `updated_at`: 更新时间。
+     - `completed_at`: 完成时间，可为空。
+
+### 5.1 resource_packages 与 generated_resources 的关系设计
+
+- 一个 `resource_package` 对应多个 `generated_resources`，是一对多关系。
+- `resource_packages` 负责表达“一次完整生成任务”，面向用户展示“本次生成想解决什么问题、最终生成了哪些内容、目前进度如何”。
+- `generated_resources` 负责表达“资源包里的单个产物”，面向前端渲染具体内容和不同资源类型的预览。
+- 建议前端所有“资源包列表页”“资源包详情页”“资源卡片”“生成进度区”都以 `resource_package` 为主对象，以 `generated_resources` 为子对象。
+
+### 5.2 建议 DTO / 请求体
+
+建议至少定义以下接口对象：
+
+1. `ResourcePackageDto`
+   - 对应资源包完整返回对象。
+   - 包含资源包基础信息，以及 `resources: list[GeneratedResourceDto]`。
+
+2. `GeneratedResourceDto`
+   - 对应单个生成资源完整返回对象。
+
+3. `CreateResourcePackageRequest`
+   - 建议字段：
+     - `title`
+     - `target_topic`
+     - `target_goal`
+     - `profile_id`
+     - `source_document_ids`
+     - `knowledge_point_ids`
+     - `preferred_resource_types`
+     - `difficulty_level`
+     - `generation_mode`
+     - `generation_params`
+
+4. `GenerateResourcePackageRequest`
+   - 用于“一键生成资源包”。
+   - 建议字段：
+     - `profile_id`
+     - `target_topic`
+     - `target_goal`
+     - `source_document_ids`
+     - `knowledge_point_ids`
+     - `resource_types`
+     - `difficulty_level`
+     - `estimated_minutes`
+     - `custom_instructions`
+
+5. `UpdateGeneratedResourceRequest`
+   - 用于修改标题、摘要、排序、状态或补充内容。
+   - 建议字段：
+     - `title`
+     - `summary`
+     - `generation_order`
+     - `status`
+     - `content_text`
+     - `content_json`
+     - `generation_reason`
 
 9. learning_paths
    - 存储个性化学习路径。
@@ -298,6 +406,70 @@ PlannerAgent 生成学习路径
 /api/v1/projects/{project_id}/practice-labs
 /api/v1/projects/{project_id}/learning-reports
 ```
+
+### 6.1 建议补充 resource_packages / generated_resources 具体接口
+
+```text
+GET    /api/v1/projects/{project_id}/resource-packages
+POST   /api/v1/projects/{project_id}/resource-packages/generate
+GET    /api/v1/projects/{project_id}/resource-packages/{package_id}
+GET    /api/v1/projects/{project_id}/resource-packages/{package_id}/stream
+DELETE /api/v1/projects/{project_id}/resource-packages/{package_id}
+
+GET    /api/v1/projects/{project_id}/resource-packages/{package_id}/resources
+GET    /api/v1/projects/{project_id}/generated-resources/{resource_id}
+PATCH  /api/v1/projects/{project_id}/generated-resources/{resource_id}
+POST   /api/v1/projects/{project_id}/generated-resources/{resource_id}/regenerate
+```
+
+建议接口职责如下：
+
+1. `GET /api/v1/projects/{project_id}/resource-packages`
+   - 返回当前项目下的资源包列表。
+   - 支持筛选参数：
+     - `status`
+     - `generation_mode`
+     - `target_topic`
+     - `page`
+     - `page_size`
+
+2. `POST /api/v1/projects/{project_id}/resource-packages/generate`
+   - 发起一次资源包生成任务。
+   - 请求体建议使用 `GenerateResourcePackageRequest`。
+   - 返回 `ResourcePackageDto`，初始状态可为 `generating`。
+
+3. `GET /api/v1/projects/{project_id}/resource-packages/{package_id}`
+   - 返回单个资源包详情。
+   - 默认包含包内 `generated_resources` 列表，供前端详情页直接渲染。
+
+4. `GET /api/v1/projects/{project_id}/resource-packages/{package_id}/stream`
+   - 返回资源包生成进度流。
+   - 建议事件包含：
+     - `package_status_changed`
+     - `resource_started`
+     - `resource_completed`
+     - `resource_failed`
+     - `agent_step`
+   - 该接口主要服务“多 Agent 协作可视化区”和“生成中进度展示”。
+
+5. `DELETE /api/v1/projects/{project_id}/resource-packages/{package_id}`
+   - 删除整个资源包及其下属资源。
+   - 如果担心误删，也可改为软删除。
+
+6. `GET /api/v1/projects/{project_id}/resource-packages/{package_id}/resources`
+   - 仅返回某个资源包下的资源列表，便于前端局部刷新。
+
+7. `GET /api/v1/projects/{project_id}/generated-resources/{resource_id}`
+   - 返回单个生成资源详情。
+   - 供“讲义详情页”“代码案例详情页”“PPT 预览页”等页面复用。
+
+8. `PATCH /api/v1/projects/{project_id}/generated-resources/{resource_id}`
+   - 更新单个资源的标题、摘要、排序或人工修订内容。
+   - 请求体建议使用 `UpdateGeneratedResourceRequest`。
+
+9. `POST /api/v1/projects/{project_id}/generated-resources/{resource_id}/regenerate`
+   - 对资源包中的某一个资源单独重生成。
+   - 适合“PPT 不满意，只重做 PPT”“题库难度不对，只重做练习题”这类交互。
 
 ## 7. 建议新增前端页面
 
