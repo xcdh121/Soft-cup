@@ -1,40 +1,32 @@
-"""Service for uploading documents to blob storage."""
+"""Service for uploading documents to local storage."""
 
 from contextlib import contextmanager
 from datetime import datetime
 from uuid import uuid4
 
-from datetime import datetime, timedelta
-from uuid import uuid4
-
-from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 from edu_db.models import Document
 from edu_db.session import get_session_factory
 
 from edu_core.schemas.documents import DocumentStatus
+from edu_core.storage import LocalStorageService
 
 
 class DocumentUploadService:
-    """Service for uploading documents to blob storage."""
+    """Service for uploading documents to local storage."""
 
     def __init__(
         self,
         database_url: str,
-        azure_storage_connection_string: str,
-        azure_storage_input_container_name: str,
+        storage_root: str,
     ) -> None:
         """Initialize the document upload service.
 
         Args:
             database_url: Database connection URL
-            azure_storage_connection_string: Azure Storage connection string
-            azure_storage_input_container_name: Input container name
+            storage_root: Local storage root directory
         """
         self.database_url = database_url
-        self.blob_service_client = BlobServiceClient.from_connection_string(
-            azure_storage_connection_string
-        )
-        self.input_container = azure_storage_input_container_name
+        self.storage = LocalStorageService(storage_root)
 
     def get_supported_types(self) -> list[str]:
         """Get list of supported document types.
@@ -67,7 +59,7 @@ class DocumentUploadService:
     def upload_document(
         self, file_content: bytes, filename: str, project_id: str, owner_id: str
     ) -> str:
-        """Upload document to blob storage and create database record.
+        """Upload document to local storage and create database record.
 
         Args:
             file_content: The file content as bytes
@@ -92,15 +84,15 @@ class DocumentUploadService:
                     owner_id=owner_id,
                 )
 
-                # Step 2: Upload to blob storage
-                raw_blob_name = self._upload_to_blob_storage(
+                # Step 2: Persist file to local storage
+                raw_blob_name = self._upload_to_storage(
                     file_content=file_content,
                     filename=filename,
                     project_id=project_id,
                     document_id=document_id,
                 )
 
-                # Step 3: Update document with blob reference
+                # Step 3: Update document with storage reference
                 self._update_document_blob_reference(
                     db=db, document_id=document_id, raw_blob_name=raw_blob_name
                 )
@@ -144,10 +136,10 @@ class DocumentUploadService:
         db.refresh(document)
         return document.id
 
-    def _upload_to_blob_storage(
+    def _upload_to_storage(
         self, file_content: bytes, filename: str, project_id: str, document_id: str
     ) -> str:
-        """Upload document to blob storage.
+        """Upload document to local storage.
 
         Args:
             file_content: The file content as bytes
@@ -156,19 +148,11 @@ class DocumentUploadService:
             document_id: The document ID
 
         Returns:
-            Blob name where the document was uploaded
+            Relative path where the document was stored
         """
-        file_extension = self._get_file_type(filename)
-        if file_extension != "unknown":
-            blob_name = f"{project_id}/{document_id}.{file_extension}"
-        else:
-            blob_name = f"{project_id}/{document_id}"
-
-        blob_client = self.blob_service_client.get_blob_client(
-            container=self.input_container, blob=blob_name
-        )
-        blob_client.upload_blob(data=file_content, overwrite=True)
-        return blob_name
+        stored_path = self.storage.build_document_path(project_id, document_id, filename)
+        self.storage.write_bytes(stored_path, file_content)
+        return stored_path
 
     @staticmethod
     def _get_file_type(filename: str) -> str:
@@ -186,7 +170,7 @@ class DocumentUploadService:
     def _update_document_blob_reference(
         db, document_id: str, raw_blob_name: str
     ) -> None:
-        """Update document with blob reference and set status to processing.
+        """Update document with storage reference and set status to processing.
 
         Args:
             db: Database session
@@ -212,41 +196,8 @@ class DocumentUploadService:
         finally:
             db.close()
 
-    def generate_sas_token(
-        self,
-        container: str,
-        blob_name: str,
-        duration_minutes: int = 60,
-        content_disposition: str | None = None,
-        content_type: str | None = None,
-    ) -> str:
-        """Generate a SAS token for a blob.
-
-        Args:
-            container: Name of the container
-            blob_name: Name of the blob
-            duration_minutes: Validity duration in minutes
-            content_disposition: Content-Disposition header
-            content_type: Content-Type header
-
-        Returns:
-            Full URL with SAS token
-        """
-        sas_token = generate_blob_sas(
-            account_name=self.blob_service_client.account_name,
-            container_name=container,
-            blob_name=blob_name,
-            account_key=self.blob_service_client.credential.account_key,
-            permission=BlobSasPermissions(read=True),
-            expiry=datetime.now() + timedelta(minutes=duration_minutes),
-            content_disposition=content_disposition,
-            content_type=content_type,
-        )
-
-        return f"https://{self.blob_service_client.account_name}.blob.core.windows.net/{container}/{blob_name}?{sas_token}"
-
     def get_blob_name(self, project_id: str, document_id: str, filename: str) -> str:
-        """Get blob name for a document.
+        """Get stored relative path for a document.
 
         Args:
             project_id: The project ID
@@ -254,9 +205,6 @@ class DocumentUploadService:
             filename: The filename
 
         Returns:
-            The blob name
+            The stored relative path
         """
-        file_extension = self._get_file_type(filename)
-        if file_extension != "unknown":
-            return f"{project_id}/{document_id}.{file_extension}"
-        return f"{project_id}/{document_id}"
+        return self.storage.build_document_path(project_id, document_id, filename)

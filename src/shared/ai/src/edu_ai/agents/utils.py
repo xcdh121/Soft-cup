@@ -2,12 +2,12 @@ import logging
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from edu_db.session import get_session_factory
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_openai import AzureChatOpenAI
 from pydantic import BaseModel
 
+from edu_core.model_providers import LlmProviderConfig, create_chat_model
 from edu_ai.prompts.prompts_utils import render_prompt
 
 if TYPE_CHECKING:
@@ -19,9 +19,9 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class ContentAgentConfig(BaseModel):
-    azure_openai_chat_deployment: str
-    azure_openai_endpoint: str
-    azure_openai_api_version: str
+    llm_model: str
+    llm_api_key: str = ""
+    llm_base_url: str | None = None
 
 
 @contextmanager
@@ -46,24 +46,22 @@ def get_db_session():
         db.close()
 
 
-def create_llm(config: ContentAgentConfig) -> AzureChatOpenAI:
-    """Create an AzureChatOpenAI instance from a config.
+def create_llm(config: ContentAgentConfig) -> BaseChatModel:
+    """Create a chat model instance from provider config.
 
     Args:
         config: The ContentAgentConfig
 
     Returns:
-        An AzureChatOpenAI instance
+        A chat model instance
     """
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
-    )
-    return AzureChatOpenAI(
-        azure_deployment=config.azure_openai_chat_deployment,
-        azure_endpoint=config.azure_openai_endpoint,
-        api_version=config.azure_openai_api_version,
-        azure_ad_token_provider=token_provider,
-        temperature=0.7,
+    return create_chat_model(
+        LlmProviderConfig(
+            model=config.llm_model,
+            api_key=config.llm_api_key,
+            base_url=config.llm_base_url,
+            temperature=0.7,
+        )
     )
 
 
@@ -90,7 +88,7 @@ async def get_context(
 
 
 async def generate[T](
-    llm: AzureChatOpenAI,
+    llm: BaseChatModel,
     search_service: "SearchService",
     output_model: type[T],
     prompt_template: str,

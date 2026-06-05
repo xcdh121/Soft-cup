@@ -15,5 +15,4 @@ members = [
     "src/shared/core",
     "src/shared/ai",
     "src/shared/queue",
-    "deploy/azure",
 ]

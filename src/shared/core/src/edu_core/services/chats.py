@@ -7,7 +7,6 @@ from datetime import datetime
 from typing import Any, Union
 from uuid import uuid4
 
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from edu_ai.chatbot.context import ChatbotContext
 from edu_ai.chatbot.factory import make_chatbot
 from edu_db.models import (
@@ -23,10 +22,10 @@ from edu_db.models import (
 )
 from edu_db.session import get_session_factory
 from langchain_core.messages import AIMessage, BaseMessage, ToolCall, ToolMessage
-from langchain_openai import AzureChatOpenAI
 from sqlalchemy.orm import joinedload, load_only
 
 from edu_core.exceptions import NotFoundError
+from edu_core.model_providers import LlmProviderConfig, create_chat_model
 from edu_core.schemas.chats import (
     ChatDetailDto,
     ChatDto,
@@ -38,6 +37,7 @@ from edu_core.schemas.chats import (
     ToolCallPartDto,
     StreamEventDto,
 )
+from edu_core.storage import LocalStorageService
 
 
 # Constants for part types and tool names
@@ -71,10 +71,10 @@ class ChatService:
     def __init__(
         self,
         search_service=None,
-        azure_openai_chat_deployment: str | None = None,
-        azure_openai_endpoint: str | None = None,
-        azure_openai_api_version: str | None = None,
-        azure_storage_connection_string: str | None = None,
+        llm_model: str | None = None,
+        llm_api_key: str = "",
+        llm_base_url: str | None = None,
+        storage_root: str = "./.localdata",
         usage_service=None,
         queue_service=None,
     ) -> None:
@@ -82,42 +82,25 @@ class ChatService:
 
         Args:
             search_service: Optional SearchService for RAG
-            azure_openai_chat_deployment: Azure OpenAI chat deployment name
-            azure_openai_endpoint: Azure OpenAI endpoint URL
-            azure_openai_api_version: Azure OpenAI API version
-            azure_storage_connection_string: Azure Storage connection string
+            llm_model: Chat model name
+            llm_api_key: Provider API key
+            llm_base_url: Provider base URL
+            storage_root: Local storage root
             usage_service: Optional usage tracking service
             queue_service: Optional QueueService for async task processing
         """
         self.search_service = search_service
         self.usage_service = usage_service
         self._queue_service = queue_service
-
-        # Initialize LLM instances
-        self.credential = DefaultAzureCredential()
-        self.token_provider = get_bearer_token_provider(
-            self.credential, "https://cognitiveservices.azure.com/.default"
+        self.storage = LocalStorageService(storage_root)
+        llm_config = LlmProviderConfig(
+            model=llm_model or "gpt-4o-mini",
+            api_key=llm_api_key,
+            base_url=llm_base_url,
+            temperature=0.25,
         )
-
-        # Build LLM kwargs, only include api_version if provided
-        llm_kwargs = {
-            "azure_deployment": azure_openai_chat_deployment,
-            "azure_endpoint": azure_openai_endpoint,
-            "azure_ad_token_provider": self.token_provider,
-            "temperature": 0.25,
-        }
-        if azure_openai_api_version:
-            llm_kwargs["api_version"] = azure_openai_api_version
-
-        llm_streaming = AzureChatOpenAI(
-            streaming=True,
-            **llm_kwargs,
-        )
-
-        self.llm_non_streaming = AzureChatOpenAI(
-            streaming=False,
-            **llm_kwargs,
-        )
+        llm_streaming = create_chat_model(llm_config, streaming=True)
+        self.llm_non_streaming = create_chat_model(llm_config, streaming=False)
 
         self.chatbot = make_chatbot(llm=llm_streaming)
 
@@ -1323,18 +1306,16 @@ Only respond with the title, nothing else. Do not use quotes."""
         Raises:
             Exception: If blob storage is not configured or upload fails
         """
-        if not self.blob_service_client or not self.chat_files_container:
-            raise Exception("Blob storage not configured for chat service.")
-
         try:
-            blob_name = f"{project_id}/{chat_id}/{uuid4()}-{filename}"
-            blob_client = self.blob_service_client.get_blob_client(
-                container=self.chat_files_container, blob=blob_name
+            relative_path = self.storage.build_chat_file_path(
+                project_id=project_id,
+                chat_id=chat_id,
+                filename=filename,
+                unique_prefix=str(uuid4()),
             )
-            blob_client.upload_blob(data=file_content, overwrite=True)
-            return blob_client.url
+            self.storage.write_bytes(relative_path, file_content)
+            return relative_path
         except Exception as e:
-            # In a real app, you'd want more specific error handling
             raise Exception(f"Failed to upload chat file: {e}") from e
 
     @contextmanager
