@@ -1,5 +1,6 @@
 import { BookOpen, BrainIcon, Settings2 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
+import { CurrentProjectNav } from './current-project-nav'
 import { NavMain } from './nav-main'
 import { NavProjects } from './nav-projects'
 import { NavUser } from './nav-user'
@@ -37,6 +38,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavProjects />
+        <CurrentProjectNav />
         <NavMain
           items={[
             {

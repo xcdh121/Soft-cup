@@ -69,6 +69,21 @@ const StudyPlanRoute = lazy(() =>
     default: m.StudyPlanRoute,
   })),
 )
+const ResourcePackageRoute = lazy(() =>
+  import('./resource-package-route').then((m) => ({
+    default: m.ResourcePackageRoute,
+  })),
+)
+const LearnerProfileRoute = lazy(() =>
+  import('./learner-profile-route').then((m) => ({
+    default: m.LearnerProfileRoute,
+  })),
+)
+const KnowledgeGraphRoute = lazy(() =>
+  import('./knowledge-graph-route').then((m) => ({
+    default: m.KnowledgeGraphRoute,
+  })),
+)
 const SettingsPage = lazy(() =>
   import('@/features/settings/settings-page').then((m) => ({
     default: m.SettingsPage,
@@ -274,6 +289,36 @@ export const studyPlanRoute = createRoute({
   ),
 })
 
+export const resourcePackageRoute = createRoute({
+  path: '/p/$projectId/resource-packages',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <ResourcePackageRoute />
+    </Suspense>
+  ),
+})
+
+export const learnerProfileRoute = createRoute({
+  path: '/p/$projectId/learner-profile',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <LearnerProfileRoute />
+    </Suspense>
+  ),
+})
+
+export const knowledgeGraphRoute = createRoute({
+  path: '/p/$projectId/knowledge-graph',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <KnowledgeGraphRoute />
+    </Suspense>
+  ),
+})
+
 export const settingsRoute = createRoute({
   path: '/settings',
   getParentRoute: () => dashboardRoute,
@@ -298,6 +343,9 @@ export const routeTree = rootRoute.addChildren([
     mindMapDetailRoute,
 
     studyPlanRoute,
+    resourcePackageRoute,
+    learnerProfileRoute,
+    knowledgeGraphRoute,
     settingsRoute,
   ]),
   indexRoute,
