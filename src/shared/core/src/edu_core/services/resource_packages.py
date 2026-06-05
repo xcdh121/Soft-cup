@@ -516,6 +516,60 @@ class ResourcePackageService:
                 ),
             }
 
+        if resource_type == "pptx":
+            return {
+                "title": f"{topic} PPTX draft",
+                "summary": f"A presentation draft structure for {topic}.",
+                "format": "json",
+                "generator_agent": "MediaAgent",
+                "generation_reason": common_reason,
+                "estimated_minutes": 25,
+                "content_json": {
+                    "title": f"{topic} presentation deck",
+                    "theme": "teaching",
+                    "slides": [
+                        {
+                            "page": 1,
+                            "title": "Topic introduction",
+                            "bullets": [
+                                f"What {topic} is",
+                                "Why this topic matters",
+                                f"Learning goal: {goal_text}",
+                            ],
+                        },
+                        {
+                            "page": 2,
+                            "title": "Core concepts",
+                            "bullets": [
+                                "Key definitions",
+                                "Main relationships",
+                                f"Knowledge points: {knowledge_text}",
+                            ],
+                        },
+                        {
+                            "page": 3,
+                            "title": "Worked example",
+                            "bullets": [
+                                "Scenario setup",
+                                "Step-by-step walkthrough",
+                                "Common mistakes to avoid",
+                            ],
+                        },
+                        {
+                            "page": 4,
+                            "title": "Practice and recap",
+                            "bullets": [
+                                "Suggested exercises",
+                                f"Weak point reminders: {weak_text}",
+                                "Summary and next steps",
+                            ],
+                        },
+                    ],
+                    "export_status": "draft_only",
+                    "notes": "Structured PPTX content is ready for rendering/export in the UI.",
+                },
+            }
+
         if resource_type == "code_lab":
             return {
                 "title": f"{topic} code lab",
