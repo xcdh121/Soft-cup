@@ -1,41 +1,18 @@
-# docker-compose.yml
 services:
-  # ----------------------------------------------------------------
-  # 1. API Service (FastAPI)
-  # ----------------------------------------------------------------
   api:
     build:
-      context: . # Context is ROOT to allow access to shared lib
+      context: .
       dockerfile: src/edu-api/Dockerfile
     ports:
       - "8000:8000"
     environment:
-      - AZURE_CLIENT_ID=30ed8f6e-6076-4e68-acb3-225c1972cb32
-      - AZURE_KEY_VAULT_URI=https://kv-eduagent-dev-swc-4xae.vault.azure.net/
+      - STORAGE_ROOT=/app/.localdata
+      - ALLOW_DEV_AUTH_BYPASS=true
     depends_on:
       - db
-      - azurite
     volumes:
-      # Hot reloading: Map local source to container (optional for dev)
       - ./src:/app/src
-
-  # ----------------------------------------------------------------
-  # 2. Worker Service (AI Processor)
-  # ----------------------------------------------------------------
-  worker:
-    build:
-      context: .
-      dockerfile: src/edu-worker/Dockerfile
-    environment:
-      - AZURE_KEY_VAULT_URI=https://kv-eduagent-dev-swc-4xae.vault.azure.net/
-      - AZURE_CLIENT_ID=30ed8f6e-6076-4e68-acb3-225c1972cb32
-    depends_on:
-      - azurite
-      - db
-
-  # ----------------------------------------------------------------
-  # 3. Database (Postgres with pgvector)
-  # ----------------------------------------------------------------
+      - ./.localdata:/app/.localdata
   db:
     image: pgvector/pgvector:pg16
     environment:
@@ -47,18 +24,5 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # ----------------------------------------------------------------
-  # 4. Storage Queue & Blob (Azurite)
-  # ----------------------------------------------------------------
-  azurite:
-    image: mcr.microsoft.com/azure-storage/azurite
-    ports:
-      - "10000:10000" # Blob
-      - "10001:10001" # Queue
-      - "10002:10002" # Table
-    volumes:
-      - azurite_data:/data
-
 volumes:
   postgres_data:
-  azurite_data:

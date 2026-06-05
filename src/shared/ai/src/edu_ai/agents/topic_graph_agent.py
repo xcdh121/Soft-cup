@@ -1,13 +1,16 @@
 from contextlib import suppress
-from typing import Any
+from typing import Any, Protocol
 
-from azure.storage.blob import BlobServiceClient
 from edu_core.schemas.documents import DocumentStatus
 from edu_db.models import Document, Project
-from langchain_openai import AzureChatOpenAI
+from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel, Field
 
 from edu_ai.agents.utils import generate, get_db_session
+
+
+class TextStorage(Protocol):
+    def read_text(self, relative_path: str) -> str: ...
 
 
 class Topic(BaseModel):
@@ -32,14 +35,12 @@ class TopicGraphAgent:
     def __init__(
         self,
         search_service: Any,
-        llm: AzureChatOpenAI,
-        blob_service_client: BlobServiceClient,
-        output_container: str,
+        llm: BaseChatModel,
+        text_storage: TextStorage | None = None,
     ):
         self.search_service = search_service
         self.llm = llm
-        self.blob_service_client = blob_service_client
-        self.output_container = output_container
+        self.text_storage = text_storage
 
     async def generate_topic_graph(
         self,
@@ -77,16 +78,12 @@ class TopicGraphAgent:
                 return TopicGraph(root_topics=[])
 
             document_contents = []
-            if self.blob_service_client:
+            if self.text_storage:
                 for doc in documents:
-                    blob_name = f"{project_id}/{doc.id}.contents.txt"
-                    blob_client = self.blob_service_client.get_blob_client(
-                        container=self.output_container, blob=blob_name
-                    )
+                    stored_path = doc.processed_text_blob_name
                     with suppress(Exception):
-                        document_contents.append(
-                            blob_client.download_blob().readall().decode("utf-8")
-                        )
+                        if stored_path:
+                            document_contents.append(self.text_storage.read_text(stored_path))
 
             full_content = "\n\n".join(document_contents)
 

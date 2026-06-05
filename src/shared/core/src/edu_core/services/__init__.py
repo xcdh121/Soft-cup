@@ -10,6 +10,7 @@ from edu_core.services.notes import NoteService
 from edu_core.services.practice import PracticeService
 from edu_core.services.projects import ProjectService
 from edu_core.services.quizzes import QuizService
+from edu_core.services.resource_packages import ResourcePackageService
 from edu_core.services.search import SearchService
 from edu_core.services.study_plans import StudyPlanService
 from edu_core.services.usage import UsageService
@@ -26,6 +27,7 @@ __all__ = [
     "PracticeService",
     "ProjectService",
     "QuizService",
+    "ResourcePackageService",
     "SearchService",
     "SearchService",
     "StudyPlanService",

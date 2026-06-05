@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from edu_core.exceptions import NotFoundError
 from edu_db.models import Flashcard, FlashcardGroup, Project
-from langchain_openai import AzureChatOpenAI
+from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel, Field
 
 from edu_ai.agents.topic_graph_agent import TopicGraphAgent
@@ -38,7 +38,7 @@ class FlashcardAgent:
     def __init__(
         self,
         search_service: Any,
-        llm: AzureChatOpenAI,
+        llm: BaseChatModel,
         topic_graph_agent: TopicGraphAgent | None = None,
     ):
         self.search_service = search_service

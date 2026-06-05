@@ -2,14 +2,13 @@ from datetime import datetime
 from uuid import uuid4
 from contextlib import contextmanager
 
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from edu_db.models import Flashcard, PracticeRecord, Project, Quiz, StudyPlan
 from edu_db.session import get_session_factory
 from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import AzureChatOpenAI
 
 from edu_core.exceptions import NotFoundError
+from edu_core.model_providers import LlmProviderConfig, create_chat_model
 from edu_core.schemas.study_plans import StudyPlanDto
 from edu_core.services.practice import (
     PracticeService,  # Reusing practice service if needed, or querying directly
@@ -22,40 +21,28 @@ class StudyPlanService:
 
     def __init__(
         self,
-        azure_openai_chat_deployment: str | None = None,
-        azure_openai_endpoint: str | None = None,
-        azure_openai_api_version: str | None = None,
-        azure_ad_token_provider=None,
+        llm_model: str | None = None,
+        llm_api_key: str = "",
+        llm_base_url: str | None = None,
     ) -> None:
         """Initialize the study plan service.
 
         Args:
-            azure_openai_chat_deployment: Azure OpenAI chat deployment name
-            azure_openai_endpoint: Azure OpenAI endpoint URL
-            azure_openai_api_version: Azure OpenAI API version
-            azure_ad_token_provider: Token provider for Azure AD auth
+            llm_model: Chat model name
+            llm_api_key: Provider API key
+            llm_base_url: Provider base URL
         """
         self.llm = None
-        if azure_openai_chat_deployment and azure_openai_endpoint:
-            # Initialize token provider if not passed
-            token_provider = azure_ad_token_provider
-            if not token_provider:
-                credential = DefaultAzureCredential()
-                token_provider = get_bearer_token_provider(
-                    credential, "https://cognitiveservices.azure.com/.default"
-                )
-
-            # Build LLM kwargs
-            llm_kwargs = {
-                "azure_deployment": azure_openai_chat_deployment,
-                "azure_endpoint": azure_openai_endpoint,
-                "temperature": 0.7,
-                "azure_ad_token_provider": token_provider,
-            }
-            if azure_openai_api_version:
-                llm_kwargs["api_version"] = azure_openai_api_version
-
-            self.llm = AzureChatOpenAI(**llm_kwargs)
+        if llm_model:
+            self.llm = create_chat_model(
+                LlmProviderConfig(
+                    model=llm_model,
+                    api_key=llm_api_key,
+                    base_url=llm_base_url,
+                    temperature=0.7,
+                ),
+                streaming=False,
+            )
 
     def get_latest_study_plan(self, user_id: str, project_id: str) -> StudyPlanDto | None:
         """Get the latest study plan for a user in a project.
@@ -110,7 +97,7 @@ class StudyPlanService:
             Created StudyPlanDto
         """
         if not self.llm:
-            raise ValueError("Azure OpenAI not configured for generating study plans.")
+            raise ValueError("LLM provider is not configured for generating study plans.")
 
         with self._get_db_session() as db:
             # 1. Fetch Practice Records

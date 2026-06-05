@@ -24,6 +24,15 @@ def get_current_user(
         HTTPException: If authentication fails or user not found
     """
     settings = get_settings()
+
+    if settings.allow_dev_auth_bypass:
+        user_service = UserService()
+        return user_service.get_or_create_user_from_token(
+            user_id="dev-local-user",
+            email="dev-local-user@example.com",
+            name="Local Dev User",
+        )
+
     supabase_jwt_secret = settings.supabase_jwt_secret
 
     if not supabase_jwt_secret:

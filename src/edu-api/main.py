@@ -24,6 +24,8 @@ from routers import (
     practice_records_router,
     projects_router,
     quizzes_router,
+    generated_resources_router,
+    resource_packages_router,
     study_plans_router,
     usage_router,
     users_router,
@@ -69,10 +71,13 @@ class Api:
         """Configure CORS middleware."""
         self.app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],  # Allow all origins
+            allow_origins=[
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+            ],
             allow_credentials=True,
-            allow_methods=["*"],  # Allow all methods
-            allow_headers=["*"],  # Allow all headers
+            allow_methods=["*"],
+            allow_headers=["*"],
         )
 
     def setup_exception_handlers(self):
@@ -100,6 +105,8 @@ class Api:
         self.app.include_router(practice_records_router)
         self.app.include_router(mind_maps_router)
         self.app.include_router(study_plans_router)
+        self.app.include_router(resource_packages_router)
+        self.app.include_router(generated_resources_router)
         self.app.include_router(usage_router)
         self.app.include_router(users_router)
         self.app.include_router(auth_router)

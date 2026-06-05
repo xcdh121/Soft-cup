@@ -213,3 +213,54 @@ class GenerateRequest(BaseModel):
     difficulty: str | None = Field(
         None, description="Difficulty level (for flashcards/quizzes)"
     )
+
+
+class GenerateResourcePackageRequest(BaseModel):
+    profile_id: str | None = Field(None, description="Associated learner profile ID")
+    learning_path_id: str | None = Field(
+        None, description="Associated learning path ID"
+    )
+    title: str | None = Field(None, description="Optional package title")
+    description: str | None = Field(None, description="Optional package description")
+    target_topic: str = Field(..., description="Target topic")
+    target_goal: str | None = Field(None, description="Learning goal")
+    source_document_ids: list[str] = Field(
+        default_factory=list, description="Source document IDs"
+    )
+    knowledge_point_ids: list[str] = Field(
+        default_factory=list, description="Knowledge point IDs"
+    )
+    weak_knowledge_point_ids: list[str] = Field(
+        default_factory=list, description="Weak knowledge point IDs"
+    )
+    resource_types: list[str] = Field(
+        default_factory=lambda: [
+            "lecture_note",
+            "mind_map",
+            "practice_set",
+            "ppt_outline",
+            "code_lab",
+        ],
+        description="Requested resource types",
+    )
+    difficulty_level: str = Field(
+        default="intermediate", description="Target difficulty level"
+    )
+    generation_mode: str = Field(default="manual", description="Generation mode")
+    estimated_minutes: int | None = Field(None, description="Estimated total minutes")
+    custom_instructions: str | None = Field(
+        None, description="Extra instructions for generation"
+    )
+    generation_params: dict = Field(
+        default_factory=dict, description="Extra generation params"
+    )
+
+
+class UpdateGeneratedResourceRequest(BaseModel):
+    title: str | None = Field(None, description="Resource title")
+    summary: str | None = Field(None, description="Resource summary")
+    generation_order: int | None = Field(None, description="Display order")
+    status: str | None = Field(None, description="Resource status")
+    content_text: str | None = Field(None, description="Text content")
+    content_json: dict | None = Field(None, description="Structured content")
+    generation_reason: str | None = Field(None, description="Generation reason")

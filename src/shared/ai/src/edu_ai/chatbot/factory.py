@@ -17,7 +17,7 @@ from langchain.agents.middleware import (
     wrap_tool_call,
 )
 from langchain_core.messages import ToolMessage
-from langchain_openai import AzureChatOpenAI
+from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.runtime import Runtime
 
 
@@ -91,7 +91,7 @@ def ensure_sources_in_stream(
     return {"sources": sources} if sources else None
 
 
-def make_chatbot(llm: AzureChatOpenAI):
+def make_chatbot(llm: BaseChatModel):
     tools = [
         *rag_tools,
         *flashcard_tools,

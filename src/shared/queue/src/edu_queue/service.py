@@ -1,10 +1,7 @@
-"""Queue service for sending messages to Azure Queue."""
+"""Queue service for dispatching local tasks synchronously."""
 
-import base64
-import json
 import logging
-
-from azure.storage.queue import QueueClient
+from collections.abc import Callable
 
 from .schemas import QueueTaskMessage
 
@@ -12,41 +9,41 @@ logger = logging.getLogger(__name__)
 
 
 class QueueService:
-    """Service for sending messages to Azure Queue."""
+    """Service for dispatching tasks in-process."""
 
-    def __init__(self, connection_string: str, queue_name: str):
+    def __init__(
+        self,
+        connection_string: str = "",
+        queue_name: str = "local-sync",
+        task_handler: Callable[[QueueTaskMessage], None] | None = None,
+    ):
         """Initialize the queue service.
 
         Args:
-            connection_string: Azure Storage connection string
-            queue_name: Name of the queue
+            connection_string: Unused compatibility field
+            queue_name: Logical queue name for logging
+            task_handler: Synchronous task handler
         """
-        self.queue_client = QueueClient.from_connection_string(
-            conn_str=connection_string, queue_name=queue_name
-        )
+        self.queue_name = queue_name
+        self.task_handler = task_handler
 
     def send_message(self, message: QueueTaskMessage) -> None:
         """
-        Sends a QueueTaskMessage to the Azure Queue.
-        Automatically handles Base64 encoding required by Azure Functions.
+        Dispatch a QueueTaskMessage immediately in-process.
 
         Args:
             message: The queue task message to send
 
         Raises:
-            Exception: If sending the message fails
+            Exception: If dispatching the message fails
         """
         try:
-            # 1. Convert dict to JSON string
-            message_json = json.dumps(message)
-
-            # 2. Base64 encode the string (Required for Azure Functions triggers)
-            message_bytes = message_json.encode("utf-8")
-            base64_message = base64.b64encode(message_bytes).decode("utf-8")
-
-            # 3. Send to Azure
-            self.queue_client.send_message(base64_message)
-            logger.info("Message sent to queue: %s", self.queue_client.queue_name)
+            if self.task_handler is None:
+                raise RuntimeError(
+                    "Queue service is not configured with a task handler."
+                )
+            self.task_handler(message)
+            logger.info("Task dispatched via local queue: %s", self.queue_name)
 
         except Exception as e:
             logger.error("Error sending message: %s", e)

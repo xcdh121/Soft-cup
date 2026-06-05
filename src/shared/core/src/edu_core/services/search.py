@@ -3,14 +3,13 @@
 from contextlib import contextmanager
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from edu_db.models import Document, Project
 from edu_db.session import get_session_factory
 from langchain_core.documents import Document as LangchainDocument
-from langchain_openai import AzureOpenAIEmbeddings
 from langchain_postgres import PGEngine, PGVectorStore
 
 from edu_core.exceptions import NotFoundError
+from edu_core.model_providers import EmbeddingProviderConfig, create_embeddings
 from edu_core.schemas.search import SearchResultItem
 
 
@@ -20,9 +19,9 @@ class SearchService:
     def __init__(
         self,
         database_url: str,
-        azure_openai_embedding_deployment: str,
-        azure_openai_endpoint: str,
-        azure_openai_api_version: str,
+        embedding_model: str,
+        embedding_api_key: str = "",
+        embedding_base_url: str | None = None,
     ) -> None:
         """Initialize the search service.
 
@@ -32,14 +31,12 @@ class SearchService:
         """
         self.database_url = database_url
 
-        token_provider = get_bearer_token_provider(
-            DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
-        )
-        self.embeddings = AzureOpenAIEmbeddings(
-            azure_deployment=azure_openai_embedding_deployment,
-            azure_endpoint=azure_openai_endpoint,
-            api_version=azure_openai_api_version,
-            azure_ad_token_provider=token_provider,
+        self.embeddings = create_embeddings(
+            EmbeddingProviderConfig(
+                model=embedding_model,
+                api_key=embedding_api_key,
+                base_url=embedding_base_url,
+            )
         )
         self._vector_store: PGVectorStore | None = None
 
