@@ -84,6 +84,11 @@ const KnowledgeGraphRoute = lazy(() =>
     default: m.KnowledgeGraphRoute,
   })),
 )
+const LearningEvaluationRoute = lazy(() =>
+  import('./learning-evaluation-route').then((m) => ({
+    default: m.LearningEvaluationRoute,
+  })),
+)
 const SettingsPage = lazy(() =>
   import('@/features/settings/settings-page').then((m) => ({
     default: m.SettingsPage,
@@ -319,6 +324,16 @@ export const knowledgeGraphRoute = createRoute({
   ),
 })
 
+export const learningEvaluationRoute = createRoute({
+  path: '/p/$projectId/learning-evaluation',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <LearningEvaluationRoute />
+    </Suspense>
+  ),
+})
+
 export const settingsRoute = createRoute({
   path: '/settings',
   getParentRoute: () => dashboardRoute,
@@ -346,6 +361,7 @@ export const routeTree = rootRoute.addChildren([
     resourcePackageRoute,
     learnerProfileRoute,
     knowledgeGraphRoute,
+    learningEvaluationRoute,
     settingsRoute,
   ]),
   indexRoute,
