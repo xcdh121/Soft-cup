@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # Local storage / task execution
     storage_root: str = "./.localdata"
     task_queue_name: str = "local-sync"
+    task_queue_backend: str = "local"
+    redis_url: str = "redis://localhost:6379/0"
+    task_job_timeout_seconds: int = 900
+    task_job_max_tries: int = 3
 
     # Database
     database_url: str = ""

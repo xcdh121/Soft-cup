@@ -18,7 +18,7 @@ from edu_core.services import (
     UsageService,
     UserService,
 )
-from edu_queue.service import QueueService
+from edu_queue.service import ArqQueueService, QueueService
 from fastapi import Depends
 
 
@@ -58,8 +58,15 @@ def get_task_runner(
 def get_queue_service(
     settings: Settings = Depends(get_settings_dep),
     task_runner: TaskRunnerService = Depends(get_task_runner),
-) -> QueueService:
+) -> QueueService | ArqQueueService:
     """Get QueueService instance with configuration from settings."""
+    if settings.task_queue_backend.lower() == "arq":
+        return ArqQueueService(
+            redis_url=settings.redis_url,
+            queue_name=settings.task_queue_name,
+            job_timeout_seconds=settings.task_job_timeout_seconds,
+        )
+
     return QueueService(
         connection_string="",
         queue_name=settings.task_queue_name,

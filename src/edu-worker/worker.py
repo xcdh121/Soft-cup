@@ -1,0 +1,68 @@
+from pathlib import Path
+from urllib.parse import urlparse
+import sys
+
+from arq.connections import RedisSettings
+from arq.worker import func
+from config import get_settings
+from edu_core.services import SearchService
+from edu_db.session import init_db
+from edu_queue.schemas import QueueTaskMessage
+
+
+API_SRC = Path(__file__).resolve().parents[1] / "edu-api"
+if str(API_SRC) not in sys.path:
+    sys.path.insert(0, str(API_SRC))
+
+from task_runner import TaskRunnerService  # noqa: E402
+
+
+def redis_settings_from_url(redis_url: str) -> RedisSettings:
+    parsed = urlparse(redis_url)
+    database = int((parsed.path or "/0").lstrip("/") or "0")
+    return RedisSettings(
+        host=parsed.hostname or "localhost",
+        port=parsed.port or 6379,
+        database=database,
+        password=parsed.password,
+        ssl=parsed.scheme == "rediss",
+    )
+
+
+async def run_task(ctx, message: QueueTaskMessage) -> None:
+    settings = get_settings()
+    init_db(settings.database_url)
+
+    search_service = SearchService(
+        database_url=settings.database_url,
+        embedding_model=settings.embedding_model,
+        embedding_api_key=settings.embedding_api_key,
+        embedding_base_url=settings.embedding_base_url,
+    )
+    runner = TaskRunnerService(
+        storage_root=settings.storage_root,
+        llm_model=settings.llm_model,
+        llm_api_key=settings.llm_api_key,
+        llm_base_url=settings.llm_base_url,
+        embedding_model=settings.embedding_model,
+        embedding_api_key=settings.embedding_api_key,
+        embedding_base_url=settings.embedding_base_url,
+        search_service=search_service,
+    )
+    await runner._dispatch_async(message)
+
+
+settings = get_settings()
+
+
+class WorkerSettings:
+    functions = [
+        func(
+            run_task,
+            timeout=settings.task_job_timeout_seconds,
+            max_tries=settings.task_job_max_tries,
+        )
+    ]
+    redis_settings = redis_settings_from_url(settings.redis_url)
+    queue_name = settings.task_queue_name
+    job_timeout = settings.task_job_timeout_seconds
