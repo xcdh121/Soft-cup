@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from uuid import uuid4
 
-from edu_db.models import Project
+from edu_db.models import Course, Project
 from edu_db.session import get_session_factory
 
 from edu_core.exceptions import NotFoundError
@@ -24,6 +24,7 @@ class ProjectService:
         name: str,
         description: str | None = None,
         language_code: str | None = "en",
+        course_id: str | None = None,
     ) -> ProjectDto:
         """Create a new project.
 
@@ -32,15 +33,18 @@ class ProjectService:
             name: The project name
             description: Optional project description
             language_code: Language code for the project (default: "en")
+            course_id: Optional parent course ID
 
         Returns:
             Created ProjectDto
         """
         with self._get_db_session() as db:
             try:
+                self._validate_course_ownership(db, course_id, owner_id)
                 project = Project(
                     id=str(uuid4()),
                     owner_id=owner_id,
+                    course_id=course_id,
                     name=name,
                     description=description,
                     language_code=language_code or "en",
@@ -112,6 +116,8 @@ class ProjectService:
         name: str | None = None,
         description: str | None = None,
         language_code: str | None = None,
+        course_id: str | None = None,
+        fields_to_update: set[str] | None = None,
     ) -> ProjectDto:
         """Update a project.
 
@@ -121,6 +127,8 @@ class ProjectService:
             name: Optional new project name
             description: Optional new project description
             language_code: Optional new language code
+            course_id: Optional parent course ID
+            fields_to_update: Fields explicitly included in the PATCH request
 
         Returns:
             Updated ProjectDto
@@ -138,12 +146,16 @@ class ProjectService:
                 if not project:
                     raise NotFoundError(f"Project {project_id} not found")
 
-                if name is not None:
+                updates = fields_to_update or set()
+                if "name" in updates and name is not None:
                     project.name = name
-                if description is not None:
+                if "description" in updates:
                     project.description = description
-                if language_code is not None:
+                if "language_code" in updates and language_code is not None:
                     project.language_code = language_code
+                if "course_id" in updates:
+                    self._validate_course_ownership(db, course_id, owner_id)
+                    project.course_id = course_id
 
                 db.commit()
                 db.refresh(project)
@@ -188,11 +200,27 @@ class ProjectService:
         return ProjectDto(
             id=project.id,
             owner_id=project.owner_id,
+            course_id=project.course_id,
             name=project.name,
             description=project.description,
             language_code=project.language_code,
             created_at=project.created_at,
         )
+
+    @staticmethod
+    def _validate_course_ownership(
+        db, course_id: str | None, owner_id: str
+    ) -> None:
+        if course_id is None:
+            return
+
+        course = (
+            db.query(Course)
+            .filter(Course.id == course_id, Course.owner_id == owner_id)
+            .first()
+        )
+        if not course:
+            raise NotFoundError(f"Course {course_id} not found")
 
     @contextmanager
     def _get_db_session(self):

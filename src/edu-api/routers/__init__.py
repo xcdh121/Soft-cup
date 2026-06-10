@@ -1,5 +1,6 @@
 from .auth import router as auth_router
 from .chats import router as chats_router
+from .courses import router as courses_router
 from .documents import router as documents_router
 from .flashcard_groups import router as flashcard_groups_router
 from .mind_maps import router as mind_maps_router
@@ -18,6 +19,7 @@ from .users import router as users_router
 __all__ = [
     "auth_router",
     "chats_router",
+    "courses_router",
     "documents_router",
     "flashcard_groups_router",
     "mind_maps_router",

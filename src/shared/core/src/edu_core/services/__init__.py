@@ -2,6 +2,7 @@
 
 from edu_core.exceptions import NotFoundError
 from edu_core.services.chats import ChatService
+from edu_core.services.courses import CourseService
 from edu_core.services.document_upload import DocumentUploadService
 from edu_core.services.documents import DocumentService
 from edu_core.services.flashcard_groups import FlashcardGroupService
@@ -18,6 +19,7 @@ from edu_core.services.users import UserService
 
 __all__ = [
     "ChatService",
+    "CourseService",
     "DocumentService",
     "DocumentUploadService",
     "FlashcardGroupService",

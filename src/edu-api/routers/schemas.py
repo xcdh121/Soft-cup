@@ -10,12 +10,58 @@ class ProjectCreate(BaseModel):
     language_code: str = Field(
         default="en", description="Language code for the project"
     )
+    course_id: str | None = Field(None, description="Optional parent course ID")
 
 
 class ProjectUpdate(BaseModel):
     name: str | None = Field(None, description="Name of the project")
     description: str | None = Field(None, description="Description of the project")
     language_code: str | None = Field(None, description="Language code for the project")
+    course_id: str | None = Field(None, description="Optional parent course ID")
+
+
+class CourseCreate(BaseModel):
+    name: str = Field(..., min_length=1, description="Course name")
+    code: str | None = Field(None, description="Optional course code")
+    description: str | None = Field(None, description="Course description")
+    status: str = Field(default="active", description="Course status")
+
+
+class CourseUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, description="Course name")
+    code: str | None = Field(None, description="Optional course code")
+    description: str | None = Field(None, description="Course description")
+    status: str | None = Field(None, description="Course status")
+
+
+class CourseChapterCreate(BaseModel):
+    title: str = Field(..., min_length=1, description="Chapter title")
+    description: str | None = Field(None, description="Chapter description")
+    parent_chapter_id: str | None = Field(
+        None, description="Optional parent chapter ID"
+    )
+    position: int = Field(default=0, ge=0, description="Chapter display order")
+    learning_objectives: list[str] = Field(
+        default_factory=list, description="Chapter learning objectives"
+    )
+    estimated_minutes: int | None = Field(
+        None, ge=0, description="Estimated study duration"
+    )
+
+
+class KnowledgePointCreate(BaseModel):
+    name: str = Field(..., min_length=1, description="Knowledge point name")
+    description: str | None = Field(
+        None, description="Knowledge point description"
+    )
+    chapter_id: str | None = Field(None, description="Optional chapter ID")
+    difficulty_level: str = Field(
+        default="intermediate", description="Knowledge point difficulty"
+    )
+    position: int = Field(default=0, ge=0, description="Display order")
+    tags: list[str] = Field(
+        default_factory=list, description="Knowledge point tags"
+    )
 
 
 class DocumentCreate(BaseModel):

@@ -4,6 +4,7 @@ from config import Settings, get_settings
 from task_runner import TaskRunnerService
 from edu_core.services import (
     ChatService,
+    CourseService,
     DocumentService,
     DocumentUploadService,
     FlashcardGroupService,
@@ -82,6 +83,11 @@ def get_usage_service(
 def get_project_service() -> ProjectService:
     """Get ProjectService instance."""
     return ProjectService()
+
+
+def get_course_service() -> CourseService:
+    """Get CourseService instance."""
+    return CourseService()
 
 
 def get_resource_package_service() -> ResourcePackageService:

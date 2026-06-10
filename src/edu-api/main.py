@@ -17,6 +17,7 @@ from pydantic import BaseModel, ValidationError
 from routers import (
     auth_router,
     chats_router,
+    courses_router,
     documents_router,
     flashcard_groups_router,
     mind_maps_router,
@@ -97,6 +98,7 @@ class Api:
 
         # Register all routers
         self.app.include_router(projects_router)
+        self.app.include_router(courses_router)
         self.app.include_router(documents_router)
         self.app.include_router(chats_router)
         self.app.include_router(notes_router)
