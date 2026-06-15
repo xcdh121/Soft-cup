@@ -17,9 +17,15 @@ type QuestionOption = {
   label: string
 }
 
+type EvaluationDimension =
+  | '知识理解'
+  | '迁移应用'
+  | '分析判断'
+  | '表达组织'
+
 type PracticeQuestion = {
   id: string
-  dimension: '知识理解' | '迁移应用' | '分析判断' | '表达组织'
+  dimension: EvaluationDimension
   prompt: string
   options: Array<QuestionOption>
   correctOptionId: string
@@ -27,7 +33,7 @@ type PracticeQuestion = {
 }
 
 type EvaluationMetric = {
-  label: '知识理解' | '迁移应用' | '分析判断' | '表达组织'
+  label: EvaluationDimension
   score: number
   summary: string
   colorClass: string
@@ -112,9 +118,15 @@ export const LearningEvaluationPage = ({
 }) => {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [submitted, setSubmitted] = useState(false)
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
 
   const answeredCount = Object.keys(answers).length
   const progress = (answeredCount / practiceQuestions.length) * 100
+  const currentQuestion = practiceQuestions[currentQuestionIndex]
+  const selectedCurrentOption = answers[currentQuestion.id]
+  const isLastQuestion = currentQuestionIndex === practiceQuestions.length - 1
+  const currentQuestionCorrect =
+    selectedCurrentOption === currentQuestion.correctOptionId
 
   const evaluation = useMemo(() => {
     if (!submitted) return null
@@ -163,13 +175,24 @@ export const LearningEvaluationPage = ({
   const handleReset = () => {
     setAnswers({})
     setSubmitted(false)
+    setCurrentQuestionIndex(0)
+  }
+
+  const handlePreviousQuestion = () => {
+    setCurrentQuestionIndex((current) => Math.max(current - 1, 0))
+  }
+
+  const handleNextQuestion = () => {
+    setCurrentQuestionIndex((current) =>
+      Math.min(current + 1, practiceQuestions.length - 1),
+    )
   }
 
   return (
-    <div className="flex h-full flex-col max-h-screen">
+    <div className="flex h-full max-h-screen flex-col">
       <ProjectHeader projectId={projectId} />
 
-      <div className="flex flex-1 flex-col min-h-0 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="container mx-auto flex max-w-7xl flex-1 flex-col gap-6 px-4 py-6">
           <section className="rounded-[28px] border bg-gradient-to-br from-cyan-50 via-white to-lime-50 p-6 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -218,73 +241,97 @@ export const LearningEvaluationPage = ({
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {practiceQuestions.map((question, index) => {
-                    const selectedOption = answers[question.id]
-                    const isCorrect = selectedOption === question.correctOptionId
-
-                    return (
-                      <div key={question.id} className="rounded-2xl border p-5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline">第 {index + 1} 题</Badge>
-                          <Badge variant="secondary">{question.dimension}</Badge>
-                        </div>
-
-                        <div className="mt-3 text-sm font-medium leading-6">
-                          {question.prompt}
-                        </div>
-
-                        <div className="mt-4 grid gap-3">
-                          {question.options.map((option) => {
-                            const active = selectedOption === option.id
-                            const showResult = submitted && active
-
-                            return (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() => handleSelect(question.id, option.id)}
-                                className={cn(
-                                  'rounded-xl border px-4 py-3 text-left text-sm transition-colors',
-                                  active
-                                    ? 'border-primary bg-primary/6'
-                                    : 'hover:bg-muted/40',
-                                  showResult &&
-                                    (isCorrect
-                                      ? 'border-emerald-500 bg-emerald-50'
-                                      : 'border-rose-500 bg-rose-50'),
-                                )}
-                              >
-                                <span className="font-medium">
-                                  {option.id.toUpperCase()}.
-                                </span>{' '}
-                                {option.label}
-                              </button>
-                            )
-                          })}
-                        </div>
-
-                        {submitted ? (
-                          <div className="mt-4 rounded-xl bg-muted/40 p-4 text-sm text-muted-foreground">
-                            <div className="font-medium text-foreground">
-                              {isCorrect ? '回答正确' : '回答有误'}
-                            </div>
-                            <div className="mt-1">{question.explanation}</div>
-                          </div>
-                        ) : null}
+                  <div className="rounded-2xl border p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">
+                          第 {currentQuestionIndex + 1} 题
+                        </Badge>
+                        <Badge variant="secondary">
+                          {currentQuestion.dimension}
+                        </Badge>
                       </div>
-                    )
-                  })}
+                      <div className="text-sm text-muted-foreground">
+                        {currentQuestionIndex + 1} / {practiceQuestions.length}
+                      </div>
+                    </div>
 
-                  <div className="flex flex-wrap items-center justify-end gap-3">
+                    <div className="mt-3 text-sm font-medium leading-6">
+                      {currentQuestion.prompt}
+                    </div>
+
+                    <div className="mt-4 grid gap-3">
+                      {currentQuestion.options.map((option) => {
+                        const active = selectedCurrentOption === option.id
+                        const showResult = submitted && active
+
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() =>
+                              handleSelect(currentQuestion.id, option.id)
+                            }
+                            className={cn(
+                              'rounded-xl border px-4 py-3 text-left text-sm transition-colors',
+                              active
+                                ? 'border-primary bg-primary/6'
+                                : 'hover:bg-muted/40',
+                              showResult &&
+                                (currentQuestionCorrect
+                                  ? 'border-emerald-500 bg-emerald-50'
+                                  : 'border-rose-500 bg-rose-50'),
+                            )}
+                          >
+                            <span className="font-medium">
+                              {option.id.toUpperCase()}.
+                            </span>{' '}
+                            {option.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {submitted ? (
+                      <div className="mt-4 rounded-xl bg-muted/40 p-4 text-sm text-muted-foreground">
+                        <div className="font-medium text-foreground">
+                          {currentQuestionCorrect ? '回答正确' : '回答有误'}
+                        </div>
+                        <div className="mt-1">{currentQuestion.explanation}</div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <Button variant="outline" onClick={handleReset}>
                       重新开始
                     </Button>
-                    <Button
-                      onClick={handleSubmit}
-                      disabled={answeredCount !== practiceQuestions.length}
-                    >
-                      提交并评估
-                    </Button>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={handlePreviousQuestion}
+                        disabled={currentQuestionIndex === 0}
+                      >
+                        上一题
+                      </Button>
+
+                      {isLastQuestion ? (
+                        <Button
+                          onClick={handleSubmit}
+                          disabled={answeredCount !== practiceQuestions.length}
+                        >
+                          提交并评估
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={handleNextQuestion}
+                          disabled={!selectedCurrentOption}
+                        >
+                          下一题
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -295,17 +342,21 @@ export const LearningEvaluationPage = ({
                 <CardHeader>
                   <CardTitle>评估结果</CardTitle>
                   <CardDescription>
-                    提交后展示总体成绩与分维度表现。
+                    提交后展示整体成绩与分维度表现。
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {evaluation ? (
                     <div className="space-y-6">
                       <div className="rounded-2xl border bg-muted/30 p-5">
-                        <div className="text-sm text-muted-foreground">总评得分</div>
+                        <div className="text-sm text-muted-foreground">
+                          总评得分
+                        </div>
                         <div className="mt-2 text-4xl font-semibold">
                           {evaluation.overallScore}
-                          <span className="ml-1 text-xl text-muted-foreground">分</span>
+                          <span className="ml-1 text-xl text-muted-foreground">
+                            分
+                          </span>
                         </div>
                         <div className="mt-2 text-sm text-muted-foreground">
                           共答对 {evaluation.correctCount} / {evaluation.total} 题
@@ -317,7 +368,9 @@ export const LearningEvaluationPage = ({
                           <div key={metric.label} className="space-y-2">
                             <div className="flex items-end justify-between gap-4">
                               <div>
-                                <div className="text-sm font-medium">{metric.label}</div>
+                                <div className="text-sm font-medium">
+                                  {metric.label}
+                                </div>
                                 <div className="text-xs text-muted-foreground">
                                   {metric.summary}
                                 </div>
@@ -353,9 +406,15 @@ export const LearningEvaluationPage = ({
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
-                  <p>1. 题目数据目前放在前端静态配置中，便于先完成交互与评估展示。</p>
-                  <p>2. 分数先按答对题数和题目维度做简单计算，后续可以接知识点加权策略。</p>
-                  <p>3. 结果当前只在前端展示，没有写回练习记录、诊断记录或评估报告。</p>
+                  <p>
+                    1. 题目数据目前放在前端静态配置中，便于先完成交互与评估展示。
+                  </p>
+                  <p>
+                    2. 分数先按答对题数和题目维度做简单计算，后续可以接知识点加权策略。
+                  </p>
+                  <p>
+                    3. 结果当前只在前端展示，没有写回练习记录、诊断记录或评估报告。
+                  </p>
                 </CardContent>
               </Card>
             </div>
