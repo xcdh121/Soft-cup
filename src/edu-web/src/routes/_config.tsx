@@ -107,6 +107,11 @@ const AgentOrchestrationRoute = lazy(() =>
     default: m.AgentOrchestrationRoute,
   })),
 )
+const ProjectAgentOrchestrationRoute = lazy(() =>
+  import('./project-agent-orchestration-route').then((m) => ({
+    default: m.ProjectAgentOrchestrationRoute,
+  })),
+)
 
 const requireAuth = async () => {
   const { isSupabaseConfigured } = await import('@/lib/supabase')
@@ -349,6 +354,16 @@ export const learningEvaluationRoute = createRoute({
   ),
 })
 
+export const projectAgentOrchestrationRoute = createRoute({
+  path: '/p/$projectId/agent-orchestration',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <ProjectAgentOrchestrationRoute />
+    </Suspense>
+  ),
+})
+
 export const settingsRoute = createRoute({
   path: '/settings',
   getParentRoute: () => dashboardRoute,
@@ -377,6 +392,7 @@ export const routeTree = rootRoute.addChildren([
     learnerProfileRoute,
     knowledgeGraphRoute,
     learningEvaluationRoute,
+    projectAgentOrchestrationRoute,
     settingsRoute,
   ]),
   indexRoute,

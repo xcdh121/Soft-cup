@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from edu_core.model_providers import LlmProviderConfig
 from edu_core.schemas.agent_orchestration import (
     AgentEvent,
     AgentEventType,
@@ -12,7 +13,9 @@ from edu_core.schemas.agent_orchestration import (
 )
 
 from edu_ai.agents.orchestration.base import BaseOrchestrationAgent
-from edu_ai.agents.orchestration.collective_insight_agent import CollectiveInsightAgent
+from edu_ai.agents.orchestration.collective_insight_agent import (
+    CollectiveInsightAgent,
+)
 from edu_ai.agents.orchestration.diagnosis_agent import DiagnosisAgent
 from edu_ai.agents.orchestration.kt_agent import KTAgent
 from edu_ai.agents.orchestration.planner_agent import PlannerAgent
@@ -21,14 +24,18 @@ from edu_ai.agents.orchestration.resource_agent import ResourceAgent
 
 
 class SupervisorAgent:
-    def __init__(self, agents: list[BaseOrchestrationAgent] | None = None) -> None:
+    def __init__(
+        self,
+        agents: list[BaseOrchestrationAgent] | None = None,
+        llm_config: LlmProviderConfig | None = None,
+    ) -> None:
         self.agents = agents or [
             ProfileAgent(),
             KTAgent(),
             CollectiveInsightAgent(),
             DiagnosisAgent(),
             ResourceAgent(),
-            PlannerAgent(),
+            PlannerAgent(llm_config=llm_config),
         ]
 
     async def run(self, request: OrchestrationRunRequest) -> SupervisorRunResult:
@@ -50,7 +57,7 @@ class SupervisorAgent:
                 AgentEventType.RUN_STARTED,
                 run_id,
                 RunStatus.RUNNING,
-                "多智能体编排已启动",
+                "Agent orchestration started.",
                 AgentName.SUPERVISOR,
                 {"goal": request.goal},
             )
@@ -80,7 +87,7 @@ class SupervisorAgent:
                         AgentEventType.ARTIFACT_UPDATED,
                         run_id,
                         RunStatus.COMPLETED,
-                        f"{agent.artifact_key} 已更新",
+                        f"Updated artifact: {agent.artifact_key}",
                         result.agent_name,
                         {"artifact_key": agent.artifact_key},
                     )
@@ -92,7 +99,7 @@ class SupervisorAgent:
                     AgentEventType.RUN_COMPLETED,
                     run_id,
                     RunStatus.COMPLETED,
-                    "多智能体编排已完成",
+                    "Agent orchestration completed.",
                     AgentName.SUPERVISOR,
                     {"artifact_keys": list(context.artifacts.keys())},
                 )
@@ -111,7 +118,7 @@ class SupervisorAgent:
                     AgentEventType.RUN_FAILED,
                     run_id,
                     RunStatus.FAILED,
-                    "多智能体编排失败",
+                    "Agent orchestration failed.",
                     AgentName.SUPERVISOR,
                     {"error": str(exc)},
                 )

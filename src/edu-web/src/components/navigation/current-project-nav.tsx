@@ -20,6 +20,7 @@ import { Result, useAtomValue } from '@effect-atom/atom-react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Cause } from 'effect'
 import {
+  BotIcon,
   BarChart3Icon,
   BookOpenTextIcon,
   ChevronRightIcon,
@@ -143,6 +144,24 @@ export function CurrentProjectNav() {
                 >
                   <BookOpenTextIcon className="size-4 opacity-70" />
                   <span>学习计划</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={
+                  location.pathname ===
+                  `/dashboard/p/${currentProjectId}/agent-orchestration`
+                }
+              >
+                <Link
+                  to="/dashboard/p/$projectId/agent-orchestration"
+                  params={{ projectId: currentProjectId }}
+                >
+                  <BotIcon className="size-4 opacity-70" />
+                  <span>Agent 编排</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

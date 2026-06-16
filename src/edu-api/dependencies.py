@@ -21,6 +21,7 @@ from edu_core.services import (
 )
 from edu_queue.service import ArqQueueService, QueueService
 from fastapi import Depends
+from edu_core.model_providers import LlmProviderConfig
 
 
 def get_settings_dep() -> Settings:
@@ -92,9 +93,18 @@ def get_project_service() -> ProjectService:
     return ProjectService()
 
 
-def get_agent_orchestration_service() -> AgentOrchestrationService:
+def get_agent_orchestration_service(
+    settings: Settings = Depends(get_settings_dep),
+) -> AgentOrchestrationService:
     """Get AgentOrchestrationService instance."""
-    return AgentOrchestrationService()
+    return AgentOrchestrationService(
+        llm_config=LlmProviderConfig(
+            model=settings.llm_model,
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+            temperature=0.3,
+        )
+    )
 
 
 def get_resource_package_service() -> ResourcePackageService:

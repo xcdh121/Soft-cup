@@ -117,8 +117,68 @@ const EmptyState = ({ text }: { text: string }) => {
   )
 }
 
-export const AgentOrchestrationRoute = () => {
-  const [projectId, setProjectId] = useState(DEFAULT_PROJECT_ID)
+const getReasonCodes = (event: AgentEvent): string[] => {
+  const value = event.payload?.reason_codes
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string')
+}
+
+const getPlannerMode = (events: AgentEvent[]): string => {
+  const plannerStep = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        event.event_type === 'agent_step' && event.agent_name === 'PlannerAgent',
+    )
+
+  if (!plannerStep) return 'unknown'
+
+  const reasonCodes = getReasonCodes(plannerStep)
+  if (reasonCodes.includes('llm')) return 'llm'
+  if (reasonCodes.includes('rule_fallback')) return 'rule_fallback'
+  if (reasonCodes.includes('rule')) return 'rule'
+  return 'unknown'
+}
+
+const formatPlannerMode = (mode: string): string => {
+  if (mode === 'llm') return 'LLM'
+  if (mode === 'rule_fallback') return '规则回退'
+  if (mode === 'rule') return '规则'
+  return '未知'
+}
+
+const ReasonCodeBadge = ({ code }: { code: string }) => {
+  const className =
+    code === 'llm'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : code === 'rule_fallback'
+        ? 'border-amber-200 bg-amber-50 text-amber-700'
+        : code === 'rule'
+          ? 'border-slate-200 bg-slate-50 text-slate-700'
+          : 'border-border bg-muted text-muted-foreground'
+
+  return (
+    <span
+      className={[
+        'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
+        className,
+      ].join(' ')}
+    >
+      {code}
+    </span>
+  )
+}
+
+type AgentOrchestrationRouteProps = {
+  projectId?: string
+}
+
+export const AgentOrchestrationRoute = ({
+  projectId: initialProjectId,
+}: AgentOrchestrationRouteProps = {}) => {
+  const [projectId, setProjectId] = useState(
+    initialProjectId ?? DEFAULT_PROJECT_ID,
+  )
   const [diagnosis, setDiagnosis] = useState<DiagnosisResponse | null>(null)
   const [events, setEvents] = useState<AgentEvent[]>([])
   const [recommendations, setRecommendations] =
@@ -133,6 +193,8 @@ export const AgentOrchestrationRoute = () => {
   const completedAgents = useMemo(() => {
     return events.filter((event) => event.event_type === 'agent_step').length
   }, [events])
+
+  const plannerMode = useMemo(() => getPlannerMode(events), [events])
 
   const runStartedAt = events[0]?.timestamp
     ? new Date(events[0].timestamp).toLocaleString()
@@ -184,7 +246,7 @@ export const AgentOrchestrationRoute = () => {
       )
       setEvents(nextEvents)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '读取 trace 失败')
+      setError(err instanceof Error ? err.message : '读取 Trace 失败')
     } finally {
       setActiveAction(null)
     }
@@ -243,14 +305,14 @@ export const AgentOrchestrationRoute = () => {
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Activity className="size-4" />
-              多智能体协同编排调试台
+              多智能体调试台
             </div>
             <h1 className="text-2xl font-semibold tracking-normal">
-              Agent Orchestration Trace
+              智能体工作流追踪
             </h1>
             <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-              在浏览器中直接触发诊断、推荐和学习路径生成，查看每个 Agent
-              的执行阶段、结构化结果和数据库回读状态。
+              在浏览器里直接触发诊断、推荐和学习路径生成，查看每个 Agent
+              的执行阶段、结构化输出，以及落库后的 Trace 数据。
             </p>
           </div>
 
@@ -277,7 +339,7 @@ export const AgentOrchestrationRoute = () => {
           </div>
         ) : null}
 
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-5">
           <Card className="rounded-lg py-4">
             <CardContent className="flex items-center gap-3 px-4">
               <BrainCircuit className="size-5 text-primary" />
@@ -318,6 +380,17 @@ export const AgentOrchestrationRoute = () => {
               </div>
             </CardContent>
           </Card>
+          <Card className="rounded-lg py-4">
+            <CardContent className="flex items-center gap-3 px-4">
+              <BookOpenCheck className="size-5 text-primary" />
+              <div>
+                <div className="text-sm text-muted-foreground">规划模式</div>
+                <div className="text-sm font-medium">
+                  {formatPlannerMode(plannerMode)}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -325,9 +398,10 @@ export const AgentOrchestrationRoute = () => {
             <CardHeader className="gap-2">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <CardTitle>协同过程 Trace</CardTitle>
+                  <CardTitle>执行 Trace</CardTitle>
                   <CardDescription>
-                    从数据库读取 AgentEvent，按执行时间排序展示。
+                    按执行顺序读取 AgentEvent，并显示每个步骤返回的
+                    `reason_codes`，方便判断 Planner 是否走了 LLM。
                   </CardDescription>
                 </div>
                 <Button
@@ -346,33 +420,44 @@ export const AgentOrchestrationRoute = () => {
             </CardHeader>
             <CardContent>
               {events.length === 0 ? (
-                <EmptyState text="点击生成诊断后，这里会展示 run_started、agent_step、artifact_updated 和 run_completed。" />
+                <EmptyState text="点击生成诊断后，这里会展示 run_started、agent_step、artifact_updated 和 run_completed 事件。" />
               ) : (
                 <div className="space-y-3">
-                  {events.map((event, index) => (
-                    <div
-                      key={`${event.event_type}-${event.timestamp}-${index}`}
-                      className="grid gap-3 rounded-md border bg-card p-3 sm:grid-cols-[160px_minmax(0,1fr)_auto]"
-                    >
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">
-                          {new Date(event.timestamp).toLocaleTimeString()}
+                  {events.map((event, index) => {
+                    const reasonCodes = getReasonCodes(event)
+
+                    return (
+                      <div
+                        key={`${event.event_type}-${event.timestamp}-${index}`}
+                        className="grid gap-3 rounded-md border bg-card p-3 sm:grid-cols-[160px_minmax(0,1fr)_auto]"
+                      >
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(event.timestamp).toLocaleTimeString()}
+                          </div>
+                          <div className="text-sm font-medium">
+                            {event.agent_name ?? event.event_type}
+                          </div>
                         </div>
-                        <div className="text-sm font-medium">
-                          {event.agent_name ?? event.event_type}
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium">
+                            {event.summary}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {event.event_type}
+                          </div>
+                          {reasonCodes.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {reasonCodes.map((code) => (
+                                <ReasonCodeBadge key={code} code={code} />
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
+                        <StatusPill status={event.status} />
                       </div>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">
-                          {event.summary}
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {event.event_type}
-                        </div>
-                      </div>
-                      <StatusPill status={event.status} />
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </CardContent>
@@ -383,14 +468,14 @@ export const AgentOrchestrationRoute = () => {
               <CardHeader>
                 <CardTitle>诊断结果</CardTitle>
                 <CardDescription>
-                  DiagnosisAgent 产出的结构化根因诊断。
+                  `DiagnosisAgent` 产出的结构化诊断结果。
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {diagnosis ? (
                   <JsonBlock value={diagnosis.diagnosis} />
                 ) : (
-                  <EmptyState text="暂无诊断结果" />
+                  <EmptyState text="暂无诊断结果。" />
                 )}
               </CardContent>
             </Card>
@@ -399,9 +484,9 @@ export const AgentOrchestrationRoute = () => {
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <CardTitle>资源推荐</CardTitle>
+                    <CardTitle>推荐结果</CardTitle>
                     <CardDescription>
-                      ResourceAgent 产出的推荐项。
+                      `ResourceAgent` 产出的结构化推荐结果。
                     </CardDescription>
                   </div>
                   <Button
@@ -422,7 +507,7 @@ export const AgentOrchestrationRoute = () => {
                 {recommendations ? (
                   <JsonBlock value={recommendations.recommendations} />
                 ) : (
-                  <EmptyState text="暂无推荐结果" />
+                  <EmptyState text="暂无推荐结果。" />
                 )}
               </CardContent>
             </Card>
@@ -433,7 +518,7 @@ export const AgentOrchestrationRoute = () => {
                   <div>
                     <CardTitle>学习路径</CardTitle>
                     <CardDescription>
-                      PlannerAgent 产出的步骤化学习路径。
+                      `PlannerAgent` 产出的结构化学习路径。
                     </CardDescription>
                   </div>
                   <Button
@@ -452,9 +537,17 @@ export const AgentOrchestrationRoute = () => {
               </CardHeader>
               <CardContent>
                 {learningPath ? (
-                  <JsonBlock value={learningPath.learning_path} />
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        规划模式：
+                      </span>
+                      <ReasonCodeBadge code={formatPlannerMode(plannerMode)} />
+                    </div>
+                    <JsonBlock value={learningPath.learning_path} />
+                  </div>
                 ) : (
-                  <EmptyState text="暂无学习路径" />
+                  <EmptyState text="暂无学习路径结果。" />
                 )}
               </CardContent>
             </Card>

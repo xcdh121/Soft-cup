@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
+      DATABASE_URL: postgresql+psycopg2://postgres:123456@db:5432/postgres
       STORAGE_ROOT: /app/.localdata
       ALLOW_DEV_AUTH_BYPASS: "true"
       TASK_QUEUE_BACKEND: arq
@@ -35,9 +35,9 @@ services:
     build:
       context: .
       dockerfile: src/edu-worker/Dockerfile
-    command: ["arq", "worker.WorkerSettings"]
+    command: [ "arq", "worker.WorkerSettings" ]
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
+      DATABASE_URL: postgresql+psycopg2://postgres:123456@db:5432/postgres
       STORAGE_ROOT: /app/.localdata
       TASK_QUEUE_NAME: edu-agent:tasks
       REDIS_URL: redis://redis:6379/0
@@ -64,9 +64,9 @@ services:
     build:
       context: .
       dockerfile: src/edu-api/Dockerfile
-    command: ["alembic", "-c", "/app/alembic.ini", "upgrade", "head"]
+    command: [ "alembic", "-c", "/app/alembic.ini", "upgrade", "head" ]
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
+      DATABASE_URL: postgresql+psycopg2://postgres:123456@db:5432/postgres
     depends_on:
       db:
         condition: service_healthy
@@ -75,7 +75,7 @@ services:
   redis:
     image: redis:7-alpine
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -84,14 +84,14 @@ services:
     image: pgvector/pgvector:pg16
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_PASSWORD=123456
       - POSTGRES_DB=postgres
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d postgres" ]
       interval: 5s
       timeout: 5s
       retries: 10

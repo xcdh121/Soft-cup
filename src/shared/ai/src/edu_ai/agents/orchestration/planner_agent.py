@@ -1,18 +1,70 @@
+import json
+import logging
+
+from edu_core.model_providers import LlmProviderConfig, create_chat_model
 from edu_core.schemas.agent_orchestration import (
     AgentName,
     AgentResult,
     AgentRunContext,
     RunStatus,
 )
+from edu_core.schemas.learning_path_generation import LearningPathContent
 
 from edu_ai.agents.orchestration.base import BaseOrchestrationAgent
+from edu_ai.agents.utils import generate
+
+logger = logging.getLogger(__name__)
 
 
 class PlannerAgent(BaseOrchestrationAgent):
     agent_name = AgentName.PLANNER
     artifact_key = "learning_path"
 
+    def __init__(self, llm_config: LlmProviderConfig | None = None) -> None:
+        self.llm = (
+            create_chat_model(llm_config, streaming=False, temperature=0.3)
+            if llm_config and llm_config.model
+            else None
+        )
+
     async def run(self, context: AgentRunContext) -> AgentResult:
+        learning_path = self._build_rule_learning_path(context)
+        generation_mode = "rule"
+
+        if self.llm:
+            try:
+                learning_path = await self._build_llm_learning_path(context)
+                generation_mode = "llm"
+            except Exception:
+                logger.exception(
+                    "LLM learning path generation failed for project %s, falling back to rule planner.",
+                    context.project_id,
+                )
+                generation_mode = "rule_fallback"
+
+        reason_codes = ["learning_path_generated", generation_mode]
+        reason_text = [
+            "Generated from diagnosis, recommendations, and learner context."
+        ]
+        if generation_mode == "llm":
+            reason_text.append(
+                "LLM organized the final sequence while keeping the output schema constrained."
+            )
+        elif generation_mode == "rule_fallback":
+            reason_text.append(
+                "LLM generation was unavailable, so the rule-based planner was used."
+            )
+
+        return AgentResult(
+            agent_name=self.agent_name,
+            status=RunStatus.COMPLETED,
+            summary="Generated a structured learning path.",
+            result={"learning_path": learning_path},
+            reason_codes=reason_codes,
+            reason_text=reason_text,
+        )
+
+    def _build_rule_learning_path(self, context: AgentRunContext) -> dict:
         diagnosis = context.artifacts.get("diagnosis", {}).get("diagnosis", {})
         recommendations = context.artifacts.get("recommendations", {}).get(
             "recommendations", []
@@ -22,43 +74,88 @@ class PlannerAgent(BaseOrchestrationAgent):
 
         path_steps = []
         for index, recommendation in enumerate(recommendations, start=1):
+            reason_text = recommendation.get("reason_text", [])
+            primary_reason = reason_text[0] if reason_text else "Recommended next step."
             path_steps.append(
                 {
                     "step_no": index,
                     "type": recommendation.get("recommendation_type", "resource"),
                     "target_id": recommendation.get("target_id"),
-                    "title": recommendation.get("title"),
-                    "reason": recommendation.get("reason_text", [""])[0],
+                    "title": recommendation.get("title") or f"Step {index}",
+                    "reason": primary_reason,
                 }
             )
 
         if related_points:
+            first_point_id = related_points[0].get("id")
             path_steps.append(
                 {
                     "step_no": len(path_steps) + 1,
                     "type": "practice",
-                    "target_id": related_points[0]["id"],
-                    "title": "完成补强后的验证练习",
-                    "reason": "验证薄弱知识点是否得到修正",
+                    "target_id": first_point_id,
+                    "title": "Practice to verify improvement",
+                    "reason": "Use targeted practice to confirm the weak point is improving.",
                 }
             )
 
-        learning_path = {
-            "title": "个性化补强学习路径",
+        return {
+            "title": "Personalized reinforcement path",
             "estimated_minutes": max(30, len(path_steps) * 20),
             "path_steps": path_steps,
             "based_on_profile_fields": [
-                key for key, value in profile.items() if value not in (None, [], "unknown")
+                key
+                for key, value in profile.items()
+                if value not in (None, [], "unknown")
             ],
-            "based_on_knowledge_points": [point["id"] for point in related_points],
-            "adjust_reasons": ["薄弱知识点优先", "结合当前可用资源"],
+            "based_on_knowledge_points": [
+                point.get("id") for point in related_points if point.get("id")
+            ],
+            "adjust_reasons": [
+                "Prioritize the weakest knowledge points first.",
+                "Sequence available recommendations into an actionable plan.",
+            ],
         }
 
-        return AgentResult(
-            agent_name=self.agent_name,
-            status=RunStatus.COMPLETED,
-            summary="已生成步骤化学习路径",
-            result={"learning_path": learning_path},
-            reason_codes=["learning_path_generated"],
-            reason_text=["基于诊断和推荐结果生成路径"],
+    async def _build_llm_learning_path(self, context: AgentRunContext) -> dict:
+        diagnosis = context.artifacts.get("diagnosis", {}).get("diagnosis", {})
+        recommendations = context.artifacts.get("recommendations", {}).get(
+            "recommendations", []
         )
+        profile = context.artifacts.get("profile", {}).get("profile_summary", {})
+        knowledge_state = context.artifacts.get("knowledge_state", {})
+        course = context.context.course or {}
+        weak_points = knowledge_state.get("knowledge_state_summary", {}).get(
+            "weak_points", []
+        )
+
+        document_content = json.dumps(
+            {
+                "course": {
+                    "id": course.get("id"),
+                    "name": course.get("name"),
+                    "description": course.get("description"),
+                },
+                "diagnosis": diagnosis,
+                "recommendations": recommendations,
+                "profile_summary": profile,
+                "weak_points": weak_points,
+            },
+            ensure_ascii=True,
+            indent=2,
+        )
+
+        plan_data = await generate(
+            llm=self.llm,
+            search_service=None,
+            output_model=LearningPathContent,
+            prompt_template="learning_path",
+            project_id=context.project_id,
+            topic="Learning Path",
+            language_code=course.get("language_code") or "en",
+            custom_instructions=(
+                "Start with understanding-oriented steps when helpful, then practice, "
+                "then include a verification step. Reuse recommendation ids and titles when possible."
+            ),
+            document_content=document_content,
+        )
+        return plan_data.model_dump()

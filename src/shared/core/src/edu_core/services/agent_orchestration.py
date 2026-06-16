@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from edu_ai.agents.orchestration import SupervisorAgent
 from edu_core.exceptions import NotFoundError
+from edu_core.model_providers import LlmProviderConfig
 from edu_core.schemas.agent_orchestration import (
     AgentContextData,
     AgentEvent,
@@ -433,8 +434,9 @@ class AgentOrchestrationService:
         self,
         supervisor: SupervisorAgent | None = None,
         store: InMemoryOrchestrationStore | DatabaseOrchestrationStore | None = None,
+        llm_config: LlmProviderConfig | None = None,
     ) -> None:
-        self.supervisor = supervisor or SupervisorAgent()
+        self.supervisor = supervisor or SupervisorAgent(llm_config=llm_config)
         self.store = store or DatabaseOrchestrationStore()
 
     async def generate_diagnosis(
