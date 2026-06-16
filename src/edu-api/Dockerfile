@@ -5,7 +5,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 WORKDIR /app
 
 # 1. Copy Monorepo Metadata
-COPY pyproject.toml uv.lock /app/
+COPY pyproject.toml uv.lock alembic.ini /app/
 
 # 2. Copy Source Code
 # CRITICAL: We copy the whole 'src' so 'edu-shared' is available to the API

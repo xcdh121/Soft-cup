@@ -6,14 +6,80 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/postgres
-      - STORAGE_ROOT=/app/.localdata
-      - ALLOW_DEV_AUTH_BYPASS=true
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
+      STORAGE_ROOT: /app/.localdata
+      ALLOW_DEV_AUTH_BYPASS: "true"
+      TASK_QUEUE_BACKEND: arq
+      TASK_QUEUE_NAME: edu-agent:tasks
+      REDIS_URL: redis://redis:6379/0
+      TASK_JOB_TIMEOUT_SECONDS: "900"
+      TASK_JOB_MAX_TRIES: "3"
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-large}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./src:/app/src
       - ./.localdata:/app/.localdata
+
+  worker:
+    build:
+      context: .
+      dockerfile: src/edu-worker/Dockerfile
+    command: ["arq", "worker.WorkerSettings"]
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
+      STORAGE_ROOT: /app/.localdata
+      TASK_QUEUE_NAME: edu-agent:tasks
+      REDIS_URL: redis://redis:6379/0
+      TASK_JOB_TIMEOUT_SECONDS: "900"
+      TASK_JOB_MAX_TRIES: "3"
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-large}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ./src:/app/src
+      - ./.localdata:/app/.localdata
+
+  migrate:
+    build:
+      context: .
+      dockerfile: src/edu-api/Dockerfile
+    command: ["alembic", "-c", "/app/alembic.ini", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   db:
     image: pgvector/pgvector:pg16
     environment:
@@ -24,6 +90,11 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   postgres_data:
