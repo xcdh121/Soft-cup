@@ -15,7 +15,6 @@ WORKDIR /app/src/edu-worker
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 RUN uv sync --frozen
 
-# 4. Run Worker Script
+# 4. Run arq worker
 ENV PATH="/app/.venv/bin:$PATH"
-# Assuming you write a script that polls the queue
-CMD ["python", "main.py"]
+CMD ["arq", "worker.WorkerSettings"]
