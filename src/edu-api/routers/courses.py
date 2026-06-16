@@ -1,20 +1,23 @@
 """Router for course library operations."""
 
 from auth import get_current_user
-from dependencies import get_course_service
+from dependencies import get_course_resource_service, get_course_service
 from edu_core.exceptions import NotFoundError
+from edu_core.schemas.course_resources import CourseResourceDto
 from edu_core.schemas.courses import (
     CourseChapterDto,
     CourseDto,
     KnowledgePointDto,
 )
 from edu_core.schemas.projects import ProjectDto
-from edu_core.services import CourseService
+from edu_core.services import CourseResourceService, CourseService
 from fastapi import APIRouter, Depends, HTTPException
 
 from routers.schemas import (
     CourseChapterCreate,
     CourseCreate,
+    CourseResourceCreate,
+    CourseResourceUpdate,
     CourseUpdate,
     KnowledgePointCreate,
 )
@@ -183,5 +186,100 @@ async def list_knowledge_points(
 ):
     try:
         return service.list_knowledge_points(course_id, current_user.id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{course_id}/resources",
+    response_model=CourseResourceDto,
+    status_code=201,
+)
+async def create_course_resource(
+    course_id: str,
+    resource: CourseResourceCreate,
+    current_user=Depends(get_current_user),
+    service: CourseResourceService = Depends(get_course_resource_service),
+):
+    try:
+        return service.create_resource(
+            course_id=course_id,
+            owner_id=current_user.id,
+            **resource.model_dump(),
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get(
+    "/{course_id}/resources",
+    response_model=list[CourseResourceDto],
+)
+async def list_course_resources(
+    course_id: str,
+    current_user=Depends(get_current_user),
+    service: CourseResourceService = Depends(get_course_resource_service),
+):
+    try:
+        return service.list_resources(course_id, current_user.id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/{course_id}/resources/{resource_id}",
+    response_model=CourseResourceDto,
+)
+async def get_course_resource(
+    course_id: str,
+    resource_id: str,
+    current_user=Depends(get_current_user),
+    service: CourseResourceService = Depends(get_course_resource_service),
+):
+    try:
+        return service.get_resource(course_id, resource_id, current_user.id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch(
+    "/{course_id}/resources/{resource_id}",
+    response_model=CourseResourceDto,
+)
+async def update_course_resource(
+    course_id: str,
+    resource_id: str,
+    resource: CourseResourceUpdate,
+    current_user=Depends(get_current_user),
+    service: CourseResourceService = Depends(get_course_resource_service),
+):
+    try:
+        return service.update_resource(
+            course_id=course_id,
+            resource_id=resource_id,
+            owner_id=current_user.id,
+            updates=resource.model_dump(exclude_unset=True),
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/{course_id}/resources/{resource_id}",
+    status_code=204,
+)
+async def delete_course_resource(
+    course_id: str,
+    resource_id: str,
+    current_user=Depends(get_current_user),
+    service: CourseResourceService = Depends(get_course_resource_service),
+):
+    try:
+        service.delete_resource(course_id, resource_id, current_user.id)
+        return None
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

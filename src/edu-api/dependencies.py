@@ -4,11 +4,14 @@ from config import Settings, get_settings
 from task_runner import TaskRunnerService
 from edu_core.services import (
     ChatService,
+    CourseResourceService,
     CourseService,
     DocumentService,
     DocumentUploadService,
     FlashcardGroupService,
     MindMapService,
+    KnowledgeStateService,
+    LearnerProfileService,
     NoteService,
     PracticeService,
     ProjectService,
@@ -88,6 +91,21 @@ def get_project_service() -> ProjectService:
 def get_course_service() -> CourseService:
     """Get CourseService instance."""
     return CourseService()
+
+
+def get_course_resource_service() -> CourseResourceService:
+    """Get CourseResourceService instance."""
+    return CourseResourceService()
+
+
+def get_learner_profile_service() -> LearnerProfileService:
+    """Get LearnerProfileService instance."""
+    return LearnerProfileService()
+
+
+def get_knowledge_state_service() -> KnowledgeStateService:
+    """Get KnowledgeStateService instance."""
+    return KnowledgeStateService()
 
 
 def get_resource_package_service() -> ResourcePackageService:

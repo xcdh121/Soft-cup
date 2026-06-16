@@ -1,10 +1,10 @@
 """Router for practice record operations."""
 
 from auth import get_current_user
-from dependencies import get_practice_service
+from dependencies import get_knowledge_state_service, get_practice_service
 from edu_core.schemas.practice import PracticeRecordDto
 from edu_core.schemas.users import UserDto
-from edu_core.services import PracticeService
+from edu_core.services import KnowledgeStateService, PracticeService
 from fastapi import APIRouter, Depends, HTTPException
 
 from routers.schemas import PracticeRecordBatchCreate, PracticeRecordCreate
@@ -36,19 +36,29 @@ async def create_practice_record(
     record: PracticeRecordCreate,
     current_user: UserDto = Depends(get_current_user),
     service: PracticeService = Depends(get_practice_service),
+    knowledge_state_service: KnowledgeStateService = Depends(
+        get_knowledge_state_service
+    ),
 ):
     """Create a single practice record."""
     try:
-        return service.create_practice_record(
+        created_record = service.create_practice_record(
             user_id=current_user.id,
             project_id=project_id,
             item_type=record.item_type,
             item_id=record.item_id,
+            knowledge_point_id=record.knowledge_point_id,
             topic=record.topic,
             user_answer=record.user_answer,
             correct_answer=record.correct_answer,
             was_correct=record.was_correct,
         )
+        try:
+            knowledge_state_service.refresh_states(project_id, current_user.id)
+        except ValueError:
+            # Legacy projects without a course can still keep practice records.
+            pass
+        return created_record
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -61,6 +71,9 @@ async def create_practice_records_batch(
     batch: PracticeRecordBatchCreate,
     current_user: UserDto = Depends(get_current_user),
     service: PracticeService = Depends(get_practice_service),
+    knowledge_state_service: KnowledgeStateService = Depends(
+        get_knowledge_state_service
+    ),
 ):
     """Create multiple practice records."""
     try:
@@ -68,6 +81,7 @@ async def create_practice_records_batch(
             {
                 "item_type": r.item_type,
                 "item_id": r.item_id,
+                "knowledge_point_id": r.knowledge_point_id,
                 "topic": r.topic,
                 "user_answer": r.user_answer,
                 "correct_answer": r.correct_answer,
@@ -75,10 +89,18 @@ async def create_practice_records_batch(
             }
             for r in batch.practice_records
         ]
-        return service.create_practice_records_batch(
+        created_records = service.create_practice_records_batch(
             user_id=current_user.id,
             project_id=project_id,
             practice_records_data=records_data,
         )
+        try:
+            knowledge_state_service.refresh_states(project_id, current_user.id)
+        except ValueError:
+            # Legacy projects without a course can still keep practice records.
+            pass
+        return created_records
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

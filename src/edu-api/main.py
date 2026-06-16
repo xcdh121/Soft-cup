@@ -20,6 +20,8 @@ from routers import (
     courses_router,
     documents_router,
     flashcard_groups_router,
+    knowledge_states_router,
+    learner_profiles_router,
     mind_maps_router,
     notes_router,
     practice_records_router,
@@ -99,6 +101,8 @@ class Api:
         # Register all routers
         self.app.include_router(projects_router)
         self.app.include_router(courses_router)
+        self.app.include_router(learner_profiles_router)
+        self.app.include_router(knowledge_states_router)
         self.app.include_router(documents_router)
         self.app.include_router(chats_router)
         self.app.include_router(notes_router)

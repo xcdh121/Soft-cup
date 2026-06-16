@@ -1,7 +1,9 @@
 """Request schemas for CRUD operations."""
 
-from typing import List, Union, Literal
-from pydantic import BaseModel, Field
+from datetime import datetime
+from typing import Any, List, Union, Literal
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class ProjectCreate(BaseModel):
@@ -62,6 +64,81 @@ class KnowledgePointCreate(BaseModel):
     tags: list[str] = Field(
         default_factory=list, description="Knowledge point tags"
     )
+
+
+class CourseResourceCreate(BaseModel):
+    chapter_id: str | None = None
+    document_id: str | None = None
+    generated_resource_id: str | None = None
+    resource_type: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=1)
+    description: str | None = None
+    source_type: str = "internal"
+    source_url: str | None = None
+    difficulty_level: str = "intermediate"
+    estimated_minutes: int | None = Field(None, ge=0)
+    license_info: str | None = None
+    target_audiences: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    knowledge_point_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_source(self):
+        if self.document_id and self.generated_resource_id:
+            raise ValueError(
+                "document_id and generated_resource_id cannot both be set"
+            )
+        return self
+
+
+class CourseResourceUpdate(BaseModel):
+    chapter_id: str | None = None
+    document_id: str | None = None
+    generated_resource_id: str | None = None
+    resource_type: str | None = Field(None, min_length=1)
+    title: str | None = Field(None, min_length=1)
+    description: str | None = None
+    source_type: str | None = None
+    source_url: str | None = None
+    difficulty_level: str | None = None
+    estimated_minutes: int | None = Field(None, ge=0)
+    license_info: str | None = None
+    target_audiences: list[str] | None = None
+    metadata: dict[str, Any] | None = None
+    knowledge_point_ids: list[str] | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self):
+        if self.document_id and self.generated_resource_id:
+            raise ValueError(
+                "document_id and generated_resource_id cannot both be set"
+            )
+        return self
+
+
+class LearnerProfileReplace(BaseModel):
+    profile_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class LearnerProfilePatch(BaseModel):
+    profile_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class KnowledgeStateUpsert(BaseModel):
+    mastery_score: float = Field(..., ge=0, le=100)
+    confidence: float = Field(default=0, ge=0, le=1)
+    trend: str = "stable"
+    status: str = "not_started"
+    attempt_count: int = Field(default=0, ge=0)
+    correct_count: int = Field(default=0, ge=0)
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    last_practiced_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_counts(self):
+        if self.correct_count > self.attempt_count:
+            raise ValueError("correct_count cannot exceed attempt_count")
+        return self
 
 
 class DocumentCreate(BaseModel):
@@ -218,6 +295,9 @@ class PracticeRecordCreate(BaseModel):
     )
     item_id: str = Field(
         ..., description="ID of the study resource (flashcard or quiz question)"
+    )
+    knowledge_point_id: str | None = Field(
+        None, description="Optional related knowledge point ID"
     )
     topic: str = Field(..., max_length=500, description="Topic extracted from question")
     user_answer: str | None = Field(

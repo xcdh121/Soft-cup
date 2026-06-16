@@ -418,6 +418,13 @@ class PracticeRecord(Base):
         String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
 
+    knowledge_point_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     item_type: Mapped[str] = mapped_column(
         String, index=True
     )  # "flashcard" or "quiz" - type of study resource
@@ -442,6 +449,7 @@ class PracticeRecord(Base):
     # Relationships
     user = relationship("User")
     project = relationship("Project")
+    knowledge_point = relationship("KnowledgePoint")
 
 
 class MindMap(Base):
@@ -1029,6 +1037,42 @@ class LearnerProfile(Base):
 
     user = relationship("User", back_populates="learner_profiles")
     project = relationship("Project", back_populates="learner_profiles")
+    revisions = relationship(
+        "LearnerProfileRevision",
+        back_populates="profile",
+        cascade="all, delete-orphan",
+        order_by="LearnerProfileRevision.created_at",
+    )
+
+
+class LearnerProfileRevision(Base):
+    __tablename__ = "learner_profile_revisions"
+    __table_args__ = (
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",
+            name="ck_learner_profile_revisions_confidence",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    profile_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("learner_profiles.id", ondelete="CASCADE"),
+        index=True,
+    )
+    field_key: Mapped[str] = mapped_column(String, index=True)
+    old_value: Mapped[object | None] = mapped_column(JSON, nullable=True)
+    new_value: Mapped[object | None] = mapped_column(JSON, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source_type: Mapped[str] = mapped_column(String, default="manual", index=True)
+    source_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    profile = relationship("LearnerProfile", back_populates="revisions")
 
 
 class StudentKnowledgeState(Base):
@@ -1085,4 +1129,66 @@ class StudentKnowledgeState(Base):
     user = relationship("User", back_populates="knowledge_states")
     knowledge_point = relationship(
         "KnowledgePoint", back_populates="student_states"
+    )
+    events = relationship(
+        "KnowledgeStateEvent",
+        back_populates="knowledge_state",
+        cascade="all, delete-orphan",
+        order_by="KnowledgeStateEvent.created_at",
+    )
+
+
+class KnowledgeStateEvent(Base):
+    __tablename__ = "knowledge_state_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "knowledge_point_id",
+            "source_type",
+            "source_id",
+            name="uq_knowledge_state_events_source",
+        ),
+        CheckConstraint(
+            "score_before >= 0 AND score_before <= 100",
+            name="ck_knowledge_state_events_score_before",
+        ),
+        CheckConstraint(
+            "score_after >= 0 AND score_after <= 100",
+            name="ck_knowledge_state_events_score_after",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    knowledge_state_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("student_knowledge_states.id", ondelete="CASCADE"),
+        index=True,
+    )
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    knowledge_point_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="CASCADE"),
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String, index=True)
+    source_type: Mapped[str] = mapped_column(String, index=True)
+    source_id: Mapped[str] = mapped_column(String, index=True)
+    score_before: Mapped[float] = mapped_column(Float)
+    score_after: Mapped[float] = mapped_column(Float)
+    impact: Mapped[float] = mapped_column(Float)
+    was_correct: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    knowledge_state = relationship(
+        "StudentKnowledgeState", back_populates="events"
     )
