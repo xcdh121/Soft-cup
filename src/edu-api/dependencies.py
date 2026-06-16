@@ -3,6 +3,7 @@
 from config import Settings, get_settings
 from task_runner import TaskRunnerService
 from edu_core.services import (
+    AgentOrchestrationService,
     ChatService,
     DocumentService,
     DocumentUploadService,
@@ -89,6 +90,11 @@ def get_usage_service(
 def get_project_service() -> ProjectService:
     """Get ProjectService instance."""
     return ProjectService()
+
+
+def get_agent_orchestration_service() -> AgentOrchestrationService:
+    """Get AgentOrchestrationService instance."""
+    return AgentOrchestrationService()
 
 
 def get_resource_package_service() -> ResourcePackageService:

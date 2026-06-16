@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -551,6 +551,185 @@ class StudyPlan(Base):
     # Relationships
     user = relationship("User")
     project = relationship("Project")
+
+
+class AgentRun(Base):
+    __tablename__ = "agent_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    goal: Mapped[str] = mapped_column(String, index=True)
+    status: Mapped[str] = mapped_column(String, index=True)
+    trigger: Mapped[dict] = mapped_column(JSON, default=dict)
+    context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    final_result: Mapped[dict] = mapped_column(JSON, default=dict)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    user = relationship("User")
+    project = relationship("Project")
+    events = relationship(
+        "AgentEvent", back_populates="run", cascade="all, delete-orphan"
+    )
+    artifacts = relationship(
+        "AgentArtifact", back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class AgentEvent(Base):
+    __tablename__ = "agent_events"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+
+    event_type: Mapped[str] = mapped_column(String, index=True)
+    agent_name: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String, index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    run = relationship("AgentRun", back_populates="events")
+
+
+class AgentArtifact(Base):
+    __tablename__ = "agent_artifacts"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+
+    agent_name: Mapped[str] = mapped_column(String, index=True)
+    artifact_key: Mapped[str] = mapped_column(String, index=True)
+    artifact: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    run = relationship("AgentRun", back_populates="artifacts")
+
+
+class Diagnosis(Base):
+    __tablename__ = "diagnoses"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    status: Mapped[str] = mapped_column(String, index=True)
+    diagnosis: Mapped[dict] = mapped_column(JSON, default=dict)
+    next_actions: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    run = relationship("AgentRun")
+    project = relationship("Project")
+    user = relationship("User")
+    recommendations = relationship(
+        "Recommendation", back_populates="diagnosis_record", cascade="all, delete-orphan"
+    )
+    learning_paths = relationship(
+        "LearningPath", back_populates="diagnosis_record", cascade="all, delete-orphan"
+    )
+
+
+class Recommendation(Base):
+    __tablename__ = "recommendations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    diagnosis_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("diagnoses.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    recommendation_type: Mapped[str] = mapped_column(String, index=True)
+    target_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String, index=True)
+    reason_codes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    reason_text: Mapped[list[str]] = mapped_column(JSON, default=list)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recommended_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    feedback: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    run = relationship("AgentRun")
+    diagnosis_record = relationship("Diagnosis", back_populates="recommendations")
+    project = relationship("Project")
+    user = relationship("User")
+
+
+class LearningPath(Base):
+    __tablename__ = "learning_paths"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    diagnosis_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("diagnoses.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    content: Mapped[dict] = mapped_column(JSON, default=dict)
+    based_on_recommendation_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    run = relationship("AgentRun")
+    diagnosis_record = relationship("Diagnosis", back_populates="learning_paths")
+    project = relationship("Project")
+    user = relationship("User")
 
 
 class ResourcePackage(Base):

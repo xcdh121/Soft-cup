@@ -5,6 +5,10 @@ build/
 dist/
 wheels/
 *.egg-info
+.localdata/
+output/
+tmp/
+.playwright-mcp/
 
 # Virtual environments
 .venv
