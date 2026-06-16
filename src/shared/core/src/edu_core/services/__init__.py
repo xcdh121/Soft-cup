@@ -1,6 +1,7 @@
 """Services for managing entities."""
 
 from edu_core.exceptions import NotFoundError
+from edu_core.services.agent_orchestration import AgentOrchestrationService
 from edu_core.services.chats import ChatService
 from edu_core.services.document_upload import DocumentUploadService
 from edu_core.services.documents import DocumentService
@@ -17,6 +18,7 @@ from edu_core.services.usage import UsageService
 from edu_core.services.users import UserService
 
 __all__ = [
+    "AgentOrchestrationService",
     "ChatService",
     "DocumentService",
     "DocumentUploadService",

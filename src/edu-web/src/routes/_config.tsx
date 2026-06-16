@@ -102,6 +102,11 @@ const DashboardPage = lazy(() =>
     default: m.DashboardPage,
   })),
 )
+const AgentOrchestrationRoute = lazy(() =>
+  import('./agent-orchestration-route').then((m) => ({
+    default: m.AgentOrchestrationRoute,
+  })),
+)
 
 const requireAuth = async () => {
   const { isSupabaseConfigured } = await import('@/lib/supabase')
@@ -180,6 +185,16 @@ export const signUpRoute = createRoute({
   component: () => (
     <Suspense fallback={<LoadingPage />}>
       <SignUpPage />
+    </Suspense>
+  ),
+})
+
+export const agentOrchestrationRoute = createRoute({
+  path: '/agent-orchestration',
+  getParentRoute: () => rootRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <AgentOrchestrationRoute />
     </Suspense>
   ),
 })
@@ -367,4 +382,5 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   signInRoute,
   signUpRoute,
+  agentOrchestrationRoute,
 ])

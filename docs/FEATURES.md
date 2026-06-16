@@ -13,8 +13,9 @@
 9. [Practice Records](features/PRACTICE.md)
 10. [Study Plans](features/STUDY_PLANS.md)
 11. [Usage Limits](features/USAGE_LIMITS.md)
-12. [Architecture](ARCHITECTURE.md)
-13. [Best Practices & Limitations](BEST_PRACTICES.md)
+12. [Multi-Agent Orchestration](MULTI_AGENT_ORCHESTRATION.md)
+13. [Architecture](ARCHITECTURE.md)
+14. [Best Practices & Limitations](BEST_PRACTICES.md)
 
 ## Overview & Core Concepts
 
