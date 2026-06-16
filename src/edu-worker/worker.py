@@ -38,6 +38,10 @@ async def run_task(ctx, message: QueueTaskMessage) -> None:
         embedding_model=settings.embedding_model,
         embedding_api_key=settings.embedding_api_key,
         embedding_base_url=settings.embedding_base_url,
+        embedding_provider=settings.embedding_provider,
+        embedding_app_id=settings.embedding_app_id,
+        embedding_api_secret=settings.embedding_api_secret,
+        embedding_domain=settings.embedding_domain,
     )
     runner = TaskRunnerService(
         storage_root=settings.storage_root,
@@ -47,6 +51,10 @@ async def run_task(ctx, message: QueueTaskMessage) -> None:
         embedding_model=settings.embedding_model,
         embedding_api_key=settings.embedding_api_key,
         embedding_base_url=settings.embedding_base_url,
+        embedding_provider=settings.embedding_provider,
+        embedding_app_id=settings.embedding_app_id,
+        embedding_api_secret=settings.embedding_api_secret,
+        embedding_domain=settings.embedding_domain,
         search_service=search_service,
     )
     await runner._dispatch_async(message)

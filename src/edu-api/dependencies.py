@@ -38,6 +38,10 @@ def get_search_service(
         embedding_model=settings.embedding_model,
         embedding_api_key=settings.embedding_api_key,
         embedding_base_url=settings.embedding_base_url,
+        embedding_provider=settings.embedding_provider,
+        embedding_app_id=settings.embedding_app_id,
+        embedding_api_secret=settings.embedding_api_secret,
+        embedding_domain=settings.embedding_domain,
     )
 
 
@@ -53,6 +57,10 @@ def get_task_runner(
         embedding_model=settings.embedding_model,
         embedding_api_key=settings.embedding_api_key,
         embedding_base_url=settings.embedding_base_url,
+        embedding_provider=settings.embedding_provider,
+        embedding_app_id=settings.embedding_app_id,
+        embedding_api_secret=settings.embedding_api_secret,
+        embedding_domain=settings.embedding_domain,
         search_service=search_service,
     )
 

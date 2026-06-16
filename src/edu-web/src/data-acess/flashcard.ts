@@ -82,6 +82,7 @@ export const createFlashcardGroupStreamAtom = runtime
       _get: Atom.FnContext,
     ) {
       const { httpClient } = yield* ApiClientService
+      let streamError: string | undefined
       const body = HttpBody.unsafeJson(
         new GenerateRequest({
           count: input.flashcardCount,
@@ -122,6 +123,9 @@ export const createFlashcardGroupStreamAtom = runtime
         Stream.tap((progress) =>
           Effect.gen(function* () {
             const registry = yield* Registry.AtomRegistry
+            if (progress.error) {
+              streamError = progress.error
+            }
             registry.set(flashcardProgressAtom, {
               status: progress.status,
               message: progress.message,
@@ -139,6 +143,9 @@ export const createFlashcardGroupStreamAtom = runtime
         registry.refresh(flashcardGroupsAtom(input.projectId))
       }
       registry.set(flashcardProgressAtom, null)
+      if (streamError) {
+        throw new Error(streamError)
+      }
     }),
   )
   .pipe(Atom.keepAlive)

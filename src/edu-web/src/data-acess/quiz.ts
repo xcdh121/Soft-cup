@@ -85,6 +85,7 @@ export const createQuizStreamAtom = Atom.fn(
     Effect.gen(function* () {
       const registry = yield* Registry.AtomRegistry
       const { httpClient } = yield* ApiClientService
+      let streamError: string | undefined
       const body = HttpBody.unsafeJson(
         new GenerateRequest({
           count: input.questionCount,
@@ -123,6 +124,9 @@ export const createQuizStreamAtom = Atom.fn(
         }),
         Stream.tap((progress) =>
           Effect.sync(() => {
+            if (progress.error) {
+              streamError = progress.error
+            }
             registry.set(quizProgressAtom, {
               status: progress.status,
               message: progress.message,
@@ -141,6 +145,9 @@ export const createQuizStreamAtom = Atom.fn(
 
       // Clear progress when done
       registry.set(quizProgressAtom, null)
+      if (streamError) {
+        throw new Error(streamError)
+      }
     }).pipe(Effect.provide(ApiClientService.Default)),
 ).pipe(Atom.keepAlive)
 

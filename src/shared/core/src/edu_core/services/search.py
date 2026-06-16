@@ -22,6 +22,10 @@ class SearchService:
         embedding_model: str,
         embedding_api_key: str = "",
         embedding_base_url: str | None = None,
+        embedding_provider: str = "openai",
+        embedding_app_id: str = "",
+        embedding_api_secret: str = "",
+        embedding_domain: str = "query",
     ) -> None:
         """Initialize the search service.
 
@@ -36,6 +40,11 @@ class SearchService:
                 model=embedding_model,
                 api_key=embedding_api_key,
                 base_url=embedding_base_url,
+                provider=embedding_provider,
+                app_id=embedding_app_id,
+                api_secret=embedding_api_secret,
+                domain=embedding_domain,
+                target_dimensions=3072,
             )
         )
         self._vector_store: PGVectorStore | None = None

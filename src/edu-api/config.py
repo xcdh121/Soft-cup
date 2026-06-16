@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-large"
     embedding_api_key: str = ""
     embedding_base_url: str | None = None
+    embedding_provider: str = "openai"
+    embedding_app_id: str = ""
+    embedding_api_secret: str = ""
+    embedding_domain: str = "query"
 
     # Usage Limits (per day per user)
     max_chat_messages_per_day: int = 50

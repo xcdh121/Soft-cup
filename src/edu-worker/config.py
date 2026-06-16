@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-large"
     embedding_api_key: str = ""
     embedding_base_url: str | None = None
+    embedding_provider: str = "openai"
+    embedding_app_id: str = ""
+    embedding_api_secret: str = ""
+    embedding_domain: str = "query"
 
     # Database
     database_url: str = ""
