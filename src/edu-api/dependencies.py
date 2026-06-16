@@ -35,9 +35,14 @@ def get_search_service(
     """Get SearchService instance with configuration from settings."""
     return SearchService(
         database_url=settings.database_url,
+        embedding_provider=settings.embedding_provider,
         embedding_model=settings.embedding_model,
         embedding_api_key=settings.embedding_api_key,
+        embedding_api_secret=settings.embedding_api_secret,
+        embedding_app_id=settings.embedding_app_id,
         embedding_base_url=settings.embedding_base_url,
+        embedding_domain=settings.embedding_domain,
+        embedding_dimensions=settings.embedding_dimensions,
     )
 
 
@@ -50,9 +55,14 @@ def get_task_runner(
         llm_model=settings.llm_model,
         llm_api_key=settings.llm_api_key,
         llm_base_url=settings.llm_base_url,
+        embedding_provider=settings.embedding_provider,
         embedding_model=settings.embedding_model,
         embedding_api_key=settings.embedding_api_key,
+        embedding_api_secret=settings.embedding_api_secret,
+        embedding_app_id=settings.embedding_app_id,
         embedding_base_url=settings.embedding_base_url,
+        embedding_domain=settings.embedding_domain,
+        embedding_dimensions=settings.embedding_dimensions,
         search_service=search_service,
     )
 

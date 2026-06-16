@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Any
 
 from edu_core.services.search import SearchService
-from edu_queue.service import QueueService
+from edu_queue.service import ArqQueueService, QueueService
 from langchain.agents import AgentState
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel, ConfigDict
@@ -17,7 +17,7 @@ class ChatbotContext(BaseModel):
     language: str
     project_id: str
     search: "SearchService"
-    queue: "QueueService"
+    queue: "QueueService | ArqQueueService"
     usage: object = (
         None  # Optional usage service (can be None or any usage service type)
     )

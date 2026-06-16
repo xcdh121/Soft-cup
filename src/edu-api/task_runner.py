@@ -33,8 +33,13 @@ class TaskRunnerService:
         llm_api_key: str = "",
         llm_base_url: str | None = None,
         embedding_model: str,
+        embedding_provider: str = "openai",
         embedding_api_key: str = "",
+        embedding_api_secret: str = "",
+        embedding_app_id: str = "",
         embedding_base_url: str | None = None,
+        embedding_domain: str = "query",
+        embedding_dimensions: int = 3072,
         search_service: Any,
     ) -> None:
         self.storage = LocalStorageService(storage_root)
@@ -48,9 +53,14 @@ class TaskRunnerService:
         )
         self.embeddings = create_embeddings(
             EmbeddingProviderConfig(
+                provider=embedding_provider,
                 model=embedding_model,
                 api_key=embedding_api_key,
+                api_secret=embedding_api_secret,
+                app_id=embedding_app_id,
                 base_url=embedding_base_url,
+                domain=embedding_domain,
+                dimensions=embedding_dimensions,
             )
         )
 
