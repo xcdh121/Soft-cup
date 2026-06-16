@@ -3,7 +3,13 @@
 from contextlib import contextmanager
 from uuid import uuid4
 
-from edu_db.models import Course, CourseChapter, KnowledgePoint, Project
+from edu_db.models import (
+    Course,
+    CourseChapter,
+    KnowledgePoint,
+    KnowledgePointRelation,
+    Project,
+)
 from edu_db.session import get_session_factory
 
 from edu_core.exceptions import NotFoundError
@@ -11,6 +17,7 @@ from edu_core.schemas.courses import (
     CourseChapterDto,
     CourseDto,
     KnowledgePointDto,
+    KnowledgePointRelationDto,
 )
 from edu_core.schemas.projects import ProjectDto
 
@@ -210,6 +217,91 @@ class CourseService:
                 for point in knowledge_points
             ]
 
+    def create_knowledge_point_relation(
+        self,
+        course_id: str,
+        owner_id: str,
+        source_knowledge_point_id: str,
+        target_knowledge_point_id: str,
+        relation_type: str = "prerequisite",
+        strength: float = 1.0,
+        description: str | None = None,
+    ) -> KnowledgePointRelationDto:
+        with self._get_db_session() as db:
+            self._get_owned_course(db, course_id, owner_id)
+            if source_knowledge_point_id == target_knowledge_point_id:
+                raise ValueError("source and target knowledge points cannot be the same")
+            self._get_course_knowledge_point(
+                db, course_id, source_knowledge_point_id
+            )
+            self._get_course_knowledge_point(
+                db, course_id, target_knowledge_point_id
+            )
+
+            duplicate = (
+                db.query(KnowledgePointRelation)
+                .filter(
+                    KnowledgePointRelation.source_knowledge_point_id
+                    == source_knowledge_point_id,
+                    KnowledgePointRelation.target_knowledge_point_id
+                    == target_knowledge_point_id,
+                    KnowledgePointRelation.relation_type == relation_type,
+                )
+                .first()
+            )
+            if duplicate:
+                raise ValueError("Knowledge point relation already exists")
+
+            relation = KnowledgePointRelation(
+                id=str(uuid4()),
+                course_id=course_id,
+                source_knowledge_point_id=source_knowledge_point_id,
+                target_knowledge_point_id=target_knowledge_point_id,
+                relation_type=relation_type,
+                strength=strength,
+                description=description,
+            )
+            db.add(relation)
+            db.commit()
+            db.refresh(relation)
+            return KnowledgePointRelationDto.model_validate(relation)
+
+    def list_knowledge_point_relations(
+        self, course_id: str, owner_id: str
+    ) -> list[KnowledgePointRelationDto]:
+        with self._get_db_session() as db:
+            self._get_owned_course(db, course_id, owner_id)
+            relations = (
+                db.query(KnowledgePointRelation)
+                .filter(KnowledgePointRelation.course_id == course_id)
+                .order_by(KnowledgePointRelation.created_at)
+                .all()
+            )
+            return [
+                KnowledgePointRelationDto.model_validate(relation)
+                for relation in relations
+            ]
+
+    def delete_knowledge_point_relation(
+        self, course_id: str, relation_id: str, owner_id: str
+    ) -> None:
+        with self._get_db_session() as db:
+            self._get_owned_course(db, course_id, owner_id)
+            relation = (
+                db.query(KnowledgePointRelation)
+                .filter(
+                    KnowledgePointRelation.id == relation_id,
+                    KnowledgePointRelation.course_id == course_id,
+                )
+                .first()
+            )
+            if not relation:
+                raise NotFoundError(
+                    f"Knowledge point relation {relation_id} not found"
+                )
+            db.delete(relation)
+            db.commit()
+
     @staticmethod
     def _get_owned_course(db, course_id: str, owner_id: str) -> Course:
         course = (
@@ -238,6 +330,24 @@ class CourseService:
                 f"Chapter {chapter_id} not found in course {course_id}"
             )
         return chapter
+
+    @staticmethod
+    def _get_course_knowledge_point(
+        db, course_id: str, knowledge_point_id: str
+    ) -> KnowledgePoint:
+        point = (
+            db.query(KnowledgePoint)
+            .filter(
+                KnowledgePoint.id == knowledge_point_id,
+                KnowledgePoint.course_id == course_id,
+            )
+            .first()
+        )
+        if not point:
+            raise NotFoundError(
+                f"Knowledge point {knowledge_point_id} not found in course {course_id}"
+            )
+        return point
 
     @contextmanager
     def _get_db_session(self):

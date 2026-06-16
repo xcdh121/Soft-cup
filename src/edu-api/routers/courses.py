@@ -8,6 +8,7 @@ from edu_core.schemas.courses import (
     CourseChapterDto,
     CourseDto,
     KnowledgePointDto,
+    KnowledgePointRelationDto,
 )
 from edu_core.schemas.projects import ProjectDto
 from edu_core.services import CourseResourceService, CourseService
@@ -20,6 +21,7 @@ from routers.schemas import (
     CourseResourceUpdate,
     CourseUpdate,
     KnowledgePointCreate,
+    KnowledgePointRelationCreate,
 )
 
 router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
@@ -186,6 +188,67 @@ async def list_knowledge_points(
 ):
     try:
         return service.list_knowledge_points(course_id, current_user.id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{course_id}/knowledge-point-relations",
+    response_model=KnowledgePointRelationDto,
+    status_code=201,
+)
+async def create_knowledge_point_relation(
+    course_id: str,
+    relation: KnowledgePointRelationCreate,
+    current_user=Depends(get_current_user),
+    service: CourseService = Depends(get_course_service),
+):
+    try:
+        return service.create_knowledge_point_relation(
+            course_id=course_id,
+            owner_id=current_user.id,
+            source_knowledge_point_id=relation.source_knowledge_point_id,
+            target_knowledge_point_id=relation.target_knowledge_point_id,
+            relation_type=relation.relation_type,
+            strength=relation.strength,
+            description=relation.description,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/{course_id}/knowledge-point-relations",
+    response_model=list[KnowledgePointRelationDto],
+)
+async def list_knowledge_point_relations(
+    course_id: str,
+    current_user=Depends(get_current_user),
+    service: CourseService = Depends(get_course_service),
+):
+    try:
+        return service.list_knowledge_point_relations(course_id, current_user.id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/{course_id}/knowledge-point-relations/{relation_id}",
+    status_code=204,
+)
+async def delete_knowledge_point_relation(
+    course_id: str,
+    relation_id: str,
+    current_user=Depends(get_current_user),
+    service: CourseService = Depends(get_course_service),
+):
+    try:
+        service.delete_knowledge_point_relation(
+            course_id, relation_id, current_user.id
+        )
+        return None
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

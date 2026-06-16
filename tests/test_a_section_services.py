@@ -10,6 +10,7 @@ from edu_db.models import (
     Base,
     Course,
     KnowledgePoint,
+    KnowledgePointRelation,
     KnowledgeStateEvent,
     LearnerProfileRevision,
     Project,
@@ -19,6 +20,7 @@ from edu_db.models import (
     User,
 )
 from edu_core.services.course_resources import CourseResourceService
+from edu_core.services.courses import CourseService
 from edu_core.services.knowledge_states import KnowledgeStateService
 from edu_core.services.learner_profiles import LearnerProfileService
 from edu_core.services.practice import PracticeService
@@ -36,6 +38,7 @@ class ASectionServiceTests(unittest.TestCase):
         self.patches = ExitStack()
         for target in (
             "edu_core.services.course_resources.get_session_factory",
+            "edu_core.services.courses.get_session_factory",
             "edu_core.services.learner_profiles.get_session_factory",
             "edu_core.services.knowledge_states.get_session_factory",
             "edu_core.services.practice.get_session_factory",
@@ -60,6 +63,13 @@ class ASectionServiceTests(unittest.TestCase):
                         course_id="course-1",
                         name="Transactions",
                         tags=["ACID"],
+                    ),
+                    KnowledgePoint(
+                        id="kp-2",
+                        course_id="course-1",
+                        name="Isolation Levels",
+                        position=1,
+                        tags=["isolation"],
                     ),
                     Quiz(
                         id="quiz-1",
@@ -109,6 +119,27 @@ class ASectionServiceTests(unittest.TestCase):
 
         self.assertEqual(created.knowledge_point_ids, ["kp-1"])
         self.assertEqual(service.list_resources("course-1", "user-1")[0].id, created.id)
+
+    def test_knowledge_point_relations_create_list_and_delete(self):
+        service = CourseService()
+        relation = service.create_knowledge_point_relation(
+            course_id="course-1",
+            owner_id="user-1",
+            source_knowledge_point_id="kp-1",
+            target_knowledge_point_id="kp-2",
+            relation_type="prerequisite",
+            strength=0.8,
+            description="Transactions before isolation levels",
+        )
+
+        relations = service.list_knowledge_point_relations("course-1", "user-1")
+        self.assertEqual(len(relations), 1)
+        self.assertEqual(relations[0].source_knowledge_point_id, "kp-1")
+        self.assertEqual(relations[0].target_knowledge_point_id, "kp-2")
+
+        service.delete_knowledge_point_relation("course-1", relation.id, "user-1")
+        with self.session_factory() as db:
+            self.assertEqual(db.query(KnowledgePointRelation).count(), 0)
 
     def test_profile_updates_create_field_revisions(self):
         service = LearnerProfileService()
@@ -181,6 +212,63 @@ class ASectionServiceTests(unittest.TestCase):
         self.assertEqual(result.processed_count, 1)
         self.assertEqual(result.updated_states[0].mastery_score, 0)
         self.assertEqual(result.updated_states[0].status, "learning")
+
+    def test_knowledge_graph_includes_relations_and_mastery(self):
+        CourseService().create_knowledge_point_relation(
+            course_id="course-1",
+            owner_id="user-1",
+            source_knowledge_point_id="kp-1",
+            target_knowledge_point_id="kp-2",
+            relation_type="prerequisite",
+            strength=0.75,
+        )
+        KnowledgeStateService().upsert_state(
+            project_id="project-1",
+            knowledge_point_id="kp-1",
+            user_id="user-1",
+            mastery_score=72,
+            confidence=0.7,
+            trend="up",
+            status="learning",
+            attempt_count=4,
+            correct_count=3,
+            evidence=[],
+            last_practiced_at=None,
+        )
+
+        graph = KnowledgeStateService().get_knowledge_graph("project-1", "user-1")
+
+        self.assertEqual(len(graph.nodes), 2)
+        self.assertEqual(len(graph.edges), 1)
+        transaction_node = next(node for node in graph.nodes if node.id == "kp-1")
+        self.assertEqual(transaction_node.mastery_score, 72)
+        self.assertEqual(graph.edges[0].source, "kp-1")
+        self.assertEqual(graph.edges[0].target, "kp-2")
+
+    def test_profile_refresh_infers_fields_from_practice_and_states(self):
+        PracticeService().create_practice_record(
+            user_id="user-1",
+            project_id="project-1",
+            item_type="quiz",
+            item_id="question-1",
+            knowledge_point_id="kp-1",
+            topic="Transactions",
+            user_answer="b",
+            correct_answer="a",
+            was_correct=False,
+        )
+        KnowledgeStateService().refresh_states("project-1", "user-1")
+
+        profile = LearnerProfileService().refresh_profile("project-1", "user-1")
+
+        self.assertIn("current_course", profile.profile_data)
+        self.assertIn("learning_progress", profile.profile_data)
+        self.assertIn("common_error_types", profile.profile_data)
+        self.assertIn("current_learning_state", profile.profile_data)
+        self.assertEqual(profile.profile_data["current_course"]["value"], "Databases")
+        self.assertEqual(profile.profile_data["learning_progress"]["value"]["attempt_count"], 1)
+        revisions = LearnerProfileService().list_revisions("project-1", "user-1")
+        self.assertTrue(any(revision.source_type == "auto_refresh" for revision in revisions))
 
 
 if __name__ == "__main__":

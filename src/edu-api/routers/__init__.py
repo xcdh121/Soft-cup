@@ -3,7 +3,10 @@ from .chats import router as chats_router
 from .courses import router as courses_router
 from .documents import router as documents_router
 from .flashcard_groups import router as flashcard_groups_router
-from .knowledge_states import router as knowledge_states_router
+from .knowledge_states import (
+    knowledge_graph_router,
+    router as knowledge_states_router,
+)
 from .learner_profiles import router as learner_profiles_router
 from .mind_maps import router as mind_maps_router
 from .notes import router as notes_router
@@ -25,6 +28,7 @@ __all__ = [
     "documents_router",
     "flashcard_groups_router",
     "knowledge_states_router",
+    "knowledge_graph_router",
     "learner_profiles_router",
     "mind_maps_router",
     "notes_router",

@@ -58,3 +58,18 @@ class KnowledgePointDto(BaseModel):
     tags: list[str] = Field(default_factory=list, description="Knowledge point tags")
     created_at: datetime = Field(..., description="Knowledge point creation time")
     updated_at: datetime = Field(..., description="Knowledge point update time")
+
+
+class KnowledgePointRelationDto(BaseModel):
+    """Directed relation between two knowledge points in a course."""
+
+    model_config = {"from_attributes": True}
+
+    id: str = Field(..., description="Unique ID of the relation")
+    course_id: str = Field(..., description="ID of the parent course")
+    source_knowledge_point_id: str = Field(..., description="Source point ID")
+    target_knowledge_point_id: str = Field(..., description="Target point ID")
+    relation_type: str = Field(..., description="Relation type")
+    strength: float = Field(..., description="Relation strength from 0 to 1")
+    description: str | None = Field(None, description="Relation description")
+    created_at: datetime = Field(..., description="Relation creation time")

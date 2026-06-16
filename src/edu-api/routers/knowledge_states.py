@@ -4,6 +4,7 @@ from auth import get_current_user
 from dependencies import get_knowledge_state_service
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.knowledge_states import (
+    KnowledgeGraphDto,
     KnowledgeStateDto,
     KnowledgeStateRefreshDto,
 )
@@ -17,6 +18,24 @@ router = APIRouter(
     prefix="/api/v1/projects/{project_id}/knowledge-states",
     tags=["knowledge-states"],
 )
+knowledge_graph_router = APIRouter(
+    prefix="/api/v1/projects/{project_id}/knowledge-graph",
+    tags=["knowledge-graph"],
+)
+
+
+@knowledge_graph_router.get("", response_model=KnowledgeGraphDto)
+async def get_knowledge_graph(
+    project_id: str,
+    current_user=Depends(get_current_user),
+    service: KnowledgeStateService = Depends(get_knowledge_state_service),
+):
+    try:
+        return service.get_knowledge_graph(project_id, current_user.id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post(

@@ -52,3 +52,38 @@ class KnowledgeStateRefreshDto(BaseModel):
     already_processed_count: int
     unmatched_count: int
     updated_states: list[KnowledgeStateDto] = Field(default_factory=list)
+
+
+class KnowledgeGraphNodeDto(BaseModel):
+    """Knowledge graph node enriched with the learner's state."""
+
+    id: str
+    label: str
+    chapter_id: str | None = None
+    difficulty_level: str
+    position: int
+    tags: list[str] = Field(default_factory=list)
+    mastery_score: float = 0.0
+    confidence: float = 0.0
+    trend: str = "stable"
+    status: str = "not_started"
+
+
+class KnowledgeGraphEdgeDto(BaseModel):
+    """Knowledge graph edge between two knowledge points."""
+
+    id: str
+    source: str
+    target: str
+    relation_type: str
+    strength: float
+    description: str | None = None
+
+
+class KnowledgeGraphDto(BaseModel):
+    """Project knowledge graph returned to the frontend."""
+
+    project_id: str
+    course_id: str
+    nodes: list[KnowledgeGraphNodeDto] = Field(default_factory=list)
+    edges: list[KnowledgeGraphEdgeDto] = Field(default_factory=list)

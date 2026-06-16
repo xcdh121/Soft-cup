@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from edu_db.models import (
     KnowledgePoint,
+    KnowledgePointRelation,
     KnowledgeStateEvent,
     PracticeRecord,
     Project,
@@ -14,6 +15,9 @@ from edu_db.session import get_session_factory
 
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.knowledge_states import (
+    KnowledgeGraphDto,
+    KnowledgeGraphEdgeDto,
+    KnowledgeGraphNodeDto,
     KnowledgeStateDto,
     KnowledgeStateRefreshDto,
 )
@@ -65,6 +69,62 @@ class KnowledgeStateService:
                 .first()
             )
             return self._to_dto(project_id, user_id, point, state)
+
+    def get_knowledge_graph(
+        self, project_id: str, user_id: str
+    ) -> KnowledgeGraphDto:
+        with self._get_db_session() as db:
+            project = self._get_owned_project_with_course(
+                db, project_id, user_id
+            )
+            rows = (
+                db.query(KnowledgePoint, StudentKnowledgeState)
+                .outerjoin(
+                    StudentKnowledgeState,
+                    (StudentKnowledgeState.knowledge_point_id == KnowledgePoint.id)
+                    & (StudentKnowledgeState.user_id == user_id),
+                )
+                .filter(KnowledgePoint.course_id == project.course_id)
+                .order_by(KnowledgePoint.position, KnowledgePoint.created_at)
+                .all()
+            )
+            relations = (
+                db.query(KnowledgePointRelation)
+                .filter(KnowledgePointRelation.course_id == project.course_id)
+                .order_by(KnowledgePointRelation.created_at)
+                .all()
+            )
+
+            return KnowledgeGraphDto(
+                project_id=project_id,
+                course_id=project.course_id,
+                nodes=[
+                    KnowledgeGraphNodeDto(
+                        id=point.id,
+                        label=point.name,
+                        chapter_id=point.chapter_id,
+                        difficulty_level=point.difficulty_level,
+                        position=point.position,
+                        tags=point.tags or [],
+                        mastery_score=state.mastery_score if state else 0,
+                        confidence=state.confidence if state else 0,
+                        trend=state.trend if state else "stable",
+                        status=state.status if state else "not_started",
+                    )
+                    for point, state in rows
+                ],
+                edges=[
+                    KnowledgeGraphEdgeDto(
+                        id=relation.id,
+                        source=relation.source_knowledge_point_id,
+                        target=relation.target_knowledge_point_id,
+                        relation_type=relation.relation_type,
+                        strength=relation.strength,
+                        description=relation.description,
+                    )
+                    for relation in relations
+                ],
+            )
 
     def upsert_state(
         self,

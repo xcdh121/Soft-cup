@@ -66,6 +66,20 @@ class KnowledgePointCreate(BaseModel):
     )
 
 
+class KnowledgePointRelationCreate(BaseModel):
+    source_knowledge_point_id: str = Field(..., description="Source knowledge point ID")
+    target_knowledge_point_id: str = Field(..., description="Target knowledge point ID")
+    relation_type: str = Field(default="prerequisite", description="Relation type")
+    strength: float = Field(default=1.0, ge=0, le=1, description="Relation strength")
+    description: str | None = Field(None, description="Relation description")
+
+    @model_validator(mode="after")
+    def validate_not_self(self):
+        if self.source_knowledge_point_id == self.target_knowledge_point_id:
+            raise ValueError("source and target knowledge points cannot be the same")
+        return self
+
+
 class CourseResourceCreate(BaseModel):
     chapter_id: str | None = None
     document_id: str | None = None
