@@ -6,6 +6,7 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/postgres
       - STORAGE_ROOT=/app/.localdata
       - ALLOW_DEV_AUTH_BYPASS=true
     depends_on:

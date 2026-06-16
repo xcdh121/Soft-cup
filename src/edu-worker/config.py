@@ -14,6 +14,9 @@ class Settings(BaseSettings):
 
     storage_root: str = "./.localdata"
     task_queue_name: str = "local-sync"
+    redis_url: str = "redis://localhost:6379/0"
+    task_job_timeout_seconds: int = 900
+    task_job_max_tries: int = 3
     llm_model: str = "gpt-4o-mini"
     llm_api_key: str = ""
     llm_base_url: str | None = None
