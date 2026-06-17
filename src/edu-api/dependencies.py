@@ -19,6 +19,7 @@ from edu_core.services import (
     UsageService,
     UserService,
 )
+from edu_core.services.xfyun_ppt import XfyunPptClient, XfyunPptConfig
 from edu_queue.service import ArqQueueService, QueueService
 from fastapi import Depends
 from edu_core.model_providers import LlmProviderConfig
@@ -115,9 +116,30 @@ def get_agent_orchestration_service(
     )
 
 
-def get_resource_package_service() -> ResourcePackageService:
+def get_resource_package_service(
+    settings: Settings = Depends(get_settings_dep),
+) -> ResourcePackageService:
     """Get ResourcePackageService instance."""
-    return ResourcePackageService()
+    return ResourcePackageService(
+        storage_root=settings.storage_root,
+        xfyun_ppt_client=XfyunPptClient(
+            XfyunPptConfig(
+                enabled=settings.xfyun_ppt_enabled,
+                app_id=settings.xfyun_ppt_app_id,
+                secret=settings.xfyun_ppt_secret,
+                base_url=settings.xfyun_ppt_base_url,
+                business_id=settings.xfyun_ppt_business_id,
+                default_author=settings.xfyun_ppt_default_author,
+                default_language=settings.xfyun_ppt_default_language,
+                default_search=settings.xfyun_ppt_default_search,
+                default_is_card_note=settings.xfyun_ppt_default_is_card_note,
+                default_is_figure=settings.xfyun_ppt_default_is_figure,
+                default_ai_image=settings.xfyun_ppt_default_ai_image,
+                poll_interval_seconds=settings.xfyun_ppt_poll_interval_seconds,
+                poll_timeout_seconds=settings.xfyun_ppt_poll_timeout_seconds,
+            )
+        ),
+    )
 
 
 def get_document_service() -> DocumentService:

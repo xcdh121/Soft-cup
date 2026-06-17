@@ -40,6 +40,21 @@ class Settings(BaseSettings):
     embedding_api_secret: str = ""
     embedding_domain: str = "query"
 
+    # XFYun PPT
+    xfyun_ppt_enabled: bool = False
+    xfyun_ppt_base_url: str = "https://zwapi.xfyun.cn"
+    xfyun_ppt_app_id: str = ""
+    xfyun_ppt_secret: str = ""
+    xfyun_ppt_business_id: str = ""
+    xfyun_ppt_default_author: str = "EduAgent"
+    xfyun_ppt_default_language: str = "cn"
+    xfyun_ppt_default_search: bool = False
+    xfyun_ppt_default_is_card_note: bool = False
+    xfyun_ppt_default_is_figure: bool = False
+    xfyun_ppt_default_ai_image: str = "normal"
+    xfyun_ppt_poll_interval_seconds: float = 3.0
+    xfyun_ppt_poll_timeout_seconds: float = 180.0
+
     # Usage Limits (per day per user)
     max_chat_messages_per_day: int = 50
     max_flashcard_generations_per_day: int = 10

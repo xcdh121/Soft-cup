@@ -50,10 +50,18 @@ type PracticeSetJson = {
 }
 
 type PptxJson = {
+  provider?: string
+  sid?: string
   title?: string
+  subTitle?: string
   theme?: string
   export_status?: string
   notes?: string
+  pptStatus?: string
+  totalPages?: number
+  donePages?: number
+  pptUrl?: string
+  coverImgSrc?: string
   slides?: Array<{
     page?: number
     title?: string
@@ -240,20 +248,28 @@ const renderPracticeSet = (resource: GeneratedResource) => {
 
 const renderPptOutline = (resource: GeneratedResource) => {
   const slides = parsePptOutline(resource.content_text ?? '')
+  const outline =
+    ((resource.content_json ?? {}) as { outline?: { title?: string } }).outline ?? {}
 
   return (
     <div className="mt-4 rounded-xl border bg-muted/20 p-4">
       <div className="flex items-center gap-2 font-medium">
         <PresentationIcon className="size-4" />
-        <span>演示结构</span>
+        <span>{outline.title ?? '演示结构'}</span>
       </div>
-      <ol className="mt-3 space-y-2 text-sm leading-6">
-        {slides.map((slide) => (
-          <li key={slide} className="rounded-lg border bg-background px-3 py-2">
-            {slide}
-          </li>
-        ))}
-      </ol>
+      {slides.length > 0 ? (
+        <ol className="mt-3 space-y-2 text-sm leading-6">
+          {slides.map((slide) => (
+            <li key={slide} className="rounded-lg border bg-background px-3 py-2">
+              {slide}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <div className="mt-3 text-sm text-muted-foreground">
+          暂无可展示的大纲内容。
+        </div>
+      )}
     </div>
   )
 }
@@ -261,6 +277,8 @@ const renderPptOutline = (resource: GeneratedResource) => {
 const renderPptx = (resource: GeneratedResource) => {
   const content = (resource.content_json ?? {}) as PptxJson
   const slides = content.slides ?? []
+  const isExternalPpt = Boolean(resource.file_url ?? content.pptUrl)
+  const downloadUrl = resource.file_url ?? content.pptUrl
 
   return (
     <div className="mt-4 space-y-3">
@@ -274,23 +292,55 @@ const renderPptx = (resource: GeneratedResource) => {
           </div>
           <Badge variant="outline">PPTX 结构</Badge>
         </div>
+        {content.subTitle ? (
+          <div className="mt-2 text-sm text-muted-foreground">{content.subTitle}</div>
+        ) : null}
+        {content.coverImgSrc || resource.cover_image_url ? (
+          <img
+            src={resource.cover_image_url ?? content.coverImgSrc}
+            alt={content.title ?? resource.title}
+            className="mt-3 max-h-56 rounded-lg border object-cover"
+          />
+        ) : null}
+        {isExternalPpt ? (
+          <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+            <div>
+              状态：{content.pptStatus ?? resource.status}
+              {content.totalPages
+                ? ` | 页数：${content.donePages ?? content.totalPages}/${content.totalPages}`
+                : ''}
+            </div>
+            {downloadUrl ? (
+              <a
+                href={downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary underline underline-offset-4"
+              >
+                下载生成的 PPT
+              </a>
+            ) : null}
+          </div>
+        ) : null}
         {content.notes ? (
           <div className="mt-3 text-sm text-muted-foreground">{content.notes}</div>
         ) : null}
       </div>
 
-      {slides.map((slide, index) => (
-        <div key={`${slide.page ?? index}-${slide.title ?? ''}`} className="rounded-xl border p-4">
-          <div className="font-medium">
-            第 {slide.page ?? index + 1} 页：{slide.title ?? '未命名页'}
-          </div>
-          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-            {(slide.bullets ?? []).map((bullet) => (
-              <li key={bullet}>{bullet}</li>
-            ))}
-          </ul>
-        </div>
-      ))}
+      {!isExternalPpt
+        ? slides.map((slide, index) => (
+            <div key={`${slide.page ?? index}-${slide.title ?? ''}`} className="rounded-xl border p-4">
+              <div className="font-medium">
+                第 {slide.page ?? index + 1} 页：{slide.title ?? '未命名页'}
+              </div>
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                {(slide.bullets ?? []).map((bullet) => (
+                  <li key={bullet}>{bullet}</li>
+                ))}
+              </ul>
+            </div>
+          ))
+        : null}
     </div>
   )
 }
