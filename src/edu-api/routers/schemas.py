@@ -220,6 +220,10 @@ class GenerateResourcePackageRequest(BaseModel):
     learning_path_id: str | None = Field(
         None, description="Associated learning path ID"
     )
+    diagnosis_id: str | None = Field(None, description="Associated diagnosis ID")
+    explanation_mode: str | None = Field(
+        None, description="Explanation mode for generated resources"
+    )
     title: str | None = Field(None, description="Optional package title")
     description: str | None = Field(None, description="Optional package description")
     target_topic: str = Field(..., description="Target topic")

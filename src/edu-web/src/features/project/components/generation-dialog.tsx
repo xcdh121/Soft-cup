@@ -217,9 +217,9 @@ export function GenerationDialog() {
         case 'note': {
           const note = await createNote({
             projectId,
-            title: 'AI Note',
-            description: instructions,
+            title: buildGeneratedTitle('笔记', instructions),
             content: '',
+            description: instructions,
           })
           await createNoteStream({
             projectId,
@@ -234,7 +234,7 @@ export function GenerationDialog() {
         case 'quiz': {
           const quiz = await createQuiz({
             projectId,
-            name: 'AI Quiz',
+            name: buildGeneratedTitle('测验', instructions),
             description: instructions,
           })
           await createQuizStream({
@@ -265,6 +265,7 @@ export function GenerationDialog() {
         case 'mindmap':
           await generateMindMapStream({
             projectId,
+            title: buildGeneratedTitle('思维导图', instructions),
             customInstructions: instructions,
           })
           break
@@ -557,6 +558,8 @@ export function GenerationDialog() {
                 <Loader2Icon className="size-4 mr-2 animate-spin" />
                 正在生成{actionLabel}...
               </>
+            ) : !customInstructions.trim() ? (
+              '填写要求后生成'
             ) : (
               `生成${actionLabel}`
             )}
@@ -565,6 +568,12 @@ export function GenerationDialog() {
       </DialogContent>
     </Dialog>
   )
+}
+
+function buildGeneratedTitle(resourceLabel: string, instructions: string): string {
+  const normalized = instructions.replace(/\s+/g, ' ').trim()
+  const suffix = normalized.length > 24 ? `${normalized.slice(0, 24)}...` : normalized
+  return suffix ? `AI ${resourceLabel}：${suffix}` : `AI ${resourceLabel}`
 }
 
 type DocumentCheckboxProps = {

@@ -104,6 +104,7 @@ def get_project_service() -> ProjectService:
 
 def get_agent_orchestration_service(
     settings: Settings = Depends(get_settings_dep),
+    queue_service: QueueService | ArqQueueService = Depends(get_queue_service),
 ) -> AgentOrchestrationService:
     """Get AgentOrchestrationService instance."""
     return AgentOrchestrationService(
@@ -112,7 +113,11 @@ def get_agent_orchestration_service(
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
             temperature=0.3,
-        )
+        ),
+        flashcard_group_service=FlashcardGroupService(queue_service=queue_service),
+        quiz_service=QuizService(queue_service=queue_service),
+        note_service=NoteService(queue_service=queue_service),
+        mind_map_service=MindMapService(queue_service=queue_service),
     )
 
 

@@ -28,13 +28,14 @@ class SupervisorAgent:
         self,
         agents: list[BaseOrchestrationAgent] | None = None,
         llm_config: LlmProviderConfig | None = None,
+        resource_agent: ResourceAgent | None = None,
     ) -> None:
         self.agents = agents or [
             ProfileAgent(),
             KTAgent(),
             CollectiveInsightAgent(),
             DiagnosisAgent(),
-            ResourceAgent(),
+            resource_agent or ResourceAgent(),
             PlannerAgent(llm_config=llm_config),
         ]
 

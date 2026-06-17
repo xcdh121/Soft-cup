@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: src/edu-api/Dockerfile
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     environment:
@@ -56,6 +58,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:123456@db:5432/postgres
       STORAGE_ROOT: /app/.localdata
+      TASK_QUEUE_BACKEND: arq
       TASK_QUEUE_NAME: edu-agent:tasks
       REDIS_URL: redis://redis:6379/0
       TASK_JOB_TIMEOUT_SECONDS: "900"
