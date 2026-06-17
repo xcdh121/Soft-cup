@@ -21,10 +21,14 @@ from routers.schemas import (
     CourseResourceUpdate,
     CourseUpdate,
     KnowledgePointCreate,
+    KnowledgePointUpdate,
     KnowledgePointRelationCreate,
 )
 
 router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
+knowledge_points_router = APIRouter(
+    prefix="/api/v1/knowledge-points", tags=["knowledge-points"]
+)
 
 
 @router.post("", response_model=CourseDto, status_code=201)
@@ -188,6 +192,89 @@ async def list_knowledge_points(
 ):
     try:
         return service.list_knowledge_points(course_id, current_user.id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@knowledge_points_router.get(
+    "/{knowledge_point_id}",
+    response_model=KnowledgePointDto,
+)
+async def get_knowledge_point(
+    knowledge_point_id: str,
+    current_user=Depends(get_current_user),
+    service: CourseService = Depends(get_course_service),
+):
+    try:
+        return service.get_knowledge_point(knowledge_point_id, current_user.id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@knowledge_points_router.patch(
+    "/{knowledge_point_id}",
+    response_model=KnowledgePointDto,
+)
+async def update_knowledge_point(
+    knowledge_point_id: str,
+    knowledge_point: KnowledgePointUpdate,
+    current_user=Depends(get_current_user),
+    service: CourseService = Depends(get_course_service),
+):
+    try:
+        return service.update_knowledge_point(
+            knowledge_point_id=knowledge_point_id,
+            owner_id=current_user.id,
+            name=knowledge_point.name,
+            description=knowledge_point.description,
+            chapter_id=knowledge_point.chapter_id,
+            difficulty_level=knowledge_point.difficulty_level,
+            position=knowledge_point.position,
+            tags=knowledge_point.tags,
+            fields_to_update=knowledge_point.model_fields_set,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@knowledge_points_router.post(
+    "/{knowledge_point_id}/resources",
+    response_model=CourseResourceDto,
+    status_code=201,
+)
+async def create_knowledge_point_resource(
+    knowledge_point_id: str,
+    resource: CourseResourceCreate,
+    current_user=Depends(get_current_user),
+    service: CourseResourceService = Depends(get_course_resource_service),
+):
+    try:
+        return service.create_resource_for_knowledge_point(
+            knowledge_point_id=knowledge_point_id,
+            owner_id=current_user.id,
+            **resource.model_dump(),
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@knowledge_points_router.get(
+    "/{knowledge_point_id}/resources",
+    response_model=list[CourseResourceDto],
+)
+async def list_knowledge_point_resources(
+    knowledge_point_id: str,
+    current_user=Depends(get_current_user),
+    service: CourseResourceService = Depends(get_course_resource_service),
+):
+    try:
+        return service.list_resources_by_knowledge_point(
+            knowledge_point_id, current_user.id
+        )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

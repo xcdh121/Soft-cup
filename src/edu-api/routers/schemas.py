@@ -66,6 +66,19 @@ class KnowledgePointCreate(BaseModel):
     )
 
 
+class KnowledgePointUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, description="Knowledge point name")
+    description: str | None = Field(
+        None, description="Knowledge point Markdown body"
+    )
+    chapter_id: str | None = Field(None, description="Optional chapter ID")
+    difficulty_level: str | None = Field(
+        None, description="Knowledge point difficulty"
+    )
+    position: int | None = Field(None, ge=0, description="Display order")
+    tags: list[str] | None = Field(None, description="Knowledge point tags")
+
+
 class KnowledgePointRelationCreate(BaseModel):
     source_knowledge_point_id: str = Field(..., description="Source knowledge point ID")
     target_knowledge_point_id: str = Field(..., description="Target knowledge point ID")

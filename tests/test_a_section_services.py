@@ -9,6 +9,8 @@ from sqlalchemy.pool import StaticPool
 from edu_db.models import (
     Base,
     Course,
+    CourseChapter,
+    CourseResourceKnowledgePoint,
     KnowledgePoint,
     KnowledgePointRelation,
     KnowledgeStateEvent,
@@ -52,6 +54,12 @@ class ASectionServiceTests(unittest.TestCase):
                 [
                     User(id="user-1", name="Test", email="test@example.com"),
                     Course(id="course-1", owner_id="user-1", name="Databases"),
+                    CourseChapter(
+                        id="chapter-1",
+                        course_id="course-1",
+                        title="Transactions",
+                        position=1,
+                    ),
                     Project(
                         id="project-1",
                         owner_id="user-1",
@@ -61,12 +69,14 @@ class ASectionServiceTests(unittest.TestCase):
                     KnowledgePoint(
                         id="kp-1",
                         course_id="course-1",
+                        chapter_id="chapter-1",
                         name="Transactions",
                         tags=["ACID"],
                     ),
                     KnowledgePoint(
                         id="kp-2",
                         course_id="course-1",
+                        chapter_id="chapter-1",
                         name="Isolation Levels",
                         position=1,
                         tags=["isolation"],
@@ -119,6 +129,53 @@ class ASectionServiceTests(unittest.TestCase):
 
         self.assertEqual(created.knowledge_point_ids, ["kp-1"])
         self.assertEqual(service.list_resources("course-1", "user-1")[0].id, created.id)
+
+    def test_knowledge_point_get_and_update(self):
+        service = CourseService()
+        point = service.get_knowledge_point("kp-1", "user-1")
+        self.assertEqual(point.name, "Transactions")
+
+        updated = service.update_knowledge_point(
+            knowledge_point_id="kp-1",
+            owner_id="user-1",
+            description="## 一句话介绍\n事务保证一组操作共同成功或失败。",
+            difficulty_level="beginner",
+            tags=["ACID", "transaction"],
+            fields_to_update={"description", "difficulty_level", "tags"},
+        )
+
+        self.assertEqual(updated.difficulty_level, "beginner")
+        self.assertIn("共同成功或失败", updated.description)
+        self.assertEqual(updated.tags, ["ACID", "transaction"])
+
+    def test_resource_can_be_created_from_knowledge_point(self):
+        service = CourseResourceService()
+        resource = service.create_resource_for_knowledge_point(
+            "kp-1",
+            "user-1",
+            chapter_id=None,
+            document_id=None,
+            generated_resource_id=None,
+            resource_type="article",
+            title="Transaction reference",
+            description="External reading",
+            source_type="external",
+            source_url="https://example.com/transactions",
+            difficulty_level="beginner",
+            estimated_minutes=10,
+            license_info=None,
+            target_audiences=["beginner"],
+            metadata={},
+            knowledge_point_ids=["kp-2"],
+        )
+
+        self.assertEqual(resource.course_id, "course-1")
+        self.assertEqual(resource.chapter_id, "chapter-1")
+        self.assertEqual(set(resource.knowledge_point_ids), {"kp-1", "kp-2"})
+        listed = service.list_resources_by_knowledge_point("kp-1", "user-1")
+        self.assertEqual(listed[0].id, resource.id)
+        with self.session_factory() as db:
+            self.assertEqual(db.query(CourseResourceKnowledgePoint).count(), 2)
 
     def test_knowledge_point_relations_create_list_and_delete(self):
         service = CourseService()

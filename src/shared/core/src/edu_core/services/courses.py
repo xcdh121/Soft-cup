@@ -217,6 +217,67 @@ class CourseService:
                 for point in knowledge_points
             ]
 
+    def get_knowledge_point(
+        self, knowledge_point_id: str, owner_id: str
+    ) -> KnowledgePointDto:
+        with self._get_db_session() as db:
+            point = self._get_owned_knowledge_point(
+                db, knowledge_point_id, owner_id
+            )
+            return KnowledgePointDto.model_validate(point)
+
+    def update_knowledge_point(
+        self,
+        knowledge_point_id: str,
+        owner_id: str,
+        name: str | None = None,
+        description: str | None = None,
+        chapter_id: str | None = None,
+        difficulty_level: str | None = None,
+        position: int | None = None,
+        tags: list[str] | None = None,
+        fields_to_update: set[str] | None = None,
+    ) -> KnowledgePointDto:
+        with self._get_db_session() as db:
+            point = self._get_owned_knowledge_point(
+                db, knowledge_point_id, owner_id
+            )
+            updates = fields_to_update or set()
+
+            if "chapter_id" in updates and chapter_id is not None:
+                self._get_course_chapter(db, point.course_id, chapter_id)
+
+            if "name" in updates and name is not None and name != point.name:
+                duplicate = (
+                    db.query(KnowledgePoint)
+                    .filter(
+                        KnowledgePoint.course_id == point.course_id,
+                        KnowledgePoint.name == name,
+                        KnowledgePoint.id != knowledge_point_id,
+                    )
+                    .first()
+                )
+                if duplicate:
+                    raise ValueError(
+                        f"Knowledge point '{name}' already exists in this course"
+                    )
+                point.name = name
+
+            if "description" in updates:
+                point.description = description
+            if "chapter_id" in updates:
+                point.chapter_id = chapter_id
+            if "difficulty_level" in updates and difficulty_level is not None:
+                point.difficulty_level = difficulty_level
+            if "position" in updates and position is not None:
+                point.position = position
+            if "tags" in updates and tags is not None:
+                point.tags = tags
+
+            db.commit()
+            db.refresh(point)
+            return KnowledgePointDto.model_validate(point)
+
     def create_knowledge_point_relation(
         self,
         course_id: str,
@@ -347,6 +408,23 @@ class CourseService:
             raise NotFoundError(
                 f"Knowledge point {knowledge_point_id} not found in course {course_id}"
             )
+        return point
+
+    @staticmethod
+    def _get_owned_knowledge_point(
+        db, knowledge_point_id: str, owner_id: str
+    ) -> KnowledgePoint:
+        point = (
+            db.query(KnowledgePoint)
+            .join(Course, KnowledgePoint.course_id == Course.id)
+            .filter(
+                KnowledgePoint.id == knowledge_point_id,
+                Course.owner_id == owner_id,
+            )
+            .first()
+        )
+        if not point:
+            raise NotFoundError(f"Knowledge point {knowledge_point_id} not found")
         return point
 
     @contextmanager

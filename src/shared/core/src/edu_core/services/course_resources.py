@@ -101,6 +101,93 @@ class CourseResourceService:
                 self._get_course_resource(db, course_id, resource_id)
             )
 
+    def list_resources_by_knowledge_point(
+        self, knowledge_point_id: str, owner_id: str
+    ) -> list[CourseResourceDto]:
+        with self._get_db_session() as db:
+            point = self._get_owned_knowledge_point(
+                db, knowledge_point_id, owner_id
+            )
+            resources = (
+                db.query(CourseResource)
+                .join(
+                    CourseResourceKnowledgePoint,
+                    CourseResource.id
+                    == CourseResourceKnowledgePoint.course_resource_id,
+                )
+                .filter(
+                    CourseResource.course_id == point.course_id,
+                    CourseResourceKnowledgePoint.knowledge_point_id
+                    == knowledge_point_id,
+                )
+                .order_by(CourseResource.created_at.desc())
+                .all()
+            )
+            return [self._to_dto(resource) for resource in resources]
+
+    def create_resource_for_knowledge_point(
+        self,
+        knowledge_point_id: str,
+        owner_id: str,
+        *,
+        chapter_id: str | None,
+        document_id: str | None,
+        generated_resource_id: str | None,
+        resource_type: str,
+        title: str,
+        description: str | None,
+        source_type: str,
+        source_url: str | None,
+        difficulty_level: str,
+        estimated_minutes: int | None,
+        license_info: str | None,
+        target_audiences: list[str],
+        metadata: dict,
+        knowledge_point_ids: list[str],
+    ) -> CourseResourceDto:
+        with self._get_db_session() as db:
+            point = self._get_owned_knowledge_point(
+                db, knowledge_point_id, owner_id
+            )
+            linked_point_ids = list(
+                dict.fromkeys([knowledge_point_id, *knowledge_point_ids])
+            )
+            resource_chapter_id = (
+                chapter_id if chapter_id is not None else point.chapter_id
+            )
+            self._validate_references(
+                db,
+                point.course_id,
+                owner_id,
+                resource_chapter_id,
+                document_id,
+                generated_resource_id,
+                linked_point_ids,
+            )
+
+            resource = CourseResource(
+                id=str(uuid4()),
+                course_id=point.course_id,
+                chapter_id=resource_chapter_id,
+                document_id=document_id,
+                generated_resource_id=generated_resource_id,
+                resource_type=resource_type,
+                title=title,
+                description=description,
+                source_type=source_type,
+                source_url=source_url,
+                difficulty_level=difficulty_level,
+                estimated_minutes=estimated_minutes,
+                license_info=license_info,
+                target_audiences=target_audiences,
+                extra_metadata=metadata,
+            )
+            db.add(resource)
+            self._replace_knowledge_point_links(db, resource, linked_point_ids)
+            db.commit()
+            db.refresh(resource)
+            return self._to_dto(resource)
+
     def update_resource(
         self,
         course_id: str,
@@ -280,6 +367,23 @@ class CourseResourceService:
                 f"Resource {resource_id} not found in course {course_id}"
             )
         return resource
+
+    @staticmethod
+    def _get_owned_knowledge_point(
+        db, knowledge_point_id: str, owner_id: str
+    ) -> KnowledgePoint:
+        point = (
+            db.query(KnowledgePoint)
+            .join(Course, KnowledgePoint.course_id == Course.id)
+            .filter(
+                KnowledgePoint.id == knowledge_point_id,
+                Course.owner_id == owner_id,
+            )
+            .first()
+        )
+        if not point:
+            raise NotFoundError(f"Knowledge point {knowledge_point_id} not found")
+        return point
 
     @staticmethod
     def _to_dto(resource: CourseResource) -> CourseResourceDto:

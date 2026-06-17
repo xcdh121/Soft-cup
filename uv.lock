@@ -292,6 +292,7 @@ version = "0.1.0"
 source = { editable = "src/shared/core" }
 dependencies = [
     { name = "edu-db" },
+    { name = "httpx" },
     { name = "langchain-openai" },
     { name = "pydantic" },
     { name = "pypdf" },
@@ -301,6 +302,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "edu-db", editable = "src/shared/db" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "langchain-openai", specifier = ">=1.1.2" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pypdf", specifier = ">=5.6.0" },
