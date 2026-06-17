@@ -44,6 +44,7 @@ import {
   generateMindMapStreamAtom,
   mindMapProgressAtom,
 } from '@/data-acess/mind-map'
+import { generateResourcePackageAtom } from '@/data-acess/resource-package'
 import { GenerationProgress } from '@/components/generation-progress'
 
 type GenerationDialogStore = {
@@ -60,7 +61,13 @@ export const useGenerationDialog = create<GenerationDialogStore>((set) => ({
   close: () => set({ isOpen: false, projectId: null }),
 }))
 
-type GenerationType = 'quiz' | 'flashcard' | 'note' | 'mindmap'
+type GenerationType =
+  | 'quiz'
+  | 'flashcard'
+  | 'note'
+  | 'mindmap'
+  | 'ppt_outline'
+  | 'pptx'
 type LengthOption = 'less' | 'normal' | 'more'
 type DifficultyOption = 'easy' | 'medium' | 'hard'
 
@@ -74,6 +81,8 @@ export function GenerationDialog() {
   const [selectedType, setSelectedType] = useState<GenerationType>('note')
   const [length, setLength] = useState<LengthOption>('normal')
   const [difficulty, setDifficulty] = useState<DifficultyOption>('medium')
+  const [isGeneratingResourcePackage, setIsGeneratingResourcePackage] =
+    useState(false)
 
   const documentsResult = useAtomValue(indexedDocumentsAtom(projectId || ''))
   const createNote = useAtomSet(createNoteAtom, { mode: 'promise' })
@@ -81,8 +90,10 @@ export function GenerationDialog() {
   const createFlashcardGroup = useAtomSet(createFlashcardGroupAtom, {
     mode: 'promise',
   })
+  const generateResourcePackage = useAtomSet(generateResourcePackageAtom, {
+    mode: 'promise',
+  })
 
-  // Streaming atoms
   const [createNoteStreamResult, createNoteStream] = useAtom(
     createNoteStreamAtom,
     {
@@ -104,13 +115,11 @@ export function GenerationDialog() {
     { mode: 'promise' },
   )
 
-  // Progress atoms
   const noteProgress = useAtomValue(noteProgressAtom)
   const quizProgress = useAtomValue(quizProgressAtom)
   const flashcardProgress = useAtomValue(flashcardProgressAtom)
   const mindMapProgress = useAtomValue(mindMapProgressAtom)
 
-  // Get current progress based on selected type
   const currentProgress =
     selectedType === 'note'
       ? noteProgress
@@ -118,7 +127,9 @@ export function GenerationDialog() {
         ? quizProgress
         : selectedType === 'flashcard'
           ? flashcardProgress
-          : mindMapProgress
+          : selectedType === 'mindmap'
+            ? mindMapProgress
+            : null
 
   const handleToggleDocument = (documentId: string) => {
     setSelectedDocumentIds((prev) => {
@@ -134,16 +145,13 @@ export function GenerationDialog() {
 
   const handleSelectAll = () => {
     if (!Result.isSuccess(documentsResult)) return
-
-    const allIds = new Set(documentsResult.value.map((doc) => doc.id))
-    setSelectedDocumentIds(allIds)
+    setSelectedDocumentIds(new Set(documentsResult.value.map((doc) => doc.id)))
   }
 
   const handleDeselectAll = () => {
     setSelectedDocumentIds(new Set())
   }
 
-  // Update isGenerating based on streaming state
   useEffect(() => {
     const isStreaming =
       createNoteStreamResult.waiting ||
@@ -151,12 +159,13 @@ export function GenerationDialog() {
       createFlashcardStreamResult.waiting ||
       generateMindMapStreamResult.waiting
 
-    setIsGenerating(isStreaming)
+    setIsGenerating(isStreaming || isGeneratingResourcePackage)
   }, [
     createNoteStreamResult.waiting,
     createQuizStreamResult.waiting,
     createFlashcardStreamResult.waiting,
     generateMindMapStreamResult.waiting,
+    isGeneratingResourcePackage,
   ])
 
   const handleGenerate = async () => {
@@ -169,6 +178,41 @@ export function GenerationDialog() {
     }
 
     try {
+      if (selectedType === 'ppt_outline' || selectedType === 'pptx') {
+        setIsGeneratingResourcePackage(true)
+
+        await generateResourcePackage({
+          projectId,
+          target_topic: instructions,
+          title:
+            selectedType === 'pptx'
+              ? `AI PPT - ${instructions.slice(0, 40)}`
+              : `AI PPT Outline - ${instructions.slice(0, 40)}`,
+          source_document_ids: Array.from(selectedDocumentIds),
+          resource_types: [selectedType],
+          difficulty_level:
+            difficulty === 'easy'
+              ? 'beginner'
+              : difficulty === 'hard'
+                ? 'advanced'
+                : 'intermediate',
+          custom_instructions: instructions,
+          generation_params: {
+            launch_context: 'project overview ai content',
+          },
+        })
+
+        toast.success(
+          selectedType === 'pptx'
+            ? 'PPT 已提交生成，可在右侧 AI 内容中查看。'
+            : 'PPT 大纲已生成，可在右侧 AI 内容中查看。',
+        )
+        setTimeout(() => {
+          handleClose()
+        }, 500)
+        return
+      }
+
       switch (selectedType) {
         case 'note': {
           const note = await createNote({
@@ -227,10 +271,9 @@ export function GenerationDialog() {
       }
 
       if (selectedDocumentIds.size > 0) {
-        toast.info('当前版本已记录你的文档选择，但这三类生成接口暂未实际消费所选文档。')
+        toast.info('当前版本仅 PPT 生成会实际使用你勾选的文档，其它类型仍主要按文本要求生成。')
       }
 
-      // Close dialog and reset state after a short delay to show completion
       setTimeout(() => {
         handleClose()
       }, 500)
@@ -239,6 +282,8 @@ export function GenerationDialog() {
       toast.error(
         error instanceof Error ? error.message : '生成失败，请稍后重试。',
       )
+    } finally {
+      setIsGeneratingResourcePackage(false)
     }
   }
 
@@ -261,7 +306,22 @@ export function GenerationDialog() {
   const hasCustomSettings =
     selectedType === 'quiz' ||
     selectedType === 'flashcard' ||
+    selectedType === 'note' ||
+    selectedType === 'ppt_outline' ||
+    selectedType === 'pptx'
+
+  const actionLabel =
     selectedType === 'note'
+      ? '笔记'
+      : selectedType === 'quiz'
+        ? '测验'
+        : selectedType === 'flashcard'
+          ? '闪卡'
+          : selectedType === 'mindmap'
+            ? '思维导图'
+            : selectedType === 'ppt_outline'
+              ? 'PPT 大纲'
+              : 'PPT'
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
@@ -269,7 +329,7 @@ export function GenerationDialog() {
         <DialogHeader className="shrink-0">
           <DialogTitle>生成 AI 内容</DialogTitle>
           <DialogDescription>
-            选择资源类型，输入自定义要求，并选择相关文档来生成内容。
+            选择资源类型，输入要求，并可附带项目文档作为上下文。
           </DialogDescription>
         </DialogHeader>
 
@@ -309,6 +369,22 @@ export function GenerationDialog() {
               >
                 思维导图
               </Button>
+              <Button
+                type="button"
+                variant={selectedType === 'ppt_outline' ? 'default' : 'outline'}
+                onClick={() => setSelectedType('ppt_outline')}
+                disabled={isGenerating}
+              >
+                PPT 大纲
+              </Button>
+              <Button
+                type="button"
+                variant={selectedType === 'pptx' ? 'default' : 'outline'}
+                onClick={() => setSelectedType('pptx')}
+                disabled={isGenerating}
+              >
+                PPT
+              </Button>
             </div>
           </div>
 
@@ -316,7 +392,7 @@ export function GenerationDialog() {
             <Label htmlFor="customInstructions">自定义要求</Label>
             <Textarea
               id="customInstructions"
-              placeholder="例如：解释机器学习的核心概念... 可说明格式偏好：长度（少、正常、多），难度（简单、中等、困难）"
+              placeholder="例如：生成一份关于 Transformer 的教学型 PPT，面向入门学生，突出核心概念、例子和总结。"
               value={customInstructions}
               onChange={(e) => setCustomInstructions(e.target.value)}
               className="min-h-[100px] resize-none"
@@ -351,7 +427,10 @@ export function GenerationDialog() {
                     </SelectContent>
                   </Select>
                 </div>
-                {(selectedType === 'quiz' || selectedType === 'flashcard') && (
+                {(selectedType === 'quiz' ||
+                  selectedType === 'flashcard' ||
+                  selectedType === 'ppt_outline' ||
+                  selectedType === 'pptx') && (
                   <div className="space-y-2">
                     <Label htmlFor="difficulty">难度</Label>
                     <Select
@@ -416,9 +495,7 @@ export function GenerationDialog() {
                     </div>
                   ))
                   .onFailure(() => (
-                    <div className="text-destructive py-4">
-                      文档加载失败
-                    </div>
+                    <div className="text-destructive py-4">文档加载失败</div>
                   ))
                   .onSuccess((documents) => {
                     if (documents.length === 0) {
@@ -451,7 +528,7 @@ export function GenerationDialog() {
           </div>
         </div>
 
-        {currentProgress && (
+        {currentProgress ? (
           <div className="shrink-0 px-4">
             <GenerationProgress
               status={currentProgress.status as ProgressStage}
@@ -459,7 +536,7 @@ export function GenerationDialog() {
               error={currentProgress.error}
             />
           </div>
-        )}
+        ) : null}
 
         <DialogFooter className="gap-2 shrink-0">
           <Button
@@ -478,26 +555,10 @@ export function GenerationDialog() {
             {isGenerating ? (
               <>
                 <Loader2Icon className="size-4 mr-2 animate-spin" />
-                正在生成
-                {selectedType === 'note'
-                  ? '笔记'
-                  : selectedType === 'quiz'
-                    ? '测验'
-                    : selectedType === 'flashcard'
-                      ? '闪卡'
-                      : '思维导图'}
-                ...
+                正在生成{actionLabel}...
               </>
             ) : (
-              `生成${
-                selectedType === 'note'
-                  ? '笔记'
-                  : selectedType === 'quiz'
-                    ? '测验'
-                    : selectedType === 'flashcard'
-                      ? '闪卡'
-                      : '思维导图'
-              }`
+              `生成${actionLabel}`
             )}
           </Button>
         </DialogFooter>
@@ -534,8 +595,7 @@ function DocumentCheckbox({
         <div className="flex flex-col">
           <span className="text-sm">{document.file_name}</span>
           <span className="text-xs text-muted-foreground">
-            {document.file_type?.toUpperCase()} •{' '}
-            {formatFileSize(document.file_size)}
+            {document.file_type?.toUpperCase()} | {formatFileSize(document.file_size)}
           </span>
         </div>
       </Label>
@@ -544,9 +604,9 @@ function DocumentCheckbox({
 }
 
 function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 字节'
+  if (bytes === 0) return '0 B'
   const k = 1024
-  const sizes = ['字节', 'KB', 'MB', 'GB']
+  const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
 }

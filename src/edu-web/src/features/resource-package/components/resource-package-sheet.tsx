@@ -80,6 +80,11 @@ const RESOURCE_TYPE_OPTIONS: Array<{
     description: 'Slide-by-slide speaking outline',
   },
   {
+    value: 'pptx',
+    label: 'PPTX',
+    description: 'Generated presentation file link',
+  },
+  {
     value: 'code_lab',
     label: 'Code lab',
     description: 'Hands-on coding exercise',
@@ -255,7 +260,18 @@ const ResourcePreview = ({
             <Badge variant="outline">{resource.difficulty_level}</Badge>
           </div>
 
-          {resource.content_text ? (
+          {resource.file_url ? (
+            <div className="mt-3">
+              <a
+                href={resource.file_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm text-primary underline underline-offset-4"
+              >
+                Open generated PPT
+              </a>
+            </div>
+          ) : resource.content_text ? (
             <div className="mt-3 rounded-lg bg-muted/40 p-3 text-sm whitespace-pre-wrap">
               {resource.content_text.slice(0, 600)}
               {resource.content_text.length > 600 ? '...' : ''}

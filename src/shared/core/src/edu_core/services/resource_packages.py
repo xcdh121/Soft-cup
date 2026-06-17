@@ -1,5 +1,7 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from edu_db.models import Document, GeneratedResource, Project, ResourcePackage
@@ -11,10 +13,21 @@ from edu_core.schemas.resource_packages import (
     ResourcePackageDto,
     ResourcePackageStreamEventDto,
 )
+from edu_core.storage import LocalStorageService
+from edu_core.services.xfyun_ppt import XfyunPptClient, XfyunPptError
 
 
 class ResourcePackageService:
     """Service for generating and managing resource packages."""
+
+    def __init__(
+        self,
+        *,
+        storage_root: str = "./.localdata",
+        xfyun_ppt_client: XfyunPptClient | None = None,
+    ) -> None:
+        self.storage = LocalStorageService(storage_root)
+        self.xfyun_ppt_client = xfyun_ppt_client
 
     def list_resource_packages(
         self,
@@ -109,6 +122,10 @@ class ResourcePackageService:
             target_topic = payload["target_topic"]
             target_goal = payload.get("target_goal")
             difficulty_level = payload.get("difficulty_level", "intermediate")
+            generation_params = {
+                "custom_instructions": payload.get("custom_instructions"),
+                **(payload.get("generation_params") or {}),
+            }
 
             package = ResourcePackage(
                 id=package_id,
@@ -129,10 +146,7 @@ class ResourcePackageService:
                 knowledge_point_ids=payload.get("knowledge_point_ids") or [],
                 weak_knowledge_point_ids=payload.get("weak_knowledge_point_ids") or [],
                 preferred_resource_types=resource_types,
-                generation_params={
-                    "custom_instructions": payload.get("custom_instructions"),
-                    **(payload.get("generation_params") or {}),
-                },
+                generation_params=generation_params,
                 agent_trace=[],
                 resource_count=len(resource_types),
                 completed_resource_count=0,
@@ -174,16 +188,31 @@ class ResourcePackageService:
                     {"resource_type": resource_type, "order": order},
                 )
 
-                generated = self._generate_resource_content(
-                    resource_type=resource_type,
-                    topic=target_topic,
-                    goal=target_goal,
-                    difficulty_level=difficulty_level,
-                    document_context=document_context,
-                    knowledge_point_ids=knowledge_point_ids,
-                    weak_points=weak_points,
-                    custom_instructions=payload.get("custom_instructions"),
-                )
+                try:
+                    generated = await self._generate_resource_content_async(
+                        resource_type=resource_type,
+                        topic=target_topic,
+                        goal=target_goal,
+                        difficulty_level=difficulty_level,
+                        document_context=document_context,
+                        knowledge_point_ids=knowledge_point_ids,
+                        weak_points=weak_points,
+                        custom_instructions=payload.get("custom_instructions"),
+                        documents=documents,
+                        generation_params=generation_params,
+                    )
+                    resource_status = "completed"
+                    error_message = None
+                    completed += 1
+                except Exception as exc:
+                    generated = self._build_failed_resource_content(
+                        resource_type=resource_type,
+                        topic=target_topic,
+                        error_message=str(exc),
+                    )
+                    resource_status = "failed"
+                    error_message = str(exc)
+                    failed += 1
 
                 resource = GeneratedResource(
                     id=str(uuid4()),
@@ -192,11 +221,15 @@ class ResourcePackageService:
                     user_id=user_id,
                     resource_type=resource_type,
                     title=generated["title"],
-                    summary=generated["summary"],
-                    status="completed",
+                    summary=generated.get("summary"),
+                    status=resource_status,
                     format=generated["format"],
                     content_text=generated.get("content_text"),
                     content_json=generated.get("content_json"),
+                    file_url=generated.get("file_url"),
+                    preview_url=generated.get("preview_url"),
+                    cover_image_url=generated.get("cover_image_url"),
+                    error_message=error_message,
                     source_document_ids=source_document_ids,
                     knowledge_point_ids=knowledge_point_ids,
                     difficulty_level=difficulty_level,
@@ -207,26 +240,26 @@ class ResourcePackageService:
                     generation_reason=generated.get("generation_reason"),
                     created_at=now,
                     updated_at=now,
-                    completed_at=now,
+                    completed_at=now if resource_status == "completed" else None,
                 )
                 db.add(resource)
-                completed += 1
 
                 self._append_agent_event(
                     agent_trace,
                     package_id,
-                    "resource_completed",
+                    "resource_completed" if resource_status == "completed" else "resource_failed",
                     {
                         "resource_id": resource.id,
                         "resource_type": resource_type,
                         "title": generated["title"],
+                        "error_message": error_message,
                     },
                 )
 
             package.status = "completed" if failed == 0 else "failed"
             package.completed_resource_count = completed
             package.failed_resource_count = failed
-            package.completed_at = now
+            package.completed_at = now if failed == 0 else None
             self._append_agent_event(
                 agent_trace,
                 package_id,
@@ -295,7 +328,7 @@ class ResourcePackageService:
                 raise NotFoundError(f"Generated resource {resource_id} not found")
 
             package = resource.resource_package
-            document_context = self._build_document_context(
+            documents = (
                 db.query(Document)
                 .filter(
                     Document.project_id == project_id,
@@ -303,7 +336,8 @@ class ResourcePackageService:
                 )
                 .all()
             )
-            generated = self._generate_resource_content(
+            document_context = self._build_document_context(documents)
+            generated = await self._generate_resource_content_async(
                 resource_type=resource.resource_type,
                 topic=package.target_topic,
                 goal=package.target_goal,
@@ -314,15 +348,21 @@ class ResourcePackageService:
                 custom_instructions=(package.generation_params or {}).get(
                     "custom_instructions"
                 ),
+                documents=documents,
+                generation_params=package.generation_params or {},
             )
 
             resource.title = generated["title"]
-            resource.summary = generated["summary"]
+            resource.summary = generated.get("summary")
             resource.format = generated["format"]
             resource.content_text = generated.get("content_text")
             resource.content_json = generated.get("content_json")
+            resource.file_url = generated.get("file_url")
+            resource.preview_url = generated.get("preview_url")
+            resource.cover_image_url = generated.get("cover_image_url")
             resource.generator_agent = generated.get("generator_agent")
             resource.generation_reason = generated.get("generation_reason")
+            resource.error_message = None
             resource.status = "completed"
             resource.version += 1
             resource.updated_at = datetime.now(timezone.utc)
@@ -394,6 +434,225 @@ class ResourcePackageService:
             summary = doc.summary or "No summary available."
             lines.append(f"- {doc.file_name}: {summary}")
         return "\n".join(lines)
+
+    async def _generate_resource_content_async(
+        self,
+        *,
+        resource_type: str,
+        topic: str,
+        goal: str | None,
+        difficulty_level: str,
+        document_context: str,
+        knowledge_point_ids: list[str],
+        weak_points: list[str],
+        custom_instructions: str | None,
+        documents: list[Document],
+        generation_params: dict[str, Any],
+    ) -> dict:
+        if resource_type == "ppt_outline":
+            xfyun_result = await self._generate_xfyun_outline(
+                topic=topic,
+                goal=goal,
+                document_context=document_context,
+                custom_instructions=custom_instructions,
+                documents=documents,
+                generation_params=generation_params,
+            )
+            if xfyun_result is not None:
+                return xfyun_result
+
+        if resource_type == "pptx":
+            xfyun_result = await self._generate_xfyun_pptx(
+                topic=topic,
+                goal=goal,
+                difficulty_level=difficulty_level,
+                document_context=document_context,
+                knowledge_point_ids=knowledge_point_ids,
+                weak_points=weak_points,
+                custom_instructions=custom_instructions,
+                documents=documents,
+                generation_params=generation_params,
+            )
+            if xfyun_result is not None:
+                return xfyun_result
+
+        return self._generate_resource_content(
+            resource_type=resource_type,
+            topic=topic,
+            goal=goal,
+            difficulty_level=difficulty_level,
+            document_context=document_context,
+            knowledge_point_ids=knowledge_point_ids,
+            weak_points=weak_points,
+            custom_instructions=custom_instructions,
+        )
+
+    async def _generate_xfyun_outline(
+        self,
+        *,
+        topic: str,
+        goal: str | None,
+        document_context: str,
+        custom_instructions: str | None,
+        documents: list[Document],
+        generation_params: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        if not self.xfyun_ppt_client or not self.xfyun_ppt_client.is_enabled:
+            return None
+
+        query = self._build_xfyun_query(
+            topic=topic,
+            goal=goal,
+            document_context=document_context,
+            custom_instructions=custom_instructions,
+        )
+        options = self._get_xfyun_generation_options(generation_params)
+        source_file = self._resolve_source_file(documents)
+        try:
+            if source_file is not None:
+                response = await self.xfyun_ppt_client.create_outline_by_doc(
+                    query=query,
+                    language=options.get("language"),
+                    search=options.get("search"),
+                    business_id=options.get("business_id"),
+                    file_path=source_file,
+                    file_name=source_file.name,
+                )
+            else:
+                response = await self.xfyun_ppt_client.create_outline(
+                    query=query,
+                    language=options.get("language"),
+                    search=options.get("search"),
+                    business_id=options.get("business_id"),
+                )
+        except XfyunPptError:
+            raise
+        data = response.get("data") or {}
+        outline = data.get("outline") or {}
+        return {
+            "title": outline.get("title") or f"{topic} PPT outline",
+            "summary": outline.get("subTitle") or f"XFYun generated outline for {topic}.",
+            "format": "json",
+            "generator_agent": "XfyunPptAgent",
+            "generation_reason": "Generated with the XFYun PPT outline API.",
+            "estimated_minutes": 20,
+            "content_text": self._outline_to_markdown(outline),
+            "content_json": {
+                "provider": "xfyun",
+                "sid": data.get("sid"),
+                "outline": outline,
+                "raw_response": data,
+            },
+        }
+
+    async def _generate_xfyun_pptx(
+        self,
+        *,
+        topic: str,
+        goal: str | None,
+        difficulty_level: str,
+        document_context: str,
+        knowledge_point_ids: list[str],
+        weak_points: list[str],
+        custom_instructions: str | None,
+        documents: list[Document],
+        generation_params: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        if not self.xfyun_ppt_client or not self.xfyun_ppt_client.is_enabled:
+            return None
+
+        query = self._build_xfyun_query(
+            topic=topic,
+            goal=goal,
+            document_context=document_context,
+            custom_instructions=custom_instructions,
+            difficulty_level=difficulty_level,
+            knowledge_point_ids=knowledge_point_ids,
+            weak_points=weak_points,
+        )
+        options = self._get_xfyun_generation_options(generation_params)
+        source_file = self._resolve_source_file(documents)
+
+        provided_outline = options.get("outline")
+        use_outline = bool(options.get("use_outline_generation")) or bool(provided_outline)
+
+        if use_outline:
+            outline = provided_outline
+            if outline is None:
+                outline_result = await self._generate_xfyun_outline(
+                    topic=topic,
+                    goal=goal,
+                    document_context=document_context,
+                    custom_instructions=custom_instructions,
+                    documents=documents,
+                    generation_params=generation_params,
+                )
+                outline = ((outline_result or {}).get("content_json") or {}).get("outline")
+            if not outline:
+                raise XfyunPptError("XFYun outline generation did not return an outline.")
+            create_response = await self.xfyun_ppt_client.create_ppt_by_outline(
+                outline=outline,
+                query=query,
+                template_id=options.get("template_id"),
+                author=options.get("author"),
+                language=options.get("language"),
+                search=options.get("search"),
+                is_card_note=options.get("is_card_note"),
+                is_figure=options.get("is_figure"),
+                ai_image=options.get("ai_image"),
+                business_id=options.get("business_id"),
+            )
+        else:
+            create_response = await self.xfyun_ppt_client.create(
+                query=query,
+                template_id=options.get("template_id"),
+                author=options.get("author"),
+                language=options.get("language"),
+                search=options.get("search"),
+                is_card_note=options.get("is_card_note"),
+                is_figure=options.get("is_figure"),
+                ai_image=options.get("ai_image"),
+                business_id=options.get("business_id"),
+                file_path=source_file,
+                file_name=source_file.name if source_file is not None else None,
+                file_url=options.get("file_url"),
+            )
+
+        create_data = create_response.get("data") or {}
+        sid = create_data.get("sid")
+        if not sid:
+            raise XfyunPptError("XFYun PPT creation response did not include sid.")
+
+        progress_response = await self.xfyun_ppt_client.wait_for_completion(sid)
+        progress_data = progress_response.get("data") or {}
+
+        return {
+            "title": create_data.get("title") or f"{topic} PPTX draft",
+            "summary": create_data.get("subTitle") or f"XFYun generated presentation for {topic}.",
+            "format": "pptx-url",
+            "generator_agent": "XfyunPptAgent",
+            "generation_reason": "Generated with the XFYun PPT creation API.",
+            "estimated_minutes": 25,
+            "file_url": progress_data.get("pptUrl"),
+            "preview_url": progress_data.get("pptUrl"),
+            "cover_image_url": create_data.get("coverImgSrc"),
+            "content_json": {
+                "provider": "xfyun",
+                "sid": sid,
+                "title": create_data.get("title"),
+                "subTitle": create_data.get("subTitle"),
+                "coverImgSrc": create_data.get("coverImgSrc"),
+                "outline": create_data.get("outline"),
+                "pptStatus": progress_data.get("pptStatus"),
+                "aiImageStatus": progress_data.get("aiImageStatus"),
+                "cardNoteStatus": progress_data.get("cardNoteStatus"),
+                "totalPages": progress_data.get("totalPages"),
+                "donePages": progress_data.get("donePages"),
+                "pptUrl": progress_data.get("pptUrl"),
+                "errMsg": progress_data.get("errMsg"),
+            },
+            "content_text": self._build_pptx_summary_text(create_data, progress_data),
+        }
 
     def _generate_resource_content(
         self,
@@ -635,6 +894,113 @@ class ResourcePackageService:
             "estimated_minutes": 10,
             "content_text": f"Generated fallback content for {topic}.",
         }
+
+    def _build_failed_resource_content(
+        self, *, resource_type: str, topic: str, error_message: str
+    ) -> dict[str, Any]:
+        return {
+            "title": f"{topic} {resource_type}",
+            "summary": f"Failed to generate {resource_type} for {topic}.",
+            "format": "error",
+            "generator_agent": "ResourcePackageService",
+            "generation_reason": "Resource generation failed.",
+            "estimated_minutes": None,
+            "content_text": error_message,
+        }
+
+    def _build_xfyun_query(
+        self,
+        *,
+        topic: str,
+        goal: str | None,
+        document_context: str,
+        custom_instructions: str | None,
+        difficulty_level: str | None = None,
+        knowledge_point_ids: list[str] | None = None,
+        weak_points: list[str] | None = None,
+    ) -> str:
+        parts = [f"主题：{topic}"]
+        if goal:
+            parts.append(f"目标：{goal}")
+        if difficulty_level:
+            parts.append(f"难度：{difficulty_level}")
+        if knowledge_point_ids:
+            parts.append(f"知识点：{', '.join(knowledge_point_ids)}")
+        if weak_points:
+            parts.append(f"薄弱点：{', '.join(weak_points)}")
+        if custom_instructions:
+            parts.append(f"额外要求：{custom_instructions}")
+        if document_context and document_context != "No source documents were selected.":
+            parts.append(f"资料摘要：{document_context}")
+        return "\n".join(parts)
+
+    def _get_xfyun_generation_options(
+        self, generation_params: dict[str, Any]
+    ) -> dict[str, Any]:
+        nested = generation_params.get("xfyun_ppt") or {}
+        if not isinstance(nested, dict):
+            nested = {}
+
+        def pick(key: str, default=None):
+            if key in nested:
+                return nested[key]
+            return generation_params.get(key, default)
+
+        return {
+            "template_id": pick("template_id"),
+            "author": pick("author"),
+            "language": pick("language"),
+            "search": pick("search"),
+            "is_card_note": pick("is_card_note"),
+            "is_figure": pick("is_figure"),
+            "ai_image": pick("ai_image"),
+            "business_id": pick("business_id"),
+            "file_url": pick("file_url"),
+            "outline": pick("outline"),
+            "use_outline_generation": bool(pick("use_outline_generation", False)),
+        }
+
+    def _resolve_source_file(self, documents: list[Document]) -> Path | None:
+        for document in documents:
+            if not document.original_blob_name:
+                continue
+            try:
+                path = self.storage.resolve(document.original_blob_name)
+            except ValueError:
+                continue
+            if path.exists():
+                return path
+        return None
+
+    def _outline_to_markdown(self, outline: dict[str, Any]) -> str:
+        lines = [f"# {outline.get('title') or 'PPT Outline'}", ""]
+        counter = 1
+        for chapter in outline.get("chapters") or []:
+            chapter_title = chapter.get("chapterTitle") or f"Chapter {counter}"
+            lines.append(f"{counter}. {chapter_title}")
+            counter += 1
+            for child in chapter.get("chapterContents") or []:
+                child_title = child.get("chapterTitle")
+                if child_title:
+                    lines.append(f"{counter}. {child_title}")
+                    counter += 1
+        return "\n".join(lines)
+
+    def _build_pptx_summary_text(
+        self, create_data: dict[str, Any], progress_data: dict[str, Any]
+    ) -> str:
+        lines = [
+            f"标题：{create_data.get('title') or '未命名'}",
+            f"副标题：{create_data.get('subTitle') or '无'}",
+            f"PPT 状态：{progress_data.get('pptStatus') or 'unknown'}",
+            f"总页数：{progress_data.get('totalPages') or 'unknown'}",
+            f"已完成页数：{progress_data.get('donePages') or 'unknown'}",
+        ]
+        if progress_data.get("pptUrl"):
+            lines.append(f"下载地址：{progress_data['pptUrl']}")
+        if progress_data.get("errMsg"):
+            lines.append(f"错误信息：{progress_data['errMsg']}")
+        return "\n".join(lines)
 
     def _resource_to_dto(self, resource: GeneratedResource) -> GeneratedResourceDto:
         return GeneratedResourceDto.model_validate(resource)

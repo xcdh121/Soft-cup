@@ -4,6 +4,10 @@ import { flashcardGroupsAtom } from './flashcard'
 import { mindMapsAtom } from './mind-map'
 import { notesAtom } from './note'
 import { quizzesAtom } from './quiz'
+import {
+  type ResourcePackage,
+  resourcePackagesAtom,
+} from './resource-package'
 import type {
   FlashcardGroupDto,
   MindMapDto,
@@ -16,6 +20,7 @@ export type StudyResource = Data.TaggedEnum<{
   Quiz: { readonly data: QuizDto }
   Note: { readonly data: NoteDto }
   MindMap: { readonly data: MindMapDto }
+  ResourcePackage: { readonly data: ResourcePackage }
 }>
 export const StudyResource = Data.taggedEnum<StudyResource>()
 
@@ -54,6 +59,14 @@ export const studyResourcesAtom = Atom.family((projectId: string) =>
           ),
         )
 
+      const resourcePackagesResult = ctx
+        .result(resourcePackagesAtom(projectId))
+        .pipe(
+          Effect.map((packages) =>
+            packages.map((item) => StudyResource.ResourcePackage({ data: item })),
+          ),
+        )
+
       const byCreatedAt = Order.mapInput(
         Order.Date,
         (resource: StudyResource) =>
@@ -65,17 +78,26 @@ export const studyResourcesAtom = Atom.family((projectId: string) =>
       )
 
       return yield* Effect.all(
-        [flashcardGroupsResult, quizzesResult, notesResult, mindMapsResult],
+        [
+          flashcardGroupsResult,
+          quizzesResult,
+          notesResult,
+          mindMapsResult,
+          resourcePackagesResult,
+        ],
         { concurrency: 'unbounded' },
       ).pipe(
-        Effect.flatMap(([flashcardGroups, quizzes, notes, mindMaps]) => {
+        Effect.flatMap(
+          ([flashcardGroups, quizzes, notes, mindMaps, resourcePackages]) => {
           return Effect.succeed([
             ...flashcardGroups,
             ...quizzes,
             ...notes,
             ...mindMaps,
+            ...resourcePackages,
           ])
-        }),
+          },
+        ),
         Effect.map(Arr.sort(byCreatedAt)),
       )
     }),

@@ -7,6 +7,7 @@ import {
   ListChecksIcon,
   MoreVerticalIcon,
   NetworkIcon,
+  PresentationIcon,
   PencilIcon,
   TrashIcon,
   UploadIcon,
@@ -429,6 +430,36 @@ export const StudyResourceListItem = ({ studyResource }: Props) => {
                 name: mindMap.title,
                 created_at: mindMap.generated_at,
                 icon: NetworkIcon,
+              })}
+            </Link>
+          </div>
+        </li>
+      )
+    },
+    ResourcePackage: ({ data: resourcePackage }) => {
+      const hasPpt = resourcePackage.preferred_resource_types.includes('pptx')
+      const hasOutline =
+        resourcePackage.preferred_resource_types.includes('ppt_outline')
+      const resourceName = hasPpt
+        ? `${resourcePackage.title} (PPT)`
+        : hasOutline
+          ? `${resourcePackage.title} (PPT 大纲)`
+          : resourcePackage.title
+
+      return (
+        <li className="rounded-md p-3 hover:bg-muted/50 group">
+          <div className="flex items-center gap-2">
+            <Link
+              to="/dashboard/p/$projectId/resource-packages"
+              params={{
+                projectId: resourcePackage.project_id,
+              }}
+              className="flex-1"
+            >
+              {renderContent({
+                name: resourceName,
+                created_at: resourcePackage.created_at,
+                icon: PresentationIcon,
               })}
             </Link>
           </div>
