@@ -457,12 +457,14 @@ class AgentOrchestrationService:
         user_id: str,
         project_id: str,
         trigger: AgentTrigger | None = None,
+        meta: dict | None = None,
     ) -> DiagnosisResponse:
         result = await self._run_supervisor(
             user_id=user_id,
             project_id=project_id,
             goal="diagnosis",
             trigger=trigger,
+            meta=meta,
         )
         self.store.save_run_events(result)
 
@@ -575,6 +577,7 @@ class AgentOrchestrationService:
         project_id: str,
         goal: str,
         trigger: AgentTrigger | None,
+        meta: dict | None = None,
     ) -> SupervisorRunResult:
         context = self._load_context(user_id, project_id)
         return await self.supervisor.run(
@@ -584,6 +587,7 @@ class AgentOrchestrationService:
                 goal=goal,
                 trigger=trigger or AgentTrigger(),
                 context=context,
+                meta=meta or {},
             )
         )
 

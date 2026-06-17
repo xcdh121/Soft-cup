@@ -123,10 +123,19 @@ def get_agent_orchestration_service(
 
 def get_resource_package_service(
     settings: Settings = Depends(get_settings_dep),
+    queue_service: QueueService | ArqQueueService = Depends(get_queue_service),
+    agent_orchestration_service: AgentOrchestrationService = Depends(
+        get_agent_orchestration_service
+    ),
 ) -> ResourcePackageService:
     """Get ResourcePackageService instance."""
     return ResourcePackageService(
         storage_root=settings.storage_root,
+        agent_orchestration_service=agent_orchestration_service,
+        note_service=NoteService(queue_service=queue_service),
+        quiz_service=QuizService(queue_service=queue_service),
+        flashcard_group_service=FlashcardGroupService(queue_service=queue_service),
+        mind_map_service=MindMapService(queue_service=queue_service),
         xfyun_ppt_client=XfyunPptClient(
             XfyunPptConfig(
                 enabled=settings.xfyun_ppt_enabled,

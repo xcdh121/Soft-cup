@@ -1,10 +1,9 @@
 import { create } from 'zustand'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Loader2Icon } from 'lucide-react'
-import { Result, useAtom, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { toast } from 'sonner'
 import type { DocumentDto } from '@/integrations/api/client'
-import type { ProgressStage } from '@/components/generation-progress'
 import {
   Dialog,
   DialogContent,
@@ -25,27 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { indexedDocumentsAtom } from '@/data-acess/document'
-import {
-  createNoteAtom,
-  createNoteStreamAtom,
-  noteProgressAtom,
-} from '@/data-acess/note'
-import {
-  createQuizAtom,
-  createQuizStreamAtom,
-  quizProgressAtom,
-} from '@/data-acess/quiz'
-import {
-  createFlashcardGroupAtom,
-  createFlashcardGroupStreamAtom,
-  flashcardProgressAtom,
-} from '@/data-acess/flashcard'
-import {
-  generateMindMapStreamAtom,
-  mindMapProgressAtom,
-} from '@/data-acess/mind-map'
 import { generateResourcePackageAtom } from '@/data-acess/resource-package'
-import { GenerationProgress } from '@/components/generation-progress'
 
 type GenerationDialogStore = {
   isOpen: boolean
@@ -77,59 +56,15 @@ export function GenerationDialog() {
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(
     new Set(),
   )
-  const [isGenerating, setIsGenerating] = useState(false)
   const [selectedType, setSelectedType] = useState<GenerationType>('note')
   const [length, setLength] = useState<LengthOption>('normal')
   const [difficulty, setDifficulty] = useState<DifficultyOption>('medium')
-  const [isGeneratingResourcePackage, setIsGeneratingResourcePackage] =
-    useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
 
   const documentsResult = useAtomValue(indexedDocumentsAtom(projectId || ''))
-  const createNote = useAtomSet(createNoteAtom, { mode: 'promise' })
-  const createQuiz = useAtomSet(createQuizAtom, { mode: 'promise' })
-  const createFlashcardGroup = useAtomSet(createFlashcardGroupAtom, {
-    mode: 'promise',
-  })
   const generateResourcePackage = useAtomSet(generateResourcePackageAtom, {
     mode: 'promise',
   })
-
-  const [createNoteStreamResult, createNoteStream] = useAtom(
-    createNoteStreamAtom,
-    {
-      mode: 'promise',
-    },
-  )
-  const [createQuizStreamResult, createQuizStream] = useAtom(
-    createQuizStreamAtom,
-    {
-      mode: 'promise',
-    },
-  )
-  const [createFlashcardStreamResult, createFlashcardStream] = useAtom(
-    createFlashcardGroupStreamAtom,
-    { mode: 'promise' },
-  )
-  const [generateMindMapStreamResult, generateMindMapStream] = useAtom(
-    generateMindMapStreamAtom,
-    { mode: 'promise' },
-  )
-
-  const noteProgress = useAtomValue(noteProgressAtom)
-  const quizProgress = useAtomValue(quizProgressAtom)
-  const flashcardProgress = useAtomValue(flashcardProgressAtom)
-  const mindMapProgress = useAtomValue(mindMapProgressAtom)
-
-  const currentProgress =
-    selectedType === 'note'
-      ? noteProgress
-      : selectedType === 'quiz'
-        ? quizProgress
-        : selectedType === 'flashcard'
-          ? flashcardProgress
-          : selectedType === 'mindmap'
-            ? mindMapProgress
-            : null
 
   const handleToggleDocument = (documentId: string) => {
     setSelectedDocumentIds((prev) => {
@@ -152,22 +87,6 @@ export function GenerationDialog() {
     setSelectedDocumentIds(new Set())
   }
 
-  useEffect(() => {
-    const isStreaming =
-      createNoteStreamResult.waiting ||
-      createQuizStreamResult.waiting ||
-      createFlashcardStreamResult.waiting ||
-      generateMindMapStreamResult.waiting
-
-    setIsGenerating(isStreaming || isGeneratingResourcePackage)
-  }, [
-    createNoteStreamResult.waiting,
-    createQuizStreamResult.waiting,
-    createFlashcardStreamResult.waiting,
-    generateMindMapStreamResult.waiting,
-    isGeneratingResourcePackage,
-  ])
-
   const handleGenerate = async () => {
     if (!projectId) return
 
@@ -177,114 +96,37 @@ export function GenerationDialog() {
       return
     }
 
+    setIsGenerating(true)
     try {
-      if (selectedType === 'ppt_outline' || selectedType === 'pptx') {
-        setIsGeneratingResourcePackage(true)
-
-        await generateResourcePackage({
-          projectId,
-          target_topic: instructions,
-          title:
-            selectedType === 'pptx'
-              ? `AI PPT - ${instructions.slice(0, 40)}`
-              : `AI PPT Outline - ${instructions.slice(0, 40)}`,
-          source_document_ids: Array.from(selectedDocumentIds),
-          resource_types: [selectedType],
-          difficulty_level:
-            difficulty === 'easy'
-              ? 'beginner'
-              : difficulty === 'hard'
-                ? 'advanced'
-                : 'intermediate',
-          custom_instructions: instructions,
-          generation_params: {
-            launch_context: 'project overview ai content',
-          },
-        })
-
-        toast.success(
-          selectedType === 'pptx'
-            ? 'PPT 已提交生成，可在右侧 AI 内容中查看。'
-            : 'PPT 大纲已生成，可在右侧 AI 内容中查看。',
-        )
-        setTimeout(() => {
-          handleClose()
-        }, 500)
-        return
-      }
-
-      switch (selectedType) {
-        case 'note': {
-          const note = await createNote({
-            projectId,
-            title: buildGeneratedTitle('笔记', instructions),
-            content: '',
-            description: instructions,
-          })
-          await createNoteStream({
-            projectId,
-            customInstructions: instructions,
-            noteId: note.id,
-            count: 30,
-            difficulty: difficulty !== 'medium' ? difficulty : undefined,
-            topic: instructions,
-          })
-          break
-        }
-        case 'quiz': {
-          const quiz = await createQuiz({
-            projectId,
-            name: buildGeneratedTitle('测验', instructions),
-            description: instructions,
-          })
-          await createQuizStream({
-            projectId,
-            quizId: quiz.id,
-            topic: instructions,
-            questionCount: 30,
-            customInstructions: instructions,
-            difficulty: difficulty !== 'medium' ? difficulty : undefined,
-          })
-          break
-        }
-        case 'flashcard': {
-          const group = await createFlashcardGroup({
-            projectId,
-            customInstructions: instructions,
-          })
-          await createFlashcardStream({
-            projectId,
-            groupId: group.id,
-            flashcardCount: 30,
-            customInstructions: instructions,
-            length: length !== 'normal' ? length : undefined,
-            difficulty: difficulty !== 'medium' ? difficulty : undefined,
-          })
-          break
-        }
-        case 'mindmap':
-          await generateMindMapStream({
-            projectId,
-            title: buildGeneratedTitle('思维导图', instructions),
-            customInstructions: instructions,
-          })
-          break
-      }
+      await generateResourcePackage({
+        projectId,
+        target_topic: instructions,
+        title: buildGeneratedTitle(actionLabel, instructions),
+        source_document_ids: Array.from(selectedDocumentIds),
+        resource_types: [toResourcePackageType(selectedType)],
+        difficulty_level: toDifficultyLevel(difficulty),
+        custom_instructions: instructions,
+        generation_params: {
+          launch_context: 'project overview ai content',
+          quiz_count: selectedType === 'quiz' ? 30 : undefined,
+          flashcard_count: selectedType === 'flashcard' ? 30 : undefined,
+          preferred_length: selectedType === 'flashcard' ? length : undefined,
+        },
+      })
 
       if (selectedDocumentIds.size > 0) {
-        toast.info('当前版本仅 PPT 生成会实际使用你勾选的文档，其它类型仍主要按文本要求生成。')
+        toast.info('已将所选文档一并作为统一资源生成链路的上下文。')
       }
+      toast.success(`${actionLabel} 已提交到统一多 Agent 生成链路。`)
 
       setTimeout(() => {
         handleClose()
       }, 500)
     } catch (error) {
       console.error('Generation failed:', error)
-      toast.error(
-        error instanceof Error ? error.message : '生成失败，请稍后重试。',
-      )
+      toast.error(error instanceof Error ? error.message : '生成失败，请稍后重试。')
     } finally {
-      setIsGeneratingResourcePackage(false)
+      setIsGenerating(false)
     }
   }
 
@@ -330,7 +172,7 @@ export function GenerationDialog() {
         <DialogHeader className="shrink-0">
           <DialogTitle>生成 AI 内容</DialogTitle>
           <DialogDescription>
-            选择资源类型，输入要求，并可附带项目文档作为上下文。
+            这里会统一走资源包与多 Agent 编排链路，再按你选择的资源类型落到具体资源。
           </DialogDescription>
         </DialogHeader>
 
@@ -390,10 +232,10 @@ export function GenerationDialog() {
           </div>
 
           <div className="space-y-2 shrink-0">
-            <Label htmlFor="customInstructions">自定义要求</Label>
+            <Label htmlFor="customInstructions">生成要求</Label>
             <Textarea
               id="customInstructions"
-              placeholder="例如：生成一份关于 Transformer 的教学型 PPT，面向入门学生，突出核心概念、例子和总结。"
+              placeholder="例如：生成一份面向入门学生的 Transformer 教学内容，突出核心概念、例子和总结。"
               value={customInstructions}
               onChange={(e) => setCustomInstructions(e.target.value)}
               className="min-h-[100px] resize-none"
@@ -422,9 +264,9 @@ export function GenerationDialog() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="less">少</SelectItem>
-                      <SelectItem value="normal">正常</SelectItem>
-                      <SelectItem value="more">多</SelectItem>
+                      <SelectItem value="less">较短</SelectItem>
+                      <SelectItem value="normal">标准</SelectItem>
+                      <SelectItem value="more">较长</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -502,7 +344,7 @@ export function GenerationDialog() {
                     if (documents.length === 0) {
                       return (
                         <div className="text-muted-foreground py-4 text-center">
-                          没有可用文档。请先上传文档。
+                          没有可用文档，请先上传文档。
                         </div>
                       )
                     }
@@ -528,16 +370,6 @@ export function GenerationDialog() {
             </div>
           </div>
         </div>
-
-        {currentProgress ? (
-          <div className="shrink-0 px-4">
-            <GenerationProgress
-              status={currentProgress.status as ProgressStage}
-              message={currentProgress.message}
-              error={currentProgress.error}
-            />
-          </div>
-        ) : null}
 
         <DialogFooter className="gap-2 shrink-0">
           <Button
@@ -572,8 +404,37 @@ export function GenerationDialog() {
 
 function buildGeneratedTitle(resourceLabel: string, instructions: string): string {
   const normalized = instructions.replace(/\s+/g, ' ').trim()
-  const suffix = normalized.length > 24 ? `${normalized.slice(0, 24)}...` : normalized
-  return suffix ? `AI ${resourceLabel}：${suffix}` : `AI ${resourceLabel}`
+  const suffix =
+    normalized.length > 24 ? `${normalized.slice(0, 24)}...` : normalized
+  return suffix ? `AI ${resourceLabel}: ${suffix}` : `AI ${resourceLabel}`
+}
+
+function toResourcePackageType(selectedType: GenerationType) {
+  switch (selectedType) {
+    case 'note':
+      return 'lecture_note'
+    case 'quiz':
+      return 'practice_set'
+    case 'flashcard':
+      return 'flashcards'
+    case 'mindmap':
+      return 'mind_map'
+    case 'ppt_outline':
+      return 'ppt_outline'
+    case 'pptx':
+      return 'pptx'
+  }
+}
+
+function toDifficultyLevel(difficulty: DifficultyOption) {
+  switch (difficulty) {
+    case 'easy':
+      return 'beginner'
+    case 'hard':
+      return 'advanced'
+    default:
+      return 'intermediate'
+  }
 }
 
 type DocumentCheckboxProps = {

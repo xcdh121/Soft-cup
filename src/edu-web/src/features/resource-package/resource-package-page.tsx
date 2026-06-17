@@ -1,12 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import {
-  FileTextIcon,
-  Loader2Icon,
-  MapIcon,
-  PresentationIcon,
-  SparklesIcon,
-} from 'lucide-react'
+import { Loader2Icon, SparklesIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -32,43 +26,6 @@ import {
 import { ProjectHeader } from '@/features/project/components/project-header'
 import { cn } from '@/lib/utils'
 
-type MindMapJson = {
-  root?: string
-  nodes?: Array<{ id?: string; label?: string }>
-  edges?: Array<{ source?: string; target?: string }>
-  notes?: {
-    goal?: string
-    weak_points?: Array<string>
-    knowledge_points?: Array<string>
-  }
-}
-
-type PracticeSetJson = {
-  topic?: string
-  difficulty_level?: string
-  questions?: Array<{ level?: string; question?: string }>
-}
-
-type PptxJson = {
-  provider?: string
-  sid?: string
-  title?: string
-  subTitle?: string
-  theme?: string
-  export_status?: string
-  notes?: string
-  pptStatus?: string
-  totalPages?: number
-  donePages?: number
-  pptUrl?: string
-  coverImgSrc?: string
-  slides?: Array<{
-    page?: number
-    title?: string
-    bullets?: Array<string>
-  }>
-}
-
 const RESOURCE_TYPE_OPTIONS: Array<{
   value: ResourceType
   label: string
@@ -76,43 +33,33 @@ const RESOURCE_TYPE_OPTIONS: Array<{
 }> = [
   {
     value: 'lecture_note',
-    label: '讲解文档',
-    description: '结构化知识讲解材料',
+    label: '笔记',
+    description: '结构化讲解文档',
   },
   {
     value: 'mind_map',
     label: '思维导图',
-    description: '可视化知识结构梳理',
+    description: '可视化知识结构',
   },
   {
     value: 'practice_set',
-    label: '分层练习题',
-    description: '按难度分层的练习内容',
+    label: '题库',
+    description: '分层练习与题目生成',
+  },
+  {
+    value: 'flashcards',
+    label: '闪卡',
+    description: '生成记忆卡片组',
   },
   {
     value: 'ppt_outline',
     label: 'PPT 大纲',
-    description: '逐页演示讲稿提纲',
+    description: '逐页演示讲稿大纲',
   },
   {
     value: 'pptx',
     label: 'PPTX',
-    description: '可导出的演示文稿结构',
-  },
-  {
-    value: 'code_lab',
-    label: '代码实操',
-    description: '动手实践的编程任务',
-  },
-  {
-    value: 'reading_material',
-    label: '拓展阅读',
-    description: '延伸阅读与补充材料',
-  },
-  {
-    value: 'video_script',
-    label: '视频脚本',
-    description: '短视频/分镜讲解脚本',
+    description: '导出演示文件',
   },
 ]
 
@@ -138,248 +85,6 @@ const statusToneMap: Record<
   completed: 'default',
   failed: 'destructive',
   pending: 'outline',
-}
-
-const splitMarkdownSections = (content: string) =>
-  content
-    .split(/\n(?=## )/g)
-    .map((section) => section.trim())
-    .filter(Boolean)
-
-const parsePptOutline = (content: string) =>
-  content
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => /^\d+\./.test(line))
-
-const renderLectureNote = (resource: GeneratedResource) => {
-  const sections = splitMarkdownSections(resource.content_text ?? '')
-
-  return (
-    <div className="mt-4 space-y-3">
-      {sections.map((section) => {
-        const [heading, ...bodyLines] = section.split('\n')
-        const title = heading.replace(/^##\s*/, '').replace(/^#\s*/, '')
-
-        return (
-          <section key={heading} className="rounded-xl border bg-muted/20 p-4">
-            <h4 className="font-medium">{title}</h4>
-            <div className="mt-2 space-y-2 text-sm text-muted-foreground whitespace-pre-wrap">
-              {bodyLines.join('\n').trim()}
-            </div>
-          </section>
-        )
-      })}
-    </div>
-  )
-}
-
-const renderMindMap = (resource: GeneratedResource) => {
-  const content = (resource.content_json ?? {}) as MindMapJson
-  const nodes = content.nodes ?? []
-  const notes = content.notes
-
-  return (
-    <div className="mt-4 space-y-4">
-      <div className="rounded-xl border bg-muted/20 p-4">
-        <div className="flex items-center gap-2 font-medium">
-          <MapIcon className="size-4" />
-          <span>{content.root ?? resource.title}</span>
-        </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          {nodes.map((node, index) => (
-            <div key={`${node.id ?? index}-${node.label ?? ''}`} className="rounded-lg border bg-background p-3 text-sm">
-              {node.label ?? `节点 ${index + 1}`}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {notes ? (
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-xl border p-4">
-            <div className="text-sm font-medium">学习目标</div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              {notes.goal ?? '暂无'}
-            </div>
-          </div>
-          <div className="rounded-xl border p-4">
-            <div className="text-sm font-medium">薄弱点</div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              {(notes.weak_points ?? []).join('、') || '暂无'}
-            </div>
-          </div>
-          <div className="rounded-xl border p-4">
-            <div className="text-sm font-medium">知识点</div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              {(notes.knowledge_points ?? []).join('、') || '暂无'}
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-const renderPracticeSet = (resource: GeneratedResource) => {
-  const content = (resource.content_json ?? {}) as PracticeSetJson
-  const questions = content.questions ?? []
-
-  return (
-    <div className="mt-4 space-y-3">
-      {questions.map((question, index) => (
-        <div key={`${question.level ?? index}-${question.question ?? ''}`} className="rounded-xl border p-4">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">{question.level ?? `题目 ${index + 1}`}</Badge>
-            {content.difficulty_level ? (
-              <span className="text-xs text-muted-foreground">
-                难度：{content.difficulty_level}
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-3 text-sm leading-6">
-            {question.question ?? '暂无题目内容'}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-const renderPptOutline = (resource: GeneratedResource) => {
-  const slides = parsePptOutline(resource.content_text ?? '')
-  const outline =
-    ((resource.content_json ?? {}) as { outline?: { title?: string } }).outline ?? {}
-
-  return (
-    <div className="mt-4 rounded-xl border bg-muted/20 p-4">
-      <div className="flex items-center gap-2 font-medium">
-        <PresentationIcon className="size-4" />
-        <span>{outline.title ?? '演示结构'}</span>
-      </div>
-      {slides.length > 0 ? (
-        <ol className="mt-3 space-y-2 text-sm leading-6">
-          {slides.map((slide) => (
-            <li key={slide} className="rounded-lg border bg-background px-3 py-2">
-              {slide}
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <div className="mt-3 text-sm text-muted-foreground">
-          暂无可展示的大纲内容。
-        </div>
-      )}
-    </div>
-  )
-}
-
-const renderPptx = (resource: GeneratedResource) => {
-  const content = (resource.content_json ?? {}) as PptxJson
-  const slides = content.slides ?? []
-  const isExternalPpt = Boolean(resource.file_url ?? content.pptUrl)
-  const downloadUrl = resource.file_url ?? content.pptUrl
-
-  return (
-    <div className="mt-4 space-y-3">
-      <div className="rounded-xl border bg-muted/20 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="font-medium">{content.title ?? resource.title}</div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              主题：{content.theme ?? '默认'} | 导出状态：{content.export_status ?? '未知'}
-            </div>
-          </div>
-          <Badge variant="outline">PPTX 结构</Badge>
-        </div>
-        {content.subTitle ? (
-          <div className="mt-2 text-sm text-muted-foreground">{content.subTitle}</div>
-        ) : null}
-        {content.coverImgSrc || resource.cover_image_url ? (
-          <img
-            src={resource.cover_image_url ?? content.coverImgSrc}
-            alt={content.title ?? resource.title}
-            className="mt-3 max-h-56 rounded-lg border object-cover"
-          />
-        ) : null}
-        {isExternalPpt ? (
-          <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-            <div>
-              状态：{content.pptStatus ?? resource.status}
-              {content.totalPages
-                ? ` | 页数：${content.donePages ?? content.totalPages}/${content.totalPages}`
-                : ''}
-            </div>
-            {downloadUrl ? (
-              <a
-                href={downloadUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-primary underline underline-offset-4"
-              >
-                下载生成的 PPT
-              </a>
-            ) : null}
-          </div>
-        ) : null}
-        {content.notes ? (
-          <div className="mt-3 text-sm text-muted-foreground">{content.notes}</div>
-        ) : null}
-      </div>
-
-      {!isExternalPpt
-        ? slides.map((slide, index) => (
-            <div key={`${slide.page ?? index}-${slide.title ?? ''}`} className="rounded-xl border p-4">
-              <div className="font-medium">
-                第 {slide.page ?? index + 1} 页：{slide.title ?? '未命名页'}
-              </div>
-              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                {(slide.bullets ?? []).map((bullet) => (
-                  <li key={bullet}>{bullet}</li>
-                ))}
-              </ul>
-            </div>
-          ))
-        : null}
-    </div>
-  )
-}
-
-const renderFallback = (resource: GeneratedResource) => {
-  if (resource.content_text) {
-    return (
-      <div className="mt-4 rounded-lg bg-muted/40 p-3 text-sm whitespace-pre-wrap">
-        {resource.content_text}
-      </div>
-    )
-  }
-
-  if (resource.content_json) {
-    return (
-      <pre className="mt-4 overflow-x-auto rounded-lg bg-muted/40 p-3 text-xs">
-        {JSON.stringify(resource.content_json, null, 2)}
-      </pre>
-    )
-  }
-
-  return null
-}
-
-const ResourceContent = ({ resource }: { resource: GeneratedResource }) => {
-  switch (resource.resource_type) {
-    case 'lecture_note':
-      return renderLectureNote(resource)
-    case 'mind_map':
-      return renderMindMap(resource)
-    case 'practice_set':
-      return renderPracticeSet(resource)
-    case 'ppt_outline':
-      return renderPptOutline(resource)
-    case 'pptx':
-      return renderPptx(resource)
-    default:
-      return renderFallback(resource)
-  }
 }
 
 const ResourcePackageList = ({
@@ -423,6 +128,7 @@ const ResourcePackageList = ({
     <div className="space-y-2">
       {packages.map((resourcePackage) => {
         const isActive = resourcePackage.id === selectedPackageId
+
         return (
           <button
             key={resourcePackage.id}
@@ -432,7 +138,7 @@ const ResourcePackageList = ({
               'w-full rounded-xl border p-3 text-left transition-colors',
               isActive
                 ? 'border-primary bg-primary/5'
-                : 'hover:bg-muted/40 hover:border-muted-foreground/30',
+                : 'hover:border-muted-foreground/30 hover:bg-muted/40',
             )}
           >
             <div className="flex items-start justify-between gap-3">
@@ -449,7 +155,7 @@ const ResourcePackageList = ({
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
               <span>
                 {resourcePackage.completed_resource_count}/
-                {resourcePackage.resource_count} 项
+                {resourcePackage.resource_count} 个资源
               </span>
               {resourcePackage.estimated_minutes ? (
                 <span>{resourcePackage.estimated_minutes} 分钟</span>
@@ -479,7 +185,7 @@ const ResourcePreview = ({
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        <span>正在加载资源内容...</span>
+        <span>正在加载生成结果...</span>
       </div>
     )
   }
@@ -487,20 +193,28 @@ const ResourcePreview = ({
   if (!Result.isSuccess(resourcesResult)) {
     return (
       <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
-        资源内容加载失败。
+        生成结果加载失败。
+      </div>
+    )
+  }
+
+  if (resources.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+        这个资源包暂时还没有可预览的生成结果。
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {resources.map((resource) => (
-        <div key={resource.id} className="rounded-2xl border p-4">
+        <div key={resource.id} className="rounded-xl border p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="font-medium">{resource.title}</div>
               <div className="mt-1 text-sm text-muted-foreground">
-                {resource.summary ?? '暂无摘要。'}
+                {resource.summary ?? '暂无摘要'}
               </div>
             </div>
             <Badge variant={statusToneMap[resource.status]}>
@@ -517,10 +231,67 @@ const ResourcePreview = ({
             <Badge variant="outline">{resource.difficulty_level}</Badge>
           </div>
 
-          <ResourceContent resource={resource} />
+          {resource.preview_url ? (
+            <div className="mt-3">
+              <a
+                href={resource.preview_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm text-primary underline underline-offset-4"
+              >
+                打开生成资源
+              </a>
+            </div>
+          ) : null}
+
+          {resource.file_url ? (
+            <div className="mt-3">
+              <a
+                href={resource.file_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm text-primary underline underline-offset-4"
+              >
+                打开导出文件
+              </a>
+            </div>
+          ) : null}
+
+          {resource.content_text ? (
+            <div className="mt-3 rounded-lg bg-muted/40 p-3 text-sm whitespace-pre-wrap">
+              {resource.content_text.slice(0, 800)}
+              {resource.content_text.length > 800 ? '...' : ''}
+            </div>
+          ) : null}
+
+          {!resource.content_text && resource.content_json ? (
+            <pre className="mt-3 overflow-x-auto rounded-lg bg-muted/40 p-3 text-xs">
+              {JSON.stringify(resource.content_json, null, 2)}
+            </pre>
+          ) : null}
         </div>
       ))}
     </div>
+  )
+}
+
+const ResourcePreviewPanel = ({
+  projectId,
+  resourcePackage,
+}: {
+  projectId: string
+  resourcePackage: ResourcePackage | null
+}) => {
+  if (!resourcePackage) {
+    return (
+      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+        选择一个资源包以查看生成结果。
+      </div>
+    )
+  }
+
+  return (
+    <ResourcePreview projectId={projectId} resourcePackage={resourcePackage} />
   )
 }
 
@@ -543,6 +314,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
     'lecture_note',
     'mind_map',
     'practice_set',
+    'flashcards',
     'ppt_outline',
     'pptx',
   ])
@@ -558,7 +330,8 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
     !topic.trim() || selectedTypes.length === 0 || isSubmitting
 
   const helperText = useMemo(
-    () => '围绕当前项目生成讲解、导图、练习和演示材料等资源包。',
+    () =>
+      '资源包生成已与项目概览中的 AI 生成统一，统一走同一条多 Agent 生成链路。',
     [],
   )
 
@@ -603,10 +376,10 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
   }
 
   return (
-    <div className="flex h-full flex-col max-h-screen">
+    <div className="flex h-full max-h-screen flex-col">
       <ProjectHeader projectId={projectId} />
 
-      <div className="flex flex-1 flex-col min-h-0 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="container mx-auto flex max-w-7xl flex-1 flex-col gap-6 px-4 py-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -619,9 +392,11 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
           <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
             <div className="rounded-2xl border bg-background">
               <div className="border-b px-5 py-4">
-                <div className="text-base font-medium">生成资源包</div>
+                <div className="text-base font-medium">
+                  生成资源包
+                </div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  为当前项目配置一组聚焦主题的学习资源。
+                  可选资源类型与项目概览里的 AI 生成保持一致。
                 </div>
               </div>
 
@@ -632,7 +407,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                     id="resource-package-title"
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
-                    placeholder="可选：为这组资源填写一个标题"
+                    placeholder="可选：给这组资源起一个标题"
                     className="min-h-20 resize-none"
                   />
                 </div>
@@ -643,7 +418,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                     id="resource-package-topic"
                     value={topic}
                     onChange={(event) => setTopic(event.target.value)}
-                    placeholder="这组资源要重点围绕什么内容？"
+                    placeholder="这组资源希望重点围绕什么内容生成？"
                     className="min-h-24 resize-none"
                   />
                 </div>
@@ -654,13 +429,15 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                     id="resource-package-goal"
                     value={goal}
                     onChange={(event) => setGoal(event.target.value)}
-                    placeholder="可选：例如用于考前复习、补齐薄弱点"
+                    placeholder="可选：例如考前复习、查漏补缺、知识串讲"
                     className="min-h-20 resize-none"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="resource-package-difficulty">难度等级</Label>
+                  <Label htmlFor="resource-package-difficulty">
+                    难度等级
+                  </Label>
                   <Select
                     value={difficulty}
                     onValueChange={(value) =>
@@ -711,115 +488,114 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <Label>来源文档</Label>
-                  <div className="space-y-2 rounded-xl border p-3">
-                    {documentsResult.waiting ? (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2Icon className="size-4 animate-spin" />
-                        <span>正在加载已索引文档...</span>
-                      </div>
-                    ) : indexedDocuments.length === 0 ? (
-                      <div className="text-sm text-muted-foreground">
-                        目前还没有可用的索引文档。
-                      </div>
-                    ) : (
-                      indexedDocuments.map((document) => (
-                        <label
-                          key={document.id}
-                          className="flex cursor-pointer items-start gap-3 rounded-lg p-2 hover:bg-muted/40"
-                        >
-                          <Checkbox
-                            checked={selectedDocumentIds.has(document.id)}
-                            onCheckedChange={() => toggleDocument(document.id)}
-                          />
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium">
-                              {document.file_name}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {document.file_type?.toUpperCase()}
-                            </div>
-                          </div>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="resource-package-instructions">
-                    补充要求
+                    自定义要求
                   </Label>
                   <Textarea
                     id="resource-package-instructions"
                     value={instructions}
                     onChange={(event) => setInstructions(event.target.value)}
-                    placeholder="可选：补充生成风格、重点、表达方式等要求"
-                    className="min-h-28 resize-none"
+                    placeholder="可选：补充这次多 Agent 生成的风格、重点或限制"
+                    className="min-h-24 resize-none"
                   />
                 </div>
 
-                <div className="flex justify-end">
-                  <Button
-                    onClick={handleGenerate}
-                    disabled={isGenerateDisabled}
-                    size="lg"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2Icon className="size-4 animate-spin" />
-                        生成中
-                      </>
-                    ) : (
-                      <>
-                        <SparklesIcon className="size-4" />
-                        生成资源包
-                      </>
-                    )}
-                  </Button>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label>源文档</Label>
+                    <div className="text-xs text-muted-foreground">
+                      已选择 {selectedDocumentIds.size} 个
+                    </div>
+                  </div>
+
+                  {documentsResult.waiting ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2Icon className="size-4 animate-spin" />
+                      <span>正在加载已索引文档...</span>
+                    </div>
+                  ) : !Result.isSuccess(documentsResult) ? (
+                    <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
+                      已索引文档加载失败。
+                    </div>
+                  ) : indexedDocuments.length === 0 ? (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                      暂无可用的已索引文档。
+                    </div>
+                  ) : (
+                    <div className="max-h-60 space-y-2 overflow-y-auto rounded-xl border p-3">
+                      {indexedDocuments.map((document) => {
+                        const checked = selectedDocumentIds.has(document.id)
+                        return (
+                          <label
+                            key={document.id}
+                            className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40"
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() => toggleDocument(document.id)}
+                            />
+                            <div className="space-y-1 text-sm">
+                              <div className="font-medium">
+                                {document.file_name}
+                              </div>
+                              <div className="text-muted-foreground">
+                                {document.file_type.toUpperCase()} · {document.status}
+                              </div>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
+
+                <Button
+                  onClick={handleGenerate}
+                  disabled={isGenerateDisabled}
+                  className="w-full"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2Icon className="mr-2 size-4 animate-spin" />
+                      生成中...
+                    </>
+                  ) : (
+                    '生成资源包'
+                  )}
+                </Button>
               </div>
             </div>
 
-            <div className="grid min-h-0 gap-6">
-              <div className="rounded-2xl border bg-background">
-                <div className="border-b px-5 py-4">
-                  <div className="text-base font-medium">最近生成</div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    选择一个资源包查看其中的生成结果。
+            <div className="grid min-h-0 gap-6 xl:grid-rows-[auto_1fr]">
+              <div className="rounded-2xl border bg-background p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-base font-medium">资源包列表</div>
+                    <div className="text-sm text-muted-foreground">
+                      查看当前项目下已生成的资源包。
+                    </div>
                   </div>
                 </div>
-                <div className="max-h-[320px] overflow-y-auto p-5">
-                  <ResourcePackageList
-                    projectId={projectId}
-                    selectedPackageId={selectedPackage?.id ?? null}
-                    onSelect={setSelectedPackage}
-                  />
-                </div>
+                <ResourcePackageList
+                  projectId={projectId}
+                  selectedPackageId={selectedPackage?.id ?? null}
+                  onSelect={setSelectedPackage}
+                />
               </div>
 
-              <div className="min-h-0 rounded-2xl border bg-background">
-                <div className="border-b px-5 py-4">
-                  <div className="flex items-center gap-2 text-base font-medium">
-                    <FileTextIcon className="size-4" />
-                    <span>资源预览</span>
-                  </div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    预览当前选中资源包中的内容。
+              <div className="min-h-0 rounded-2xl border bg-background p-5">
+                <div className="mb-4">
+                  <div className="text-base font-medium">生成结果</div>
+                  <div className="text-sm text-muted-foreground">
+                    预览统一 AI 生成链路产出的资源内容。
                   </div>
                 </div>
-                <div className="max-h-[640px] overflow-y-auto p-5">
-                  {selectedPackage ? (
-                    <ResourcePreview
-                      projectId={projectId}
-                      resourcePackage={selectedPackage}
-                    />
-                  ) : (
-                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                      请选择一个资源包查看生成内容。
-                    </div>
-                  )}
+                <div className="max-h-[calc(100vh-22rem)] overflow-y-auto pr-1">
+                  <ResourcePreviewPanel
+                    projectId={projectId}
+                    resourcePackage={selectedPackage}
+                  />
                 </div>
               </div>
             </div>

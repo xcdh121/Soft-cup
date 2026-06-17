@@ -1,13 +1,14 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from edu_db.models import Document, GeneratedResource, Project, ResourcePackage
 from edu_db.session import get_session_factory
 
 from edu_core.exceptions import NotFoundError
+from edu_core.schemas.agent_orchestration import AgentTrigger
 from edu_core.schemas.resource_packages import (
     GeneratedResourceDto,
     ResourcePackageDto,
@@ -15,6 +16,14 @@ from edu_core.schemas.resource_packages import (
 )
 from edu_core.storage import LocalStorageService
 from edu_core.services.xfyun_ppt import XfyunPptClient, XfyunPptError
+
+if TYPE_CHECKING:
+    from edu_core.schemas.agent_orchestration import AgentEvent, DiagnosisResponse
+    from edu_core.services.agent_orchestration import AgentOrchestrationService
+    from edu_core.services.flashcard_groups import FlashcardGroupService
+    from edu_core.services.mind_maps import MindMapService
+    from edu_core.services.notes import NoteService
+    from edu_core.services.quizzes import QuizService
 
 
 class ResourcePackageService:
@@ -24,9 +33,19 @@ class ResourcePackageService:
         self,
         *,
         storage_root: str = "./.localdata",
+        agent_orchestration_service: "AgentOrchestrationService | None" = None,
+        note_service: "NoteService | None" = None,
+        quiz_service: "QuizService | None" = None,
+        flashcard_group_service: "FlashcardGroupService | None" = None,
+        mind_map_service: "MindMapService | None" = None,
         xfyun_ppt_client: XfyunPptClient | None = None,
     ) -> None:
         self.storage = LocalStorageService(storage_root)
+        self.agent_orchestration_service = agent_orchestration_service
+        self.note_service = note_service
+        self.quiz_service = quiz_service
+        self.flashcard_group_service = flashcard_group_service
+        self.mind_map_service = mind_map_service
         self.xfyun_ppt_client = xfyun_ppt_client
 
     def list_resource_packages(
@@ -127,6 +146,34 @@ class ResourcePackageService:
                 **(payload.get("generation_params") or {}),
             }
 
+            diagnosis = await self._get_or_create_diagnosis(
+                user_id=user_id,
+                project_id=project_id,
+                package_id=package_id,
+                target_topic=target_topic,
+                difficulty_level=difficulty_level,
+                custom_instructions=payload.get("custom_instructions"),
+                resource_types=resource_types,
+                generation_params=generation_params,
+                diagnosis_id=payload.get("diagnosis_id"),
+            )
+            diagnosis_trace = self._get_diagnosis_trace(diagnosis)
+
+            knowledge_point_ids = self._merge_distinct(
+                payload.get("knowledge_point_ids") or [],
+                self._extract_knowledge_point_ids(diagnosis),
+            )
+            weak_points = self._merge_distinct(
+                payload.get("weak_knowledge_point_ids") or [],
+                self._extract_weak_point_ids(diagnosis),
+            )
+            generation_params = {
+                **generation_params,
+                "diagnosis_id": diagnosis.diagnosis_id,
+                "learning_path": diagnosis.learning_path or {},
+                "recommendations": diagnosis.recommendations,
+            }
+
             package = ResourcePackage(
                 id=package_id,
                 project_id=project_id,
@@ -137,14 +184,14 @@ class ResourcePackageService:
                 description=payload.get("description")
                 or f"Personalized package for {target_topic}",
                 generation_mode=payload.get("generation_mode", "manual"),
-                status="generating",
+                status="completed",
                 target_topic=target_topic,
                 target_goal=target_goal,
                 difficulty_level=difficulty_level,
                 estimated_minutes=payload.get("estimated_minutes"),
                 source_document_ids=source_document_ids,
-                knowledge_point_ids=payload.get("knowledge_point_ids") or [],
-                weak_knowledge_point_ids=payload.get("weak_knowledge_point_ids") or [],
+                knowledge_point_ids=knowledge_point_ids,
+                weak_knowledge_point_ids=weak_points,
                 preferred_resource_types=resource_types,
                 generation_params=generation_params,
                 agent_trace=[],
@@ -153,30 +200,25 @@ class ResourcePackageService:
                 failed_resource_count=0,
                 created_at=now,
                 updated_at=now,
+                completed_at=now,
             )
             db.add(package)
             db.flush()
 
-            agent_trace: list[dict] = []
+            agent_trace = self._build_agent_trace_from_events(
+                package_id=package_id,
+                diagnosis=diagnosis,
+                events=diagnosis_trace,
+            )
             self._append_agent_event(
                 agent_trace,
                 package_id,
                 "package_status_changed",
-                {"status": "generating"},
-            )
-            self._append_agent_event(
-                agent_trace,
-                package_id,
-                "agent_step",
-                {
-                    "agent": "ProfileAgent",
-                    "message": "Collected generation context from request and selected documents.",
-                },
+                {"status": "completed"},
             )
 
             document_context = self._build_document_context(documents)
-            knowledge_point_ids = payload.get("knowledge_point_ids") or []
-            weak_points = payload.get("weak_knowledge_point_ids") or []
+            recommendation_pool = list(diagnosis.recommendations)
 
             completed = 0
             failed = 0
@@ -189,7 +231,9 @@ class ResourcePackageService:
                 )
 
                 try:
-                    generated = await self._generate_resource_content_async(
+                    generated, resource_status = await self._generate_package_resource(
+                        user_id=user_id,
+                        project_id=project_id,
                         resource_type=resource_type,
                         topic=target_topic,
                         goal=target_goal,
@@ -200,8 +244,8 @@ class ResourcePackageService:
                         custom_instructions=payload.get("custom_instructions"),
                         documents=documents,
                         generation_params=generation_params,
+                        recommendations=recommendation_pool,
                     )
-                    resource_status = "completed"
                     error_message = None
                     completed += 1
                 except Exception as exc:
@@ -259,7 +303,7 @@ class ResourcePackageService:
             package.status = "completed" if failed == 0 else "failed"
             package.completed_resource_count = completed
             package.failed_resource_count = failed
-            package.completed_at = now if failed == 0 else None
+            package.completed_at = now
             self._append_agent_event(
                 agent_trace,
                 package_id,
@@ -424,6 +468,252 @@ class ResourcePackageService:
                 "payload": payload,
             }
         )
+
+    async def _get_or_create_diagnosis(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        package_id: str,
+        target_topic: str,
+        difficulty_level: str,
+        custom_instructions: str | None,
+        resource_types: list[str],
+        generation_params: dict[str, Any],
+        diagnosis_id: str | None,
+    ) -> "DiagnosisResponse":
+        if not self.agent_orchestration_service:
+            raise RuntimeError("Agent orchestration service is required")
+
+        if diagnosis_id:
+            diagnosis = self.agent_orchestration_service.get_diagnosis(diagnosis_id)
+            if diagnosis.project_id != project_id or diagnosis.student_id != user_id:
+                raise NotFoundError(f"Diagnosis {diagnosis_id} not found")
+            return diagnosis
+
+        orchestration_types = [
+            resource_type
+            for resource_type in (
+                self._to_orchestration_resource_type(resource_type)
+                for resource_type in resource_types
+            )
+            if resource_type is not None
+        ]
+
+        return await self.agent_orchestration_service.generate_diagnosis(
+            user_id=user_id,
+            project_id=project_id,
+            trigger=AgentTrigger(type="resource_package", id=package_id),
+            meta={
+                "requested_topic": target_topic,
+                "requested_instructions": custom_instructions,
+                "requested_resource_types": orchestration_types,
+                "difficulty": difficulty_level,
+                "quiz_count": generation_params.get("quiz_count"),
+                "flashcard_count": generation_params.get("flashcard_count"),
+                "launch_context": generation_params.get("launch_context"),
+            },
+        )
+
+    def _get_diagnosis_trace(self, diagnosis: "DiagnosisResponse") -> list["AgentEvent"]:
+        if not self.agent_orchestration_service:
+            return []
+        try:
+            return self.agent_orchestration_service.get_diagnosis_trace(
+                diagnosis.diagnosis_id
+            )
+        except NotFoundError:
+            return []
+
+    def _build_agent_trace_from_events(
+        self,
+        *,
+        package_id: str,
+        diagnosis: "DiagnosisResponse",
+        events: list["AgentEvent"],
+    ) -> list[dict[str, Any]]:
+        trace = []
+        for event in events:
+            trace.append(
+                {
+                    "event": event.event_type.value,
+                    "package_id": package_id,
+                    "timestamp": event.timestamp.isoformat(),
+                    "payload": {
+                        "agent": event.agent_name.value if event.agent_name else None,
+                        "status": event.status.value,
+                        "summary": event.summary,
+                        **(event.payload or {}),
+                    },
+                }
+            )
+        self._append_agent_event(
+            trace,
+            package_id,
+            "diagnosis_linked",
+            {"diagnosis_id": diagnosis.diagnosis_id, "run_id": diagnosis.run_id},
+        )
+        return trace
+
+    def _extract_knowledge_point_ids(self, diagnosis: "DiagnosisResponse") -> list[str]:
+        related_points = (diagnosis.diagnosis or {}).get("related_knowledge_points") or []
+        result = []
+        for point in related_points:
+            point_id = point.get("id")
+            if point_id:
+                result.append(str(point_id))
+        return result
+
+    def _extract_weak_point_ids(self, diagnosis: "DiagnosisResponse") -> list[str]:
+        return self._extract_knowledge_point_ids(diagnosis)
+
+    def _merge_distinct(self, *values: list[str]) -> list[str]:
+        merged: list[str] = []
+        seen = set()
+        for items in values:
+            for item in items:
+                key = str(item).strip()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                merged.append(key)
+        return merged
+
+    def _to_orchestration_resource_type(self, resource_type: str) -> str | None:
+        mapping = {
+            "lecture_note": "note",
+            "practice_set": "quiz",
+            "flashcards": "flashcards",
+            "mind_map": "mind_map",
+        }
+        return mapping.get(resource_type)
+
+    async def _generate_package_resource(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        resource_type: str,
+        topic: str,
+        goal: str | None,
+        difficulty_level: str,
+        document_context: str,
+        knowledge_point_ids: list[str],
+        weak_points: list[str],
+        custom_instructions: str | None,
+        documents: list[Document],
+        generation_params: dict[str, Any],
+        recommendations: list[dict[str, Any]],
+    ) -> tuple[dict[str, Any], str]:
+        recommendation = self._take_matching_recommendation(recommendations, resource_type)
+        if recommendation is not None:
+            return (
+                self._build_generated_resource_reference(
+                    project_id=project_id,
+                    resource_type=resource_type,
+                    recommendation=recommendation,
+                    difficulty_level=difficulty_level,
+                    custom_instructions=custom_instructions,
+                ),
+                "generating",
+            )
+
+        generated = await self._generate_resource_content_async(
+            resource_type=resource_type,
+            topic=topic,
+            goal=goal,
+            difficulty_level=difficulty_level,
+            document_context=document_context,
+            knowledge_point_ids=knowledge_point_ids,
+            weak_points=weak_points,
+            custom_instructions=custom_instructions,
+            documents=documents,
+            generation_params=generation_params,
+        )
+        return generated, "completed"
+
+    def _take_matching_recommendation(
+        self,
+        recommendations: list[dict[str, Any]],
+        resource_type: str,
+    ) -> dict[str, Any] | None:
+        orchestration_type = self._to_orchestration_resource_type(resource_type)
+        if orchestration_type is None:
+            return None
+
+        for index, recommendation in enumerate(recommendations):
+            if recommendation.get("recommendation_type") == orchestration_type:
+                return recommendations.pop(index)
+        return None
+
+    def _build_generated_resource_reference(
+        self,
+        *,
+        project_id: str,
+        resource_type: str,
+        recommendation: dict[str, Any],
+        difficulty_level: str,
+        custom_instructions: str | None,
+    ) -> dict[str, Any]:
+        reference_type = {
+            "lecture_note": "note",
+            "practice_set": "quiz",
+            "flashcards": "flashcards",
+            "mind_map": "mind_map",
+        }[resource_type]
+
+        return {
+            "title": recommendation.get("title") or "Queued resource",
+            "summary": (
+                "Queued through the orchestration pipeline. Open the linked resource "
+                "or wait for the worker to finish generation."
+            ),
+            "format": f"{reference_type}-ref",
+            "generator_agent": "ResourceAgent",
+            "generation_reason": "Generated through the shared multi-agent orchestration flow.",
+            "estimated_minutes": self._estimate_minutes(resource_type),
+            "preview_url": self._build_preview_url(
+                project_id=project_id,
+                resource_type=resource_type,
+                target_id=str(recommendation.get("target_id") or ""),
+            ),
+            "content_json": {
+                "target_id": recommendation.get("target_id"),
+                "target_type": reference_type,
+                "project_id": project_id,
+                "reason_text": recommendation.get("reason_text", []),
+                "custom_instructions": custom_instructions,
+            },
+            "content_text": None,
+        }
+
+    def _estimate_minutes(self, resource_type: str) -> int:
+        defaults = {
+            "lecture_note": 25,
+            "practice_set": 30,
+            "flashcards": 20,
+            "mind_map": 15,
+            "ppt_outline": 20,
+            "pptx": 25,
+            "code_lab": 40,
+            "reading_material": 18,
+            "video_script": 12,
+        }
+        return defaults.get(resource_type, 15)
+
+    def _build_preview_url(
+        self, *, project_id: str, resource_type: str, target_id: str
+    ) -> str | None:
+        if not target_id:
+            return None
+
+        routes = {
+            "lecture_note": f"/dashboard/p/{project_id}/n/{target_id}",
+            "practice_set": f"/dashboard/p/{project_id}/q/{target_id}",
+            "flashcards": f"/dashboard/p/{project_id}/f/{target_id}",
+            "mind_map": f"/dashboard/p/{project_id}/m/{target_id}",
+        }
+        return routes.get(resource_type)
 
     def _build_document_context(self, documents: list[Document]) -> str:
         if not documents:
@@ -750,6 +1040,30 @@ class ResourcePackageService:
                         {
                             "level": "advanced",
                             "question": f"What trade-offs appear when using {topic} in a full system?",
+                        },
+                    ],
+                },
+            }
+
+        if resource_type == "flashcards":
+            return {
+                "title": f"{topic} flashcards",
+                "summary": f"Flashcards focused on the key points of {topic}.",
+                "format": "json",
+                "generator_agent": "ResourceAgent",
+                "generation_reason": common_reason,
+                "estimated_minutes": 20,
+                "content_json": {
+                    "topic": topic,
+                    "difficulty_level": difficulty_level,
+                    "cards": [
+                        {
+                            "question": f"What is the central concept behind {topic}?",
+                            "answer": f"Summarize the most important principle of {topic}.",
+                        },
+                        {
+                            "question": f"What common mistake should learners avoid in {topic}?",
+                            "answer": f"Review the weak points: {weak_text}.",
                         },
                     ],
                 },

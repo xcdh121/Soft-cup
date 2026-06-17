@@ -61,6 +61,17 @@ class ResourceAgent(BaseOrchestrationAgent):
         )
 
     def _select_resource_types(self, context: AgentRunContext) -> list[str]:
+        requested_types = self._normalize_resource_types(
+            context.meta.get("requested_resource_types", [])
+        )
+        requested_types = [
+            resource_type
+            for resource_type in requested_types
+            if resource_type in self._available_resource_types()
+        ]
+        if requested_types:
+            return self._dedupe(requested_types)
+
         profile = context.artifacts.get("profile", {}).get("profile_summary", {})
         diagnosis = context.artifacts.get("diagnosis", {}).get("diagnosis", {})
         weak_points = diagnosis.get("related_knowledge_points", [])
@@ -79,6 +90,10 @@ class ResourceAgent(BaseOrchestrationAgent):
         return self._dedupe(selected)
 
     def _build_generation_topic(self, context: AgentRunContext) -> str:
+        requested_topic = context.meta.get("requested_topic")
+        if requested_topic:
+            return str(requested_topic)
+
         diagnosis = context.artifacts.get("diagnosis", {}).get("diagnosis", {})
         related_points = diagnosis.get("related_knowledge_points") or []
         if related_points:
@@ -132,12 +147,13 @@ class ResourceAgent(BaseOrchestrationAgent):
                 name=self._build_title("quiz", topic),
                 description="ResourceAgent queued quiz generation",
             )
+            quiz_count = context.meta.get("quiz_count")
             self.quiz_service.queue_generation(
                 quiz_id=quiz.id,
                 project_id=context.project_id,
                 topic=topic,
                 custom_instructions=self._build_custom_instructions(context),
-                count=5,
+                count=quiz_count if isinstance(quiz_count, int) and quiz_count > 0 else 5,
                 user_id=context.student_id,
             )
             return self._queued_resource("quiz", quiz, quiz.id, quiz.name)
@@ -148,12 +164,17 @@ class ResourceAgent(BaseOrchestrationAgent):
                 name=self._build_title("flashcards", topic),
                 description="ResourceAgent queued flashcard generation",
             )
+            flashcard_count = context.meta.get("flashcard_count")
+            difficulty = context.meta.get("difficulty")
             self.flashcard_group_service.queue_generation(
                 group_id=group.id,
                 project_id=context.project_id,
                 topic=topic,
                 custom_instructions=self._build_custom_instructions(context),
-                count=8,
+                count=flashcard_count
+                if isinstance(flashcard_count, int) and flashcard_count > 0
+                else 8,
+                difficulty=str(difficulty) if difficulty else None,
                 user_id=context.student_id,
             )
             return self._queued_resource("flashcards", group, group.id, group.name)
@@ -299,11 +320,23 @@ class ResourceAgent(BaseOrchestrationAgent):
         return f"{labels.get(resource_type, '学习资源')}：{topic}"
 
     def _build_custom_instructions(self, context: AgentRunContext) -> str:
+        requested_instructions = str(
+            context.meta.get("requested_instructions") or ""
+        ).strip()
         diagnosis = context.artifacts.get("diagnosis", {}).get("diagnosis", {})
         summary = diagnosis.get("summary")
+        difficulty = str(context.meta.get("difficulty") or "").strip()
+
+        parts: list[str] = []
+        if requested_instructions:
+            parts.append(requested_instructions)
         if summary:
-            return f"根据诊断结论生成资源：{summary}"
-        return "根据当前学习诊断生成补强资源"
+            parts.append(f"根据诊断结论生成资源：{summary}")
+        else:
+            parts.append("根据当前学习诊断生成补强资源")
+        if difficulty:
+            parts.append(f"目标难度：{difficulty}")
+        return "\n".join(parts)
 
     def _queued_resource(
         self,

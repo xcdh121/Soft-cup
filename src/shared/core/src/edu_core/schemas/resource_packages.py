@@ -12,6 +12,7 @@ ResourceType = Literal[
     "lecture_note",
     "mind_map",
     "practice_set",
+    "flashcards",
     "ppt_outline",
     "pptx",
     "code_lab",

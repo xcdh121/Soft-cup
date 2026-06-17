@@ -75,6 +75,11 @@ const RESOURCE_TYPE_OPTIONS: Array<{
     description: 'Layered practice questions',
   },
   {
+    value: 'flashcards',
+    label: 'Flashcards',
+    description: 'Queued flashcard group generation',
+  },
+  {
     value: 'ppt_outline',
     label: 'PPT outline',
     description: 'Slide-by-slide speaking outline',
@@ -83,21 +88,6 @@ const RESOURCE_TYPE_OPTIONS: Array<{
     value: 'pptx',
     label: 'PPTX',
     description: 'Generated presentation file link',
-  },
-  {
-    value: 'code_lab',
-    label: 'Code lab',
-    description: 'Hands-on coding exercise',
-  },
-  {
-    value: 'reading_material',
-    label: 'Reading guide',
-    description: 'Extended reading material',
-  },
-  {
-    value: 'video_script',
-    label: 'Video script',
-    description: 'Short explainer storyboard',
   },
 ]
 
@@ -334,8 +324,9 @@ const ResourcePackageSheetBody = ({
     'lecture_note',
     'mind_map',
     'practice_set',
+    'flashcards',
     'ppt_outline',
-    'code_lab',
+    'pptx',
   ])
   const [selectedPackage, setSelectedPackage] = useState<ResourcePackage | null>(
     null,

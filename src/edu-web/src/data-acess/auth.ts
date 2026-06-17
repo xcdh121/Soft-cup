@@ -4,13 +4,27 @@ import type { Session, User } from '@supabase/supabase-js'
 import { ApiClientService } from '@/integrations/api/http'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 
+const authBypassedAt = '2024-01-01T00:00:00.000Z'
+
 const authBypassedUser = {
   id: 'local-dev-user',
+  app_metadata: {
+    provider: 'email',
+    providers: ['email'],
+  },
   email: 'local@dev.test',
   user_metadata: {
     name: 'Local Developer',
   },
-} as User
+  aud: 'authenticated',
+  created_at: authBypassedAt,
+  confirmed_at: authBypassedAt,
+  email_confirmed_at: authBypassedAt,
+  role: 'authenticated',
+  updated_at: authBypassedAt,
+  identities: [],
+  is_anonymous: false,
+} satisfies User
 
 export const currentUserAtom = Atom.make(
   Effect.gen(function* () {

@@ -32,6 +32,7 @@ export type ResourceType =
   | 'lecture_note'
   | 'mind_map'
   | 'practice_set'
+  | 'flashcards'
   | 'ppt_outline'
   | 'pptx'
   | 'code_lab'
@@ -100,6 +101,7 @@ export type GenerateResourcePackageInput = {
   projectId: string
   profile_id?: string
   learning_path_id?: string
+  diagnosis_id?: string
   title?: string
   description?: string
   target_topic: string
@@ -150,6 +152,7 @@ export const generateResourcePackageAtom = runtime.fn(
       const body = HttpBody.unsafeJson({
         profile_id: input.profile_id,
         learning_path_id: input.learning_path_id,
+        diagnosis_id: input.diagnosis_id,
         title: input.title,
         description: input.description,
         target_topic: input.target_topic,
