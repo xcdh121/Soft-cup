@@ -92,9 +92,16 @@ def get_project_service() -> ProjectService:
     return ProjectService()
 
 
-def get_agent_orchestration_service() -> AgentOrchestrationService:
+def get_agent_orchestration_service(
+    queue_service: QueueService | ArqQueueService = Depends(get_queue_service),
+) -> AgentOrchestrationService:
     """Get AgentOrchestrationService instance."""
-    return AgentOrchestrationService()
+    return AgentOrchestrationService(
+        flashcard_group_service=FlashcardGroupService(queue_service=queue_service),
+        quiz_service=QuizService(queue_service=queue_service),
+        note_service=NoteService(queue_service=queue_service),
+        mind_map_service=MindMapService(queue_service=queue_service),
+    )
 
 
 def get_resource_package_service() -> ResourcePackageService:

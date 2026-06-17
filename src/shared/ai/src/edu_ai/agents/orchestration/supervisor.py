@@ -21,13 +21,17 @@ from edu_ai.agents.orchestration.resource_agent import ResourceAgent
 
 
 class SupervisorAgent:
-    def __init__(self, agents: list[BaseOrchestrationAgent] | None = None) -> None:
+    def __init__(
+        self,
+        agents: list[BaseOrchestrationAgent] | None = None,
+        resource_agent: ResourceAgent | None = None,
+    ) -> None:
         self.agents = agents or [
             ProfileAgent(),
             KTAgent(),
             CollectiveInsightAgent(),
             DiagnosisAgent(),
-            ResourceAgent(),
+            resource_agent or ResourceAgent(),
             PlannerAgent(),
         ]
 

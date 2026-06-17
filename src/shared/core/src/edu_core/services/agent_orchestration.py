@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from edu_ai.agents.orchestration import SupervisorAgent
+from edu_ai.agents.orchestration.resource_agent import ResourceAgent
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.agent_orchestration import (
     AgentContextData,
@@ -433,8 +434,19 @@ class AgentOrchestrationService:
         self,
         supervisor: SupervisorAgent | None = None,
         store: InMemoryOrchestrationStore | DatabaseOrchestrationStore | None = None,
+        flashcard_group_service=None,
+        quiz_service=None,
+        note_service=None,
+        mind_map_service=None,
     ) -> None:
-        self.supervisor = supervisor or SupervisorAgent()
+        self.supervisor = supervisor or SupervisorAgent(
+            resource_agent=ResourceAgent(
+                flashcard_group_service=flashcard_group_service,
+                quiz_service=quiz_service,
+                note_service=note_service,
+                mind_map_service=mind_map_service,
+            )
+        )
         self.store = store or DatabaseOrchestrationStore()
 
     async def generate_diagnosis(

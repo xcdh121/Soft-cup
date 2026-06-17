@@ -24,9 +24,18 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { indexedDocumentsAtom } from '@/data-acess/document'
-import { createNoteStreamAtom, noteProgressAtom } from '@/data-acess/note'
-import { createQuizStreamAtom, quizProgressAtom } from '@/data-acess/quiz'
 import {
+  createNoteAtom,
+  createNoteStreamAtom,
+  noteProgressAtom,
+} from '@/data-acess/note'
+import {
+  createQuizAtom,
+  createQuizStreamAtom,
+  quizProgressAtom,
+} from '@/data-acess/quiz'
+import {
+  createFlashcardGroupAtom,
   createFlashcardGroupStreamAtom,
   flashcardProgressAtom,
 } from '@/data-acess/flashcard'
@@ -74,16 +83,25 @@ export function GenerationDialog() {
       mode: 'promise',
     },
   )
+  const [, createNote] = useAtom(createNoteAtom, {
+    mode: 'promise',
+  })
   const [createQuizStreamResult, createQuizStream] = useAtom(
     createQuizStreamAtom,
     {
       mode: 'promise',
     },
   )
+  const [, createQuiz] = useAtom(createQuizAtom, {
+    mode: 'promise',
+  })
   const [createFlashcardStreamResult, createFlashcardStream] = useAtom(
     createFlashcardGroupStreamAtom,
     { mode: 'promise' },
   )
+  const [, createFlashcardGroup] = useAtom(createFlashcardGroupAtom, {
+    mode: 'promise',
+  })
   const [generateMindMapStreamResult, generateMindMapStream] = useAtom(
     generateMindMapStreamAtom,
     { mode: 'promise' },
@@ -148,41 +166,61 @@ export function GenerationDialog() {
     if (!projectId || !customInstructions.trim()) return
 
     try {
+      const instructions = customInstructions.trim()
+
       switch (selectedType) {
-        case 'note':
+        case 'note': {
+          const note = await createNote({
+            projectId,
+            title: buildGeneratedTitle('笔记', instructions),
+            content: '',
+            description: instructions,
+          })
           await createNoteStream({
             projectId,
-            customInstructions: customInstructions.trim() || undefined,
-            noteId: '',
+            customInstructions: instructions,
+            noteId: note.id,
             count: 30,
             difficulty: difficulty !== 'medium' ? difficulty : undefined,
-            topic: customInstructions.trim() || undefined,
+            topic: instructions,
           })
           break
-        case 'quiz':
+        }
+        case 'quiz': {
+          const quiz = await createQuiz({
+            projectId,
+            name: buildGeneratedTitle('测验', instructions),
+            description: instructions,
+          })
           await createQuizStream({
             projectId,
-            quizId: '',
-            topic: '',
+            quizId: quiz.id,
+            topic: instructions,
             questionCount: 30,
-            customInstructions: customInstructions.trim() || undefined,
+            customInstructions: instructions,
             difficulty: difficulty !== 'medium' ? difficulty : undefined,
           })
           break
-        case 'flashcard':
+        }
+        case 'flashcard': {
+          const group = await createFlashcardGroup({
+            projectId,
+            customInstructions: instructions,
+          })
           await createFlashcardStream({
             projectId,
-            groupId: '',
+            groupId: group.id,
             flashcardCount: 30,
-            customInstructions: customInstructions.trim() || undefined,
+            customInstructions: instructions,
             length: length !== 'normal' ? length : undefined,
             difficulty: difficulty !== 'medium' ? difficulty : undefined,
           })
           break
+        }
         case 'mindmap':
           await generateMindMapStream({
             projectId,
-            customInstructions: customInstructions.trim() || undefined,
+            customInstructions: instructions,
           })
           break
       }
@@ -442,6 +480,8 @@ export function GenerationDialog() {
                       : '思维导图'}
                 ...
               </>
+            ) : !customInstructions.trim() ? (
+              '填写要求后生成'
             ) : (
               `生成${
                 selectedType === 'note'
@@ -458,6 +498,12 @@ export function GenerationDialog() {
       </DialogContent>
     </Dialog>
   )
+}
+
+function buildGeneratedTitle(resourceLabel: string, instructions: string): string {
+  const normalized = instructions.replace(/\s+/g, ' ').trim()
+  const suffix = normalized.length > 24 ? `${normalized.slice(0, 24)}...` : normalized
+  return suffix ? `AI ${resourceLabel}：${suffix}` : `AI ${resourceLabel}`
 }
 
 type DocumentCheckboxProps = {

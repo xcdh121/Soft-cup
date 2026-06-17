@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: src/edu-api/Dockerfile
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     environment:
@@ -14,12 +16,6 @@ services:
       REDIS_URL: redis://redis:6379/0
       TASK_JOB_TIMEOUT_SECONDS: "900"
       TASK_JOB_MAX_TRIES: "3"
-      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_BASE_URL: ${LLM_BASE_URL:-}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-large}
-      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
-      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
     depends_on:
       db:
         condition: service_healthy
@@ -35,20 +31,17 @@ services:
     build:
       context: .
       dockerfile: src/edu-worker/Dockerfile
+    env_file:
+      - .env
     command: ["arq", "worker.WorkerSettings"]
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
       STORAGE_ROOT: /app/.localdata
+      TASK_QUEUE_BACKEND: arq
       TASK_QUEUE_NAME: edu-agent:tasks
       REDIS_URL: redis://redis:6379/0
       TASK_JOB_TIMEOUT_SECONDS: "900"
       TASK_JOB_MAX_TRIES: "3"
-      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_BASE_URL: ${LLM_BASE_URL:-}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-large}
-      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
-      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
     depends_on:
       db:
         condition: service_healthy

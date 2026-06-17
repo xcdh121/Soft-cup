@@ -117,10 +117,18 @@ export const createNoteStreamAtom = Atom.fn(
       const registry = yield* Registry.AtomRegistry
       if (input.projectId) {
         registry.refresh(notesAtom(input.projectId))
+        registry.refresh(noteAtom(`${input.projectId}:${input.noteId}`))
       }
       registry.set(noteProgressAtom, null)
     }).pipe(Effect.provide(ApiClientService.Default)),
 ).pipe(Atom.keepAlive)
+
+export const refreshNoteAtom = runtime.fn(
+  Effect.fn(function* (input: { projectId: string; noteId: string }) {
+    const registry = yield* Registry.AtomRegistry
+    registry.refresh(noteAtom(`${input.projectId}:${input.noteId}`))
+  }),
+)
 
 export const createNoteAtom = runtime.fn(
   Effect.fn(function* (input: {
