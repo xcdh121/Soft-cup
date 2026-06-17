@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { useEffect, useState } from 'react'
 import { Loader2Icon } from 'lucide-react'
-import { Result, useAtom, useAtomValue } from '@effect-atom/atom-react'
+import { Result, useAtom, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { toast } from 'sonner'
 import type { DocumentDto } from '@/integrations/api/client'
 import type { ProgressStage } from '@/components/generation-progress'
 import {
@@ -24,9 +25,18 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { indexedDocumentsAtom } from '@/data-acess/document'
-import { createNoteStreamAtom, noteProgressAtom } from '@/data-acess/note'
-import { createQuizStreamAtom, quizProgressAtom } from '@/data-acess/quiz'
 import {
+  createNoteAtom,
+  createNoteStreamAtom,
+  noteProgressAtom,
+} from '@/data-acess/note'
+import {
+  createQuizAtom,
+  createQuizStreamAtom,
+  quizProgressAtom,
+} from '@/data-acess/quiz'
+import {
+  createFlashcardGroupAtom,
   createFlashcardGroupStreamAtom,
   flashcardProgressAtom,
 } from '@/data-acess/flashcard'
@@ -66,6 +76,11 @@ export function GenerationDialog() {
   const [difficulty, setDifficulty] = useState<DifficultyOption>('medium')
 
   const documentsResult = useAtomValue(indexedDocumentsAtom(projectId || ''))
+  const createNote = useAtomSet(createNoteAtom, { mode: 'promise' })
+  const createQuiz = useAtomSet(createQuizAtom, { mode: 'promise' })
+  const createFlashcardGroup = useAtomSet(createFlashcardGroupAtom, {
+    mode: 'promise',
+  })
 
   // Streaming atoms
   const [createNoteStreamResult, createNoteStream] = useAtom(
@@ -145,46 +160,74 @@ export function GenerationDialog() {
   ])
 
   const handleGenerate = async () => {
-    if (!projectId || !customInstructions.trim()) return
+    if (!projectId) return
+
+    const instructions = customInstructions.trim()
+    if (!instructions) {
+      toast.error('请输入生成要求后再试。')
+      return
+    }
 
     try {
       switch (selectedType) {
-        case 'note':
+        case 'note': {
+          const note = await createNote({
+            projectId,
+            title: 'AI Note',
+            description: instructions,
+            content: '',
+          })
           await createNoteStream({
             projectId,
-            customInstructions: customInstructions.trim() || undefined,
-            noteId: '',
+            customInstructions: instructions,
+            noteId: note.id,
             count: 30,
             difficulty: difficulty !== 'medium' ? difficulty : undefined,
-            topic: customInstructions.trim() || undefined,
+            topic: instructions,
           })
           break
-        case 'quiz':
+        }
+        case 'quiz': {
+          const quiz = await createQuiz({
+            projectId,
+            name: 'AI Quiz',
+            description: instructions,
+          })
           await createQuizStream({
             projectId,
-            quizId: '',
-            topic: '',
+            quizId: quiz.id,
+            topic: instructions,
             questionCount: 30,
-            customInstructions: customInstructions.trim() || undefined,
+            customInstructions: instructions,
             difficulty: difficulty !== 'medium' ? difficulty : undefined,
           })
           break
-        case 'flashcard':
+        }
+        case 'flashcard': {
+          const group = await createFlashcardGroup({
+            projectId,
+            customInstructions: instructions,
+          })
           await createFlashcardStream({
             projectId,
-            groupId: '',
+            groupId: group.id,
             flashcardCount: 30,
-            customInstructions: customInstructions.trim() || undefined,
+            customInstructions: instructions,
             length: length !== 'normal' ? length : undefined,
             difficulty: difficulty !== 'medium' ? difficulty : undefined,
           })
           break
+        }
         case 'mindmap':
           await generateMindMapStream({
             projectId,
-            customInstructions: customInstructions.trim() || undefined,
+            customInstructions: instructions,
           })
           break
+      }
+
+      if (selectedDocumentIds.size > 0) {
+        toast.info('当前版本已记录你的文档选择，但这三类生成接口暂未实际消费所选文档。')
       }
 
       // Close dialog and reset state after a short delay to show completion
@@ -193,6 +236,9 @@ export function GenerationDialog() {
       }, 500)
     } catch (error) {
       console.error('Generation failed:', error)
+      toast.error(
+        error instanceof Error ? error.message : '生成失败，请稍后重试。',
+      )
     }
   }
 
@@ -427,7 +473,7 @@ export function GenerationDialog() {
           <Button
             type="button"
             onClick={handleGenerate}
-            disabled={isGenerating || !customInstructions.trim()}
+            disabled={isGenerating}
           >
             {isGenerating ? (
               <>

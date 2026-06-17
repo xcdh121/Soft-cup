@@ -20,6 +20,8 @@ import { Result, useAtomValue } from '@effect-atom/atom-react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Cause } from 'effect'
 import {
+  BotIcon,
+  BarChart3Icon,
   BookOpenTextIcon,
   ChevronRightIcon,
   FolderKanbanIcon,
@@ -65,9 +67,7 @@ const ProjectChatList = ({ projectId }: { projectId: string }) => {
         {chats.length === 0 && (
           <SidebarMenuSubItem>
             <SidebarMenuSubButton size="md">
-              <span className="text-sm text-muted-foreground">
-                还没有聊天
-              </span>
+              <span className="text-sm text-muted-foreground">还没有聊天</span>
             </SidebarMenuSubButton>
           </SidebarMenuSubItem>
         )}
@@ -153,6 +153,24 @@ export function CurrentProjectNav() {
                 asChild
                 isActive={
                   location.pathname ===
+                  `/dashboard/p/${currentProjectId}/agent-orchestration`
+                }
+              >
+                <Link
+                  to="/dashboard/p/$projectId/agent-orchestration"
+                  params={{ projectId: currentProjectId }}
+                >
+                  <BotIcon className="size-4 opacity-70" />
+                  <span>Agent 编排</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={
+                  location.pathname ===
                   `/dashboard/p/${currentProjectId}/resource-packages`
                 }
               >
@@ -198,6 +216,24 @@ export function CurrentProjectNav() {
                 >
                   <NetworkIcon className="size-4 opacity-70" />
                   <span>知识图谱</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={
+                  location.pathname ===
+                  `/dashboard/p/${currentProjectId}/learning-evaluation`
+                }
+              >
+                <Link
+                  to="/dashboard/p/$projectId/learning-evaluation"
+                  params={{ projectId: currentProjectId }}
+                >
+                  <BarChart3Icon className="size-4 opacity-70" />
+                  <span>学习效果评估</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

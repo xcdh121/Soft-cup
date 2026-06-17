@@ -63,6 +63,7 @@ export const createNoteStreamAtom = Atom.fn(
   ) =>
     Effect.gen(function* () {
       const { httpClient } = yield* ApiClientService
+      let streamError: string | undefined
       const body = HttpBody.unsafeJson(
         new GenerateRequest({
           custom_instructions: input.customInstructions,
@@ -102,6 +103,9 @@ export const createNoteStreamAtom = Atom.fn(
         Stream.tap((progress) =>
           Effect.gen(function* () {
             const registry = yield* Registry.AtomRegistry
+            if (progress.error) {
+              streamError = progress.error
+            }
             registry.set(noteProgressAtom, {
               status: progress.status,
               message: progress.message,
@@ -119,6 +123,9 @@ export const createNoteStreamAtom = Atom.fn(
         registry.refresh(notesAtom(input.projectId))
       }
       registry.set(noteProgressAtom, null)
+      if (streamError) {
+        throw new Error(streamError)
+      }
     }).pipe(Effect.provide(ApiClientService.Default)),
 ).pipe(Atom.keepAlive)
 

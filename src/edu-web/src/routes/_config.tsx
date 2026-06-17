@@ -84,6 +84,11 @@ const KnowledgeGraphRoute = lazy(() =>
     default: m.KnowledgeGraphRoute,
   })),
 )
+const LearningEvaluationRoute = lazy(() =>
+  import('./learning-evaluation-route').then((m) => ({
+    default: m.LearningEvaluationRoute,
+  })),
+)
 const SettingsPage = lazy(() =>
   import('@/features/settings/settings-page').then((m) => ({
     default: m.SettingsPage,
@@ -95,6 +100,16 @@ const DashboardRoute = lazy(() =>
 const DashboardPage = lazy(() =>
   import('@/features/dashboard/dashboard-page').then((m) => ({
     default: m.DashboardPage,
+  })),
+)
+const AgentOrchestrationRoute = lazy(() =>
+  import('./agent-orchestration-route').then((m) => ({
+    default: m.AgentOrchestrationRoute,
+  })),
+)
+const ProjectAgentOrchestrationRoute = lazy(() =>
+  import('./project-agent-orchestration-route').then((m) => ({
+    default: m.ProjectAgentOrchestrationRoute,
   })),
 )
 
@@ -175,6 +190,16 @@ export const signUpRoute = createRoute({
   component: () => (
     <Suspense fallback={<LoadingPage />}>
       <SignUpPage />
+    </Suspense>
+  ),
+})
+
+export const agentOrchestrationRoute = createRoute({
+  path: '/agent-orchestration',
+  getParentRoute: () => rootRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <AgentOrchestrationRoute />
     </Suspense>
   ),
 })
@@ -319,6 +344,26 @@ export const knowledgeGraphRoute = createRoute({
   ),
 })
 
+export const learningEvaluationRoute = createRoute({
+  path: '/p/$projectId/learning-evaluation',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <LearningEvaluationRoute />
+    </Suspense>
+  ),
+})
+
+export const projectAgentOrchestrationRoute = createRoute({
+  path: '/p/$projectId/agent-orchestration',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <ProjectAgentOrchestrationRoute />
+    </Suspense>
+  ),
+})
+
 export const settingsRoute = createRoute({
   path: '/settings',
   getParentRoute: () => dashboardRoute,
@@ -346,9 +391,12 @@ export const routeTree = rootRoute.addChildren([
     resourcePackageRoute,
     learnerProfileRoute,
     knowledgeGraphRoute,
+    learningEvaluationRoute,
+    projectAgentOrchestrationRoute,
     settingsRoute,
   ]),
   indexRoute,
   signInRoute,
   signUpRoute,
+  agentOrchestrationRoute,
 ])

@@ -64,6 +64,7 @@ export const generateMindMapStreamAtom = Atom.fn(
   ) =>
     Effect.gen(function* () {
       const { httpClient } = yield* ApiClientService
+      let streamError: string | undefined
       const body = HttpBody.unsafeJson({
         custom_instructions: input.customInstructions || null,
       })
@@ -100,6 +101,9 @@ export const generateMindMapStreamAtom = Atom.fn(
         Stream.tap((progress) =>
           Effect.gen(function* () {
             const registry = yield* Registry.AtomRegistry
+            if (progress.error) {
+              streamError = progress.error
+            }
             registry.set(mindMapProgressAtom, {
               status: progress.status,
               message: progress.message,
@@ -117,6 +121,9 @@ export const generateMindMapStreamAtom = Atom.fn(
         registry.refresh(mindMapsAtom(input.projectId))
       }
       registry.set(mindMapProgressAtom, null)
+      if (streamError) {
+        throw new Error(streamError)
+      }
     }).pipe(Effect.provide(ApiClientService.Default)),
 ).pipe(Atom.keepAlive)
 

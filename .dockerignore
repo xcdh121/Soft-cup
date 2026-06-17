@@ -4,6 +4,7 @@
 # Include only what Dockerfiles need
 !pyproject.toml
 !uv.lock
+!alembic.ini
 !src/
 
 # Exclude common build artifacts and caches

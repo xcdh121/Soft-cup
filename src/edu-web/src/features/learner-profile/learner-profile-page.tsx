@@ -52,7 +52,9 @@ const colorClasses = [
 const stringifyValue = (value: unknown): string => {
   if (value === null || value === undefined || value === '') return '待补充'
   if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'number' || typeof value === 'boolean')
+    return String(value)
+
   if (Array.isArray(value)) {
     if (value.length === 0) return '暂无'
     return value
@@ -68,6 +70,7 @@ const stringifyValue = (value: unknown): string => {
       })
       .join('、')
   }
+
   if (typeof value === 'object') {
     const record = value as Record<string, unknown>
     if ('accuracy' in record && 'attempt_count' in record) {
@@ -81,6 +84,7 @@ const stringifyValue = (value: unknown): string => {
     }
     return JSON.stringify(value)
   }
+
   return String(value)
 }
 
@@ -91,7 +95,9 @@ const normalizeField = (key: string, raw: unknown): ProfileFieldView => {
   const confidence =
     maybeField && typeof maybeField.confidence === 'number'
       ? maybeField.confidence
-      : value ? 0.5 : 0
+      : value
+        ? 0.5
+        : 0
 
   return {
     key,
@@ -134,12 +140,12 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
   }
 
   return (
-    <div className="flex h-full flex-col max-h-screen">
+    <div className="flex h-full max-h-screen flex-col">
       <ProjectHeader projectId={projectId} />
 
-      <div className="flex flex-1 flex-col min-h-0 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="container mx-auto flex max-w-6xl flex-1 flex-col gap-6 px-4 py-6">
-          <section className="rounded-[28px] border bg-gradient-to-br from-slate-50 via-white to-amber-50 p-6 shadow-sm">
+          <section className="rounded-[30px] border bg-gradient-to-br from-slate-50 via-white to-amber-50 p-6 shadow-sm">
             <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-4">
                 <Avatar className="size-20 border-4 border-white shadow-md">
@@ -159,23 +165,24 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {(summaryTags.length > 0 ? summaryTags : ['等待画像生成']).map(
-                      (tag) => (
-                        <Badge
-                          key={tag}
-                          variant="secondary"
-                          className="rounded-full px-3 py-1"
-                        >
-                          {tag}
-                        </Badge>
-                      ),
-                    )}
+                    {(summaryTags.length > 0
+                      ? summaryTags
+                      : ['等待画像生成']
+                    ).map((tag) => (
+                      <Badge
+                        key={tag}
+                        variant="secondary"
+                        className="rounded-full px-3 py-1"
+                      >
+                        {tag}
+                      </Badge>
+                    ))}
                   </div>
                 </div>
               </div>
 
               <div className="flex flex-col gap-3 md:items-end">
-                <div className="rounded-2xl border bg-white/80 px-4 py-3 text-sm text-muted-foreground">
+                <div className="rounded-2xl bg-white/80 px-4 py-3 text-sm text-muted-foreground shadow-sm ring-1 ring-black/5">
                   画像完整度
                   <div className="mt-1 text-2xl font-semibold text-foreground">
                     {completeness}%

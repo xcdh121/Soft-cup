@@ -3,6 +3,7 @@
 from config import Settings, get_settings
 from task_runner import TaskRunnerService
 from edu_core.services import (
+    AgentOrchestrationService,
     ChatService,
     CourseResourceService,
     CourseService,
@@ -22,8 +23,9 @@ from edu_core.services import (
     UsageService,
     UserService,
 )
-from edu_queue.service import QueueService
+from edu_queue.service import ArqQueueService, QueueService
 from fastapi import Depends
+from edu_core.model_providers import LlmProviderConfig
 
 
 def get_settings_dep() -> Settings:
@@ -37,9 +39,14 @@ def get_search_service(
     """Get SearchService instance with configuration from settings."""
     return SearchService(
         database_url=settings.database_url,
+        embedding_provider=settings.embedding_provider,
         embedding_model=settings.embedding_model,
         embedding_api_key=settings.embedding_api_key,
+        embedding_api_secret=settings.embedding_api_secret,
+        embedding_app_id=settings.embedding_app_id,
         embedding_base_url=settings.embedding_base_url,
+        embedding_domain=settings.embedding_domain,
+        embedding_dimensions=settings.embedding_dimensions,
     )
 
 
@@ -52,9 +59,14 @@ def get_task_runner(
         llm_model=settings.llm_model,
         llm_api_key=settings.llm_api_key,
         llm_base_url=settings.llm_base_url,
+        embedding_provider=settings.embedding_provider,
         embedding_model=settings.embedding_model,
         embedding_api_key=settings.embedding_api_key,
+        embedding_api_secret=settings.embedding_api_secret,
+        embedding_app_id=settings.embedding_app_id,
         embedding_base_url=settings.embedding_base_url,
+        embedding_domain=settings.embedding_domain,
+        embedding_dimensions=settings.embedding_dimensions,
         search_service=search_service,
     )
 
@@ -62,8 +74,15 @@ def get_task_runner(
 def get_queue_service(
     settings: Settings = Depends(get_settings_dep),
     task_runner: TaskRunnerService = Depends(get_task_runner),
-) -> QueueService:
+) -> QueueService | ArqQueueService:
     """Get QueueService instance with configuration from settings."""
+    if settings.task_queue_backend.lower() == "arq":
+        return ArqQueueService(
+            redis_url=settings.redis_url,
+            queue_name=settings.task_queue_name,
+            job_timeout_seconds=settings.task_job_timeout_seconds,
+        )
+
     return QueueService(
         connection_string="",
         queue_name=settings.task_queue_name,
@@ -106,6 +125,20 @@ def get_learner_profile_service() -> LearnerProfileService:
 def get_knowledge_state_service() -> KnowledgeStateService:
     """Get KnowledgeStateService instance."""
     return KnowledgeStateService()
+
+
+def get_agent_orchestration_service(
+    settings: Settings = Depends(get_settings_dep),
+) -> AgentOrchestrationService:
+    """Get AgentOrchestrationService instance."""
+    return AgentOrchestrationService(
+        llm_config=LlmProviderConfig(
+            model=settings.llm_model,
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+            temperature=0.3,
+        )
+    )
 
 
 def get_resource_package_service() -> ResourcePackageService:

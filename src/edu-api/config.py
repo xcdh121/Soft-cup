@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # Local storage / task execution
     storage_root: str = "./.localdata"
     task_queue_name: str = "local-sync"
+    task_queue_backend: str = "local"
+    redis_url: str = "redis://localhost:6379/0"
+    task_job_timeout_seconds: int = 900
+    task_job_max_tries: int = 3
 
     # Database
     database_url: str = ""
@@ -28,9 +32,14 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     llm_api_key: str = ""
     llm_base_url: str | None = None
+    embedding_provider: str = "openai"
     embedding_model: str = "text-embedding-3-large"
     embedding_api_key: str = ""
+    embedding_api_secret: str = ""
+    embedding_app_id: str = ""
     embedding_base_url: str | None = None
+    embedding_domain: str = "query"
+    embedding_dimensions: int = 3072
 
     # Usage Limits (per day per user)
     max_chat_messages_per_day: int = 50

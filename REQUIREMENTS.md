@@ -851,3 +851,134 @@ canceled
 “基于课程资料库、动态学生画像、知识追踪、群体洞察和多智能体协同的个性化学习支持系统”。
 
 相比当前版本，后续开发重点不再是单次生成某类学习材料，而是围绕学生长期学习过程，建立可更新、可诊断、可推荐、可解释、可调整的闭环机制。
+## 14. 学习效果评估页补充需求（2026-06-07）
+
+### 14.1 页面目标
+
+新增项目级页面：
+
+`/dashboard/p/{project_id}/learning-evaluation`
+
+页面第一阶段先落地“练习测试 + 自动评分 + 效果展示”的前端原型，支持：
+
+1. 学生进入项目后开始练习测试
+2. 前端完成单题作答、提交、即时评分
+3. 页面展示总分、正确率、分维度条形图
+4. 页面展示题目解析与学习建议
+
+第一阶段允许题目数据由前端静态配置，不阻塞页面交互开发。
+
+### 14.2 后端接口建议补充
+
+为让学习效果评估页从“前端原型”升级为“真实业务页面”，建议后端补充以下接口：
+
+```text
+GET    /api/v1/projects/{project_id}/practice-tests
+POST   /api/v1/projects/{project_id}/practice-tests/generate
+GET    /api/v1/projects/{project_id}/practice-tests/{test_id}
+POST   /api/v1/projects/{project_id}/practice-tests/{test_id}/submit
+GET    /api/v1/projects/{project_id}/evaluation-reports/latest
+GET    /api/v1/projects/{project_id}/evaluation-reports
+GET    /api/v1/projects/{project_id}/evaluation-reports/{report_id}
+```
+
+### 14.3 接口职责建议
+
+1. `GET /practice-tests`
+   - 获取当前项目下已有的练习测试列表
+   - 支持按知识点、难度、创建时间筛选
+2. `POST /practice-tests/generate`
+   - 基于项目文档、知识点、资源包内容生成一套测试题
+   - 支持指定题量、题型、目标主题、难度等级
+3. `GET /practice-tests/{test_id}`
+   - 获取单套测试题详情
+   - 返回题干、选项、知识点、维度标签、参考答案说明
+4. `POST /practice-tests/{test_id}/submit`
+   - 提交学生答案
+   - 返回总分、分维度得分、题目判定、解析和建议
+   - 同时建议内部联动写入 `practice_records`
+5. `GET /evaluation-reports/latest`
+   - 获取当前项目最近一次学习效果评估结果
+6. `GET /evaluation-reports`
+   - 获取评估历史记录
+7. `GET /evaluation-reports/{report_id}`
+   - 获取单次评估报告详情，包括总体结果、维度结果、知识点结果、建议
+
+### 14.4 建议的测试生成入参
+
+```json
+{
+  "target_topic": "梯度下降",
+  "knowledge_point_ids": ["kp_gradient_descent", "kp_learning_rate"],
+  "difficulty_level": "intermediate",
+  "question_count": 8,
+  "question_types": ["single_choice"],
+  "dimensions": ["知识理解", "迁移应用", "分析判断", "表达组织"]
+}
+```
+
+### 14.5 建议的提交结果出参
+
+```json
+{
+  "test_id": "test_001",
+  "score": 78,
+  "correct_count": 6,
+  "total_count": 8,
+  "dimension_scores": [
+    {
+      "dimension": "知识理解",
+      "score": 100
+    },
+    {
+      "dimension": "迁移应用",
+      "score": 50
+    }
+  ],
+  "knowledge_point_scores": [
+    {
+      "knowledge_point_id": "kp_gradient_descent",
+      "score": 62
+    }
+  ],
+  "question_results": [
+    {
+      "question_id": "q1",
+      "is_correct": true,
+      "explanation": "学习率过大可能导致震荡。"
+    }
+  ],
+  "suggestions": [
+    "建议补充梯度下降中的学习率案例练习",
+    "建议先看知识图谱再做迁移应用题"
+  ]
+}
+```
+
+### 14.6 数据模型建议补充
+
+建议新增或扩展：
+
+1. `practice_tests`
+   - 练习测试主表
+2. `practice_test_questions`
+   - 测试题明细
+3. `practice_test_submissions`
+   - 学生提交记录
+4. `evaluation_reports`
+   - 学习效果评估报告
+5. `evaluation_dimension_scores`
+   - 各维度得分明细
+
+### 14.7 与现有能力的关系
+
+学习效果评估页建议与现有能力做以下联动：
+
+1. 与 `practice_records` 联动
+   - 测试提交后自动写入练习记录
+2. 与 `knowledge-states` 联动
+   - 评估结果可作为 KT 刷新证据
+3. 与 `resource-packages` 联动
+   - 根据薄弱维度推荐讲解文档、思维导图、分层练习题
+4. 与 `learner-profile` 联动
+   - 评估结果可作为学生画像中的“学习状态 / 易错点 / 表达能力”证据

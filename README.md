@@ -20,7 +20,7 @@ docker-compose up --build api db
 Then run migrations:
 
 ```bash
-set DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
+set DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5433/postgres
 alembic upgrade head
 ```
 

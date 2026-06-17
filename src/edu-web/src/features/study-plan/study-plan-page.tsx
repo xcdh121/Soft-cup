@@ -53,6 +53,15 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
     ? historyPlans.find((p) => p.id === selectedPlanId)
     : latestPlan
 
+  const plannerModeLabel =
+    displayedPlan?.planner_mode === 'llm'
+      ? 'LLM'
+      : displayedPlan?.planner_mode === 'rule_fallback'
+        ? 'Fallback'
+        : displayedPlan?.planner_mode === 'rule'
+          ? 'Rule'
+          : 'Unknown'
+
   // Update selected plan if we just loaded history and possess a latest plan but weren't selecting anything
   // Actually, default behavior is to show latestPlan if selectedPlanId is null.
 
@@ -60,9 +69,13 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
     mode: 'promise',
   })
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     setIsGenerating(true)
-    generatePlan(projectId)
+    try {
+      await generatePlan(projectId)
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   return (
@@ -81,6 +94,12 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {displayedPlan && (
+                <div className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">规划模式</span>
+                  <span className="font-semibold">{plannerModeLabel}</span>
+                </div>
+              )}
               {historyPlans.length > 0 && (
                 <Select
                   value={selectedPlanId || 'latest'}
@@ -167,6 +186,37 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                         <div className="grid gap-2">
                           {displayedPlan.content.action_items.map((item, i) => {
                             const isQuiz = item.type === 'quiz'
+                            const content = (
+                              <div className="flex items-center gap-2 p-3 rounded-md bg-muted/50 hover:bg-muted transition-colors border">
+                                {isQuiz ? (
+                                  <BrainCircuit className="h-4 w-4 text-blue-500" />
+                                ) : (
+                                  <Sparkles className="h-4 w-4 text-amber-500" />
+                                )}
+                                <div className="flex-1">
+                                  <div className="font-medium text-sm">
+                                    {item.title}
+                                  </div>
+                                  {item.description && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {item.description}
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="text-xs uppercase tracking-wider font-bold text-muted-foreground opacity-70 border px-1.5 py-0.5 rounded">
+                                  {item.source_type || item.type}
+                                </span>
+                              </div>
+                            )
+
+                            if (!item.is_navigable) {
+                              return (
+                                <div key={i} className="block">
+                                  {content}
+                                </div>
+                              )
+                            }
+
                             return (
                               <Link
                                 key={i}
@@ -189,26 +239,7 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                                 }
                                 className="block"
                               >
-                                <div className="flex items-center gap-2 p-3 rounded-md bg-muted/50 hover:bg-muted transition-colors border">
-                                  {isQuiz ? (
-                                    <BrainCircuit className="h-4 w-4 text-blue-500" />
-                                  ) : (
-                                    <Sparkles className="h-4 w-4 text-amber-500" />
-                                  )}
-                                  <div className="flex-1">
-                                    <div className="font-medium text-sm">
-                                      {item.title}
-                                    </div>
-                                    {item.description && (
-                                      <div className="text-xs text-muted-foreground">
-                                        {item.description}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <span className="text-xs uppercase tracking-wider font-bold text-muted-foreground opacity-70 border px-1.5 py-0.5 rounded">
-                                    {item.type}
-                                  </span>
-                                </div>
+                                {content}
                               </Link>
                             )
                           })}
