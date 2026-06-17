@@ -25,6 +25,7 @@ class GenerationProgressUpdate(BaseModel):
 
     status: str = Field(..., description="Status: searching, generating, saving, done")
     message: str = Field(..., description="Progress message")
+    mind_map_id: str | None = Field(None, description="Mind map ID if available")
     error: str | None = Field(None, description="Error message if any")
 
 
@@ -116,7 +117,7 @@ async def create_mind_map_stream(
             )
             yield f"data: {progress.model_dump_json()}\n\n".encode()
 
-            service.queue_generation(
+            mind_map = service.queue_generation(
                 user_id=current_user.id,
                 project_id=project_id,
                 topic=request.title or request.custom_instructions or "",
@@ -125,7 +126,9 @@ async def create_mind_map_stream(
 
             # Done (queued)
             progress = GenerationProgressUpdate(
-                status="done", message="Mind map generation request queued successfully"
+                status="done",
+                message="Mind map generation request queued successfully",
+                mind_map_id=mind_map.id,
             )
             yield f"data: {progress.model_dump_json()}\n\n".encode()
 

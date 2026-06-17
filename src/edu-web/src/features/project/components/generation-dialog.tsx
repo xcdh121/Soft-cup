@@ -220,6 +220,7 @@ export function GenerationDialog() {
         case 'mindmap':
           await generateMindMapStream({
             projectId,
+            title: buildGeneratedTitle('思维导图', instructions),
             customInstructions: instructions,
           })
           break
