@@ -20,12 +20,13 @@ class SearchService:
         self,
         database_url: str,
         embedding_model: str,
-        embedding_api_key: str = "",
-        embedding_base_url: str | None = None,
         embedding_provider: str = "openai",
-        embedding_app_id: str = "",
+        embedding_api_key: str = "",
         embedding_api_secret: str = "",
+        embedding_app_id: str = "",
+        embedding_base_url: str | None = None,
         embedding_domain: str = "query",
+        embedding_dimensions: int = 3072,
     ) -> None:
         """Initialize the search service.
 
@@ -37,14 +38,14 @@ class SearchService:
 
         self.embeddings = create_embeddings(
             EmbeddingProviderConfig(
+                provider=embedding_provider,
                 model=embedding_model,
                 api_key=embedding_api_key,
-                base_url=embedding_base_url,
-                provider=embedding_provider,
-                app_id=embedding_app_id,
                 api_secret=embedding_api_secret,
+                app_id=embedding_app_id,
+                base_url=embedding_base_url,
                 domain=embedding_domain,
-                target_dimensions=3072,
+                dimensions=embedding_dimensions,
             )
         )
         self._vector_store: PGVectorStore | None = None

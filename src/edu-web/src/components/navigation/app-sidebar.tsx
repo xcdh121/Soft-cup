@@ -1,4 +1,4 @@
-import { BookOpen, BrainIcon, Route, Settings2 } from 'lucide-react'
+import { BookOpen, BrainIcon, LibraryBigIcon, Route, Settings2 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { CurrentProjectNav } from './current-project-nav'
 import { NavMain } from './nav-main'
@@ -41,6 +41,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <CurrentProjectNav />
         <NavMain
           items={[
+            {
+              title: '课程资料库',
+              url: '/dashboard/course-library',
+              icon: LibraryBigIcon,
+            },
             {
               title: 'Agent Flow',
               url: '/agent-orchestration',

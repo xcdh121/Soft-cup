@@ -4,7 +4,6 @@ import { BrowserKeyValueStore } from '@effect/platform-browser'
 import type {
   ProjectCreate,
   ProjectDto,
-  ProjectUpdate,
 } from '@/integrations/api/client'
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
@@ -87,11 +86,9 @@ export const upsertProjectAtom = runtime.fn(
       const res = id
         ? yield* apiClient.updateProjectApiV1ProjectsProjectIdPatch(
             id,
-            data as typeof ProjectUpdate.Encoded,
+            data,
           )
-        : yield* apiClient.createProjectApiV1ProjectsPost(
-            data as typeof ProjectCreate.Encoded,
-          )
+        : yield* apiClient.createProjectApiV1ProjectsPost(data)
 
       registry.set(projectsAtom, ProjectsAction.Upsert({ project: res }))
       registry.refresh(projectsRemoteAtom)

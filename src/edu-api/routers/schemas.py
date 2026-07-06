@@ -1,7 +1,9 @@
 """Request schemas for CRUD operations."""
 
-from typing import List, Union, Literal
-from pydantic import BaseModel, Field
+from datetime import datetime
+from typing import Any, List, Union, Literal
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class ProjectCreate(BaseModel):
@@ -10,12 +12,160 @@ class ProjectCreate(BaseModel):
     language_code: str = Field(
         default="en", description="Language code for the project"
     )
+    course_id: str | None = Field(None, description="Optional parent course ID")
 
 
 class ProjectUpdate(BaseModel):
     name: str | None = Field(None, description="Name of the project")
     description: str | None = Field(None, description="Description of the project")
     language_code: str | None = Field(None, description="Language code for the project")
+    course_id: str | None = Field(None, description="Optional parent course ID")
+
+
+class CourseCreate(BaseModel):
+    name: str = Field(..., min_length=1, description="Course name")
+    code: str | None = Field(None, description="Optional course code")
+    description: str | None = Field(None, description="Course description")
+    status: str = Field(default="active", description="Course status")
+
+
+class CourseUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, description="Course name")
+    code: str | None = Field(None, description="Optional course code")
+    description: str | None = Field(None, description="Course description")
+    status: str | None = Field(None, description="Course status")
+
+
+class CourseChapterCreate(BaseModel):
+    title: str = Field(..., min_length=1, description="Chapter title")
+    description: str | None = Field(None, description="Chapter description")
+    parent_chapter_id: str | None = Field(
+        None, description="Optional parent chapter ID"
+    )
+    position: int = Field(default=0, ge=0, description="Chapter display order")
+    learning_objectives: list[str] = Field(
+        default_factory=list, description="Chapter learning objectives"
+    )
+    estimated_minutes: int | None = Field(
+        None, ge=0, description="Estimated study duration"
+    )
+
+
+class KnowledgePointCreate(BaseModel):
+    name: str = Field(..., min_length=1, description="Knowledge point name")
+    description: str | None = Field(
+        None, description="Knowledge point description"
+    )
+    chapter_id: str | None = Field(None, description="Optional chapter ID")
+    difficulty_level: str = Field(
+        default="intermediate", description="Knowledge point difficulty"
+    )
+    position: int = Field(default=0, ge=0, description="Display order")
+    tags: list[str] = Field(
+        default_factory=list, description="Knowledge point tags"
+    )
+
+
+class KnowledgePointUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, description="Knowledge point name")
+    description: str | None = Field(
+        None, description="Knowledge point Markdown body"
+    )
+    chapter_id: str | None = Field(None, description="Optional chapter ID")
+    difficulty_level: str | None = Field(
+        None, description="Knowledge point difficulty"
+    )
+    position: int | None = Field(None, ge=0, description="Display order")
+    tags: list[str] | None = Field(None, description="Knowledge point tags")
+
+
+class KnowledgePointRelationCreate(BaseModel):
+    source_knowledge_point_id: str = Field(..., description="Source knowledge point ID")
+    target_knowledge_point_id: str = Field(..., description="Target knowledge point ID")
+    relation_type: str = Field(default="prerequisite", description="Relation type")
+    strength: float = Field(default=1.0, ge=0, le=1, description="Relation strength")
+    description: str | None = Field(None, description="Relation description")
+
+    @model_validator(mode="after")
+    def validate_not_self(self):
+        if self.source_knowledge_point_id == self.target_knowledge_point_id:
+            raise ValueError("source and target knowledge points cannot be the same")
+        return self
+
+
+class CourseResourceCreate(BaseModel):
+    chapter_id: str | None = None
+    document_id: str | None = None
+    generated_resource_id: str | None = None
+    resource_type: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=1)
+    description: str | None = None
+    source_type: str = "internal"
+    source_url: str | None = None
+    difficulty_level: str = "intermediate"
+    estimated_minutes: int | None = Field(None, ge=0)
+    license_info: str | None = None
+    target_audiences: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    knowledge_point_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_source(self):
+        if self.document_id and self.generated_resource_id:
+            raise ValueError(
+                "document_id and generated_resource_id cannot both be set"
+            )
+        return self
+
+
+class CourseResourceUpdate(BaseModel):
+    chapter_id: str | None = None
+    document_id: str | None = None
+    generated_resource_id: str | None = None
+    resource_type: str | None = Field(None, min_length=1)
+    title: str | None = Field(None, min_length=1)
+    description: str | None = None
+    source_type: str | None = None
+    source_url: str | None = None
+    difficulty_level: str | None = None
+    estimated_minutes: int | None = Field(None, ge=0)
+    license_info: str | None = None
+    target_audiences: list[str] | None = None
+    metadata: dict[str, Any] | None = None
+    knowledge_point_ids: list[str] | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self):
+        if self.document_id and self.generated_resource_id:
+            raise ValueError(
+                "document_id and generated_resource_id cannot both be set"
+            )
+        return self
+
+
+class LearnerProfileReplace(BaseModel):
+    profile_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class LearnerProfilePatch(BaseModel):
+    profile_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class KnowledgeStateUpsert(BaseModel):
+    mastery_score: float = Field(..., ge=0, le=100)
+    confidence: float = Field(default=0, ge=0, le=1)
+    trend: str = "stable"
+    status: str = "not_started"
+    attempt_count: int = Field(default=0, ge=0)
+    correct_count: int = Field(default=0, ge=0)
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    last_practiced_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_counts(self):
+        if self.correct_count > self.attempt_count:
+            raise ValueError("correct_count cannot exceed attempt_count")
+        return self
 
 
 class DocumentCreate(BaseModel):
@@ -172,6 +322,9 @@ class PracticeRecordCreate(BaseModel):
     )
     item_id: str = Field(
         ..., description="ID of the study resource (flashcard or quiz question)"
+    )
+    knowledge_point_id: str | None = Field(
+        None, description="Optional related knowledge point ID"
     )
     topic: str = Field(..., max_length=500, description="Topic extracted from question")
     user_answer: str | None = Field(

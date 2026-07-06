@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form'
 import { effectTsResolver } from '@hookform/resolvers/effect-ts'
 import { create } from 'zustand'
-import { useAtom } from '@effect-atom/atom-react'
+import { Result, useAtom, useAtomValue } from '@effect-atom/atom-react'
 import * as S from 'effect/Schema'
 import { useEffect } from 'react'
 import type { ProjectDto } from '@/integrations/api/client'
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { coursesAtom } from '@/data-acess/course-library'
 import { upsertProjectAtom } from '@/data-acess/project'
 import {
   Select,
@@ -54,6 +55,7 @@ const schema = S.Struct({
   name: S.String,
   description: S.optional(S.String),
   language_code: S.String,
+  course_id: S.String,
 })
 
 type UpsertProjectSchema = typeof schema.Type
@@ -72,11 +74,13 @@ const languages = [
 
 export function UpsertProjectDialog() {
   const { isOpen, close, project } = useCreateProjectDialog()
+  const coursesResult = useAtomValue(coursesAtom)
 
   const [upsertProjectResult, upsertProject] = useAtom(upsertProjectAtom, {
     mode: 'promise',
   })
   const isLoading = upsertProjectResult.waiting
+  const courses = Result.isSuccess(coursesResult) ? coursesResult.value : []
 
   const form = useForm<UpsertProjectSchema>({
     resolver: effectTsResolver(schema),
@@ -84,6 +88,7 @@ export function UpsertProjectDialog() {
       name: '',
       description: '',
       language_code: 'cs',
+      course_id: 'none',
     },
   })
 
@@ -93,6 +98,7 @@ export function UpsertProjectDialog() {
         name: project?.name ?? '',
         description: project?.description ?? '',
         language_code: project?.language_code ?? 'cs',
+        course_id: project?.course_id ?? 'none',
       })
     }
   }, [isOpen, project, form])
@@ -103,7 +109,11 @@ export function UpsertProjectDialog() {
   }
 
   const onSubmit = async (data: UpsertProjectSchema) => {
-    await upsertProject({ ...data, id: project?.id })
+    await upsertProject({
+      ...data,
+      course_id: data.course_id === 'none' ? null : data.course_id,
+      id: project?.id,
+    })
     handleClose()
   }
 
@@ -170,6 +180,34 @@ export function UpsertProjectDialog() {
                       </SelectContent>
                     </Select>
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="course_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>所属课程</FormLabel>
+                  <FormControl>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="选择课程" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">暂不绑定课程</SelectItem>
+                        {courses.map((course) => (
+                          <SelectItem key={course.id} value={course.id}>
+                            {course.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    选择后，左侧导航会按“课程 → 项目”归类显示。
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}

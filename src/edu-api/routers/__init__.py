@@ -1,8 +1,17 @@
 from .auth import router as auth_router
 from .chats import router as chats_router
+from .courses import (
+    knowledge_points_router,
+    router as courses_router,
+)
 from .diagnosis import router as diagnosis_router
 from .documents import router as documents_router
 from .flashcard_groups import router as flashcard_groups_router
+from .knowledge_states import (
+    knowledge_graph_router,
+    router as knowledge_states_router,
+)
+from .learner_profiles import router as learner_profiles_router
 from .learning_paths import router as learning_paths_router
 from .mind_maps import router as mind_maps_router
 from .notes import router as notes_router
@@ -21,9 +30,14 @@ from .users import router as users_router
 __all__ = [
     "auth_router",
     "chats_router",
+    "courses_router",
     "diagnosis_router",
     "documents_router",
     "flashcard_groups_router",
+    "knowledge_states_router",
+    "knowledge_graph_router",
+    "knowledge_points_router",
+    "learner_profiles_router",
     "learning_paths_router",
     "mind_maps_router",
     "notes_router",

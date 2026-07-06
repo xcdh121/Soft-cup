@@ -3,10 +3,14 @@
 from edu_core.exceptions import NotFoundError
 from edu_core.services.agent_orchestration import AgentOrchestrationService
 from edu_core.services.chats import ChatService
+from edu_core.services.course_resources import CourseResourceService
+from edu_core.services.courses import CourseService
 from edu_core.services.document_upload import DocumentUploadService
 from edu_core.services.documents import DocumentService
 from edu_core.services.flashcard_groups import FlashcardGroupService
 from edu_core.services.mind_maps import MindMapService
+from edu_core.services.knowledge_states import KnowledgeStateService
+from edu_core.services.learner_profiles import LearnerProfileService
 from edu_core.services.notes import NoteService
 from edu_core.services.practice import PracticeService
 from edu_core.services.projects import ProjectService
@@ -20,10 +24,14 @@ from edu_core.services.users import UserService
 __all__ = [
     "AgentOrchestrationService",
     "ChatService",
+    "CourseResourceService",
+    "CourseService",
     "DocumentService",
     "DocumentUploadService",
     "FlashcardGroupService",
     "MindMapService",
+    "KnowledgeStateService",
+    "LearnerProfileService",
     "NotFoundError",
     "NoteService",
     "PracticeService",

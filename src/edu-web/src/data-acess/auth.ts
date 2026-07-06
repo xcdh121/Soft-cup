@@ -114,7 +114,7 @@ export const signInAtom = Atom.fn(
         if (error) throw error
         return data
       })
-    } else if (payload.type === 'magic_link') {
+    } else {
       yield* Effect.promise(async () => {
         const { data, error } = await supabase.auth.signInWithOtp({
           email: payload.email,

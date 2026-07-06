@@ -19,6 +19,10 @@ export class ProjectDto extends S.Class<ProjectDto>('ProjectDto')({
    */
   owner_id: S.String,
   /**
+   * Optional parent course ID
+   */
+  course_id: S.optionalWith(S.String, { nullable: true }),
+  /**
    * Name of the project
    */
   name: S.String,
@@ -54,6 +58,10 @@ export class ProjectCreate extends S.Class<ProjectCreate>('ProjectCreate')({
     nullable: true,
     default: () => 'en' as const,
   }),
+  /**
+   * Optional parent course ID
+   */
+  course_id: S.optionalWith(S.String, { nullable: true }),
 }) {}
 
 export class ValidationError extends S.Class<ValidationError>(
@@ -83,6 +91,10 @@ export class ProjectUpdate extends S.Class<ProjectUpdate>('ProjectUpdate')({
    * Language code for the project
    */
   language_code: S.optionalWith(S.String, { nullable: true }),
+  /**
+   * Optional parent course ID
+   */
+  course_id: S.optionalWith(S.String, { nullable: true }),
 }) {}
 
 export class BodyUploadDocumentApiV1ProjectsProjectIdDocumentsUploadPost extends S.Class<BodyUploadDocumentApiV1ProjectsProjectIdDocumentsUploadPost>(

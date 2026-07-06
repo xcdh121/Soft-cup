@@ -8,7 +8,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:123456@db:5432/postgres
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
       STORAGE_ROOT: /app/.localdata
       ALLOW_DEV_AUTH_BYPASS: "true"
       TASK_QUEUE_BACKEND: arq
@@ -19,13 +19,14 @@ services:
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-large}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
-      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
-      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
-      EMBEDDING_APP_ID: ${EMBEDDING_APP_ID:-}
       EMBEDDING_API_SECRET: ${EMBEDDING_API_SECRET:-}
+      EMBEDDING_APP_ID: ${EMBEDDING_APP_ID:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       EMBEDDING_DOMAIN: ${EMBEDDING_DOMAIN:-query}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-3072}
       XFYUN_PPT_ENABLED: ${XFYUN_PPT_ENABLED:-false}
       XFYUN_PPT_BASE_URL: ${XFYUN_PPT_BASE_URL:-https://zwapi.xfyun.cn}
       XFYUN_PPT_APP_ID: ${XFYUN_PPT_APP_ID:-}
@@ -39,6 +40,10 @@ services:
       XFYUN_PPT_DEFAULT_AI_IMAGE: ${XFYUN_PPT_DEFAULT_AI_IMAGE:-normal}
       XFYUN_PPT_POLL_INTERVAL_SECONDS: ${XFYUN_PPT_POLL_INTERVAL_SECONDS:-3}
       XFYUN_PPT_POLL_TIMEOUT_SECONDS: ${XFYUN_PPT_POLL_TIMEOUT_SECONDS:-180}
+      MAX_CHAT_MESSAGES_PER_DAY: ${MAX_CHAT_MESSAGES_PER_DAY:-50}
+      MAX_FLASHCARD_GENERATIONS_PER_DAY: ${MAX_FLASHCARD_GENERATIONS_PER_DAY:-10}
+      MAX_QUIZ_GENERATIONS_PER_DAY: ${MAX_QUIZ_GENERATIONS_PER_DAY:-10}
+      MAX_DOCUMENT_UPLOADS_PER_DAY: ${MAX_DOCUMENT_UPLOADS_PER_DAY:-5}
     depends_on:
       db:
         condition: service_healthy
@@ -56,7 +61,7 @@ services:
       dockerfile: src/edu-worker/Dockerfile
     command: [ "arq", "worker.WorkerSettings" ]
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:123456@db:5432/postgres
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
       STORAGE_ROOT: /app/.localdata
       TASK_QUEUE_BACKEND: arq
       TASK_QUEUE_NAME: edu-agent:tasks
@@ -66,13 +71,14 @@ services:
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-large}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
-      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
-      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
-      EMBEDDING_APP_ID: ${EMBEDDING_APP_ID:-}
       EMBEDDING_API_SECRET: ${EMBEDDING_API_SECRET:-}
+      EMBEDDING_APP_ID: ${EMBEDDING_APP_ID:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       EMBEDDING_DOMAIN: ${EMBEDDING_DOMAIN:-query}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-3072}
       XFYUN_PPT_ENABLED: ${XFYUN_PPT_ENABLED:-false}
       XFYUN_PPT_BASE_URL: ${XFYUN_PPT_BASE_URL:-https://zwapi.xfyun.cn}
       XFYUN_PPT_APP_ID: ${XFYUN_PPT_APP_ID:-}
@@ -86,6 +92,10 @@ services:
       XFYUN_PPT_DEFAULT_AI_IMAGE: ${XFYUN_PPT_DEFAULT_AI_IMAGE:-normal}
       XFYUN_PPT_POLL_INTERVAL_SECONDS: ${XFYUN_PPT_POLL_INTERVAL_SECONDS:-3}
       XFYUN_PPT_POLL_TIMEOUT_SECONDS: ${XFYUN_PPT_POLL_TIMEOUT_SECONDS:-180}
+      MAX_CHAT_MESSAGES_PER_DAY: ${MAX_CHAT_MESSAGES_PER_DAY:-50}
+      MAX_FLASHCARD_GENERATIONS_PER_DAY: ${MAX_FLASHCARD_GENERATIONS_PER_DAY:-10}
+      MAX_QUIZ_GENERATIONS_PER_DAY: ${MAX_QUIZ_GENERATIONS_PER_DAY:-10}
+      MAX_DOCUMENT_UPLOADS_PER_DAY: ${MAX_DOCUMENT_UPLOADS_PER_DAY:-5}
     depends_on:
       db:
         condition: service_healthy
@@ -101,9 +111,9 @@ services:
     build:
       context: .
       dockerfile: src/edu-api/Dockerfile
-    command: [ "alembic", "-c", "/app/alembic.ini", "upgrade", "head" ]
+    command: [ "alembic", "-c", "/app/alembic.ini", "upgrade", "heads" ]
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:123456@db:5432/postgres
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
     depends_on:
       db:
         condition: service_healthy
@@ -121,7 +131,7 @@ services:
     image: pgvector/pgvector:pg16
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=123456
+      - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=postgres
     ports:
       - "5433:5432"

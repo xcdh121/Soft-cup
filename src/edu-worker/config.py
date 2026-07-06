@@ -20,13 +20,14 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     llm_api_key: str = ""
     llm_base_url: str | None = None
+    embedding_provider: str = "openai"
     embedding_model: str = "text-embedding-3-large"
     embedding_api_key: str = ""
-    embedding_base_url: str | None = None
-    embedding_provider: str = "openai"
-    embedding_app_id: str = ""
     embedding_api_secret: str = ""
+    embedding_app_id: str = ""
+    embedding_base_url: str | None = None
     embedding_domain: str = "query"
+    embedding_dimensions: int = 3072
 
     # Database
     database_url: str = ""

@@ -79,6 +79,11 @@ const LearnerProfileRoute = lazy(() =>
     default: m.LearnerProfileRoute,
   })),
 )
+const CourseLibraryRoute = lazy(() =>
+  import('./course-library-route').then((m) => ({
+    default: m.CourseLibraryRoute,
+  })),
+)
 const KnowledgeGraphRoute = lazy(() =>
   import('./knowledge-graph-route').then((m) => ({
     default: m.KnowledgeGraphRoute,
@@ -334,6 +339,16 @@ export const learnerProfileRoute = createRoute({
   ),
 })
 
+export const courseLibraryRoute = createRoute({
+  path: '/course-library',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <CourseLibraryRoute />
+    </Suspense>
+  ),
+})
+
 export const knowledgeGraphRoute = createRoute({
   path: '/p/$projectId/knowledge-graph',
   getParentRoute: () => dashboardRoute,
@@ -390,6 +405,7 @@ export const routeTree = rootRoute.addChildren([
     studyPlanRoute,
     resourcePackageRoute,
     learnerProfileRoute,
+    courseLibraryRoute,
     knowledgeGraphRoute,
     learningEvaluationRoute,
     projectAgentOrchestrationRoute,

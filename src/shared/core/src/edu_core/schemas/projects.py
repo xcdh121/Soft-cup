@@ -8,6 +8,7 @@ class ProjectDto(BaseModel):
 
     id: str = Field(..., description="Unique ID of the project")
     owner_id: str = Field(..., description="ID of the user who owns the project")
+    course_id: str | None = Field(None, description="Optional parent course ID")
     name: str = Field(..., description="Name of the project")
     description: str | None = Field(None, description="Description of the project")
     language_code: str = Field(..., description="Language code for the project")
