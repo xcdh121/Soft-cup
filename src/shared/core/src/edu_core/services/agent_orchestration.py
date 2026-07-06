@@ -510,26 +510,31 @@ class AgentOrchestrationService:
         project_id: str,
         diagnosis_id: str | None = None,
         trigger: AgentTrigger | None = None,
+        meta: dict | None = None,
+        event_sink: Callable[[AgentEvent], Awaitable[None]] | None = None,
     ) -> RecommendationsResponse:
         if diagnosis_id:
             diagnosis = self.get_diagnosis(diagnosis_id)
             self._ensure_diagnosis_access(diagnosis, user_id, project_id)
-            response = RecommendationsResponse(
-                run_id=diagnosis.run_id,
-                project_id=project_id,
-                recommendations=diagnosis.recommendations,
-                based_on_diagnosis_id=diagnosis_id,
-                created_at=self._now(),
-            )
         else:
             diagnosis = await self.generate_diagnosis(user_id, project_id, trigger)
-            response = RecommendationsResponse(
-                run_id=diagnosis.run_id,
-                project_id=project_id,
-                recommendations=diagnosis.recommendations,
-                based_on_diagnosis_id=diagnosis.diagnosis_id,
-                created_at=self._now(),
-            )
+
+        result = await self._run_supervisor(
+            user_id=user_id,
+            project_id=project_id,
+            goal="recommendations",
+            trigger=trigger,
+            meta=meta,
+            event_sink=event_sink,
+        )
+        self.store.save_run_events(result)
+        response = RecommendationsResponse(
+            run_id=result.run_id,
+            project_id=project_id,
+            recommendations=result.final_result.get("recommendations", []),
+            based_on_diagnosis_id=diagnosis.diagnosis_id,
+            created_at=self._now(),
+        )
 
         self.store.save_recommendations(response)
         return response

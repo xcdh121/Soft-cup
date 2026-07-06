@@ -1,4 +1,6 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from edu_ai.agents.orchestration.planner_agent import PlannerAgent
 from edu_ai.agents.orchestration.resource_agent import ResourceAgent
@@ -7,6 +9,7 @@ from edu_core.schemas.agent_orchestration import (
     AgentContextData,
     AgentEventType,
     AgentRunContext,
+    AgentTrigger,
     OrchestrationRunRequest,
 )
 
@@ -65,6 +68,61 @@ class FallbackRulesTest(unittest.IsolatedAsyncioTestCase):
             result.result["recommendations"][0]["recommendation_mode"],
             "fallback",
         )
+
+    async def test_manual_resource_request_is_queued_without_diagnosis_evidence(self):
+        note_service = MagicMock()
+        note_service.create_note.return_value = SimpleNamespace(
+            id="note_1", title="Requested note"
+        )
+        context = AgentRunContext(
+            run_id="run_manual_resource",
+            project_id="project_1",
+            student_id="student_1",
+            goal="recommendations",
+            context=AgentContextData(),
+            meta={
+                "requested_topic": "sorting",
+                "requested_resource_types": ["note"],
+            },
+            artifacts={
+                "diagnosis": {
+                    "diagnosis": {"related_knowledge_points": []}
+                }
+            },
+        )
+
+        result = await ResourceAgent(note_service=note_service).run(context)
+
+        note_service.queue_generation.assert_called_once()
+        self.assertEqual(
+            result.result["recommendations"][0]["target_id"], "note_1"
+        )
+
+    async def test_resource_package_note_is_left_for_client_streaming(self):
+        note_service = MagicMock()
+        note_service.create_note.return_value = SimpleNamespace(
+            id="note_stream", title="Streaming note"
+        )
+        context = AgentRunContext(
+            run_id="run_resource_package",
+            project_id="project_1",
+            student_id="student_1",
+            goal="recommendations",
+            trigger=AgentTrigger(type="resource_package", id="package_1"),
+            context=AgentContextData(),
+            meta={
+                "requested_topic": "sorting",
+                "requested_resource_types": ["note"],
+            },
+            artifacts={"diagnosis": {"diagnosis": {}}},
+        )
+
+        result = await ResourceAgent(note_service=note_service).run(context)
+
+        note_service.queue_generation.assert_not_called()
+        recommendation = result.result["recommendations"][0]
+        self.assertTrue(recommendation["stream_on_client"])
+        self.assertEqual(recommendation["topic"], "sorting")
 
     async def test_planner_without_llm_uses_rule_fallback(self):
         context = AgentRunContext(

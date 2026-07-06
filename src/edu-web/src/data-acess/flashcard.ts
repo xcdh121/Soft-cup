@@ -55,6 +55,15 @@ export const flashcardsAtom = Atom.family((input: string) => {
   ).pipe(Atom.keepAlive)
 })
 
+export const refreshFlashcardsAtom = runtime.fn(
+  Effect.fn(function* (input: { projectId: string; flashcardGroupId: string }) {
+    const registry = yield* Registry.AtomRegistry
+    registry.refresh(
+      flashcardsAtom(`${input.projectId}:${input.flashcardGroupId}`),
+    )
+  }),
+)
+
 const FlashcardProgressUpdate = Schema.Struct({
   event: Schema.NullishOr(Schema.String),
   status: Schema.String,

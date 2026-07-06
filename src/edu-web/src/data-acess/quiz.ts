@@ -1,3 +1,7 @@
+import { Atom, Registry } from '@effect-atom/atom-react'
+import { HttpBody } from '@effect/platform'
+import { BrowserKeyValueStore } from '@effect/platform-browser'
+import { Effect, Layer, Schema, Stream } from 'effect'
 import {
   GenerateRequest,
   QuizCreate,
@@ -8,10 +12,6 @@ import {
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
 import { withToast } from '@/lib/with-toast'
-import { Atom, Registry } from '@effect-atom/atom-react'
-import { HttpBody } from '@effect/platform'
-import { BrowserKeyValueStore } from '@effect/platform-browser'
-import { Effect, Layer, Schema, Stream } from 'effect'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -56,6 +56,13 @@ export const quizQuestionsAtom = Atom.family((input: string) => {
     }).pipe(Effect.provide(ApiClientService.Default)),
   ).pipe(Atom.keepAlive)
 })
+
+export const refreshQuizQuestionsAtom = runtime.fn(
+  Effect.fn(function* (input: { projectId: string; quizId: string }) {
+    const registry = yield* Registry.AtomRegistry
+    registry.refresh(quizQuestionsAtom(`${input.projectId}:${input.quizId}`))
+  }),
+)
 
 const QuizProgressUpdate = Schema.Struct({
   status: Schema.String,

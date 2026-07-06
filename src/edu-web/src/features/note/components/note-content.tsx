@@ -1,23 +1,59 @@
 import { Response } from '@/components/ai-elements/response'
-import { noteAtom, noteProgressAtom, refreshNoteAtom } from '@/data-acess/note'
+import {
+  createNoteStreamAtom,
+  noteAtom,
+  noteProgressAtom,
+  refreshNoteAtom,
+} from '@/data-acess/note'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Loader2Icon } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 type NoteContentProps = {
   noteId: string
   projectId: string
   className?: string
+  autoGenerate?: boolean
+  topic?: string
+  customInstructions?: string
 }
 
 export const NoteContent = ({
   noteId,
   projectId,
   className,
+  autoGenerate = false,
+  topic,
+  customInstructions,
 }: NoteContentProps) => {
   const noteResult = useAtomValue(noteAtom(`${projectId}:${noteId}`))
   const streamProgress = useAtomValue(noteProgressAtom)
   const refreshNote = useAtomSet(refreshNoteAtom, { mode: 'promise' })
+  const createNoteStream = useAtomSet(createNoteStreamAtom, { mode: 'promise' })
+  const generationStarted = useRef(false)
+
+  useEffect(() => {
+    if (!autoGenerate || generationStarted.current) return
+    if (!Result.isSuccess(noteResult) || noteResult.value.content.trim()) return
+
+    generationStarted.current = true
+    createNoteStream({
+      projectId,
+      noteId,
+      topic,
+      customInstructions,
+    }).catch(() => {
+      generationStarted.current = false
+    })
+  }, [
+    autoGenerate,
+    createNoteStream,
+    customInstructions,
+    noteId,
+    noteResult,
+    projectId,
+    topic,
+  ])
 
   useEffect(() => {
     if (!Result.isSuccess(noteResult)) return

@@ -49,6 +49,95 @@ const colorClasses = [
   'bg-cyan-500',
 ]
 
+const RADAR_DIMENSIONS = [
+  { key: 'knowledge_background', label: '知识基础' },
+  { key: 'learning_progress', label: '学习进度' },
+  { key: 'cognitive_style', label: '认知能力' },
+  { key: 'practical_ability', label: '实践能力' },
+  { key: 'current_learning_state', label: '学习状态' },
+]
+
+const StudentRadar = ({
+  values,
+}: {
+  values: Array<{ label: string; value: number }>
+}) => {
+  const center = 150
+  const radius = 86
+  const point = (index: number, scale = 1) => {
+    const angle = -Math.PI / 2 + (index * Math.PI * 2) / values.length
+    return `${center + Math.cos(angle) * radius * scale},${center + Math.sin(angle) * radius * scale}`
+  }
+
+  return (
+    <svg
+      viewBox="0 0 300 280"
+      className="mx-auto mt-2 w-full max-w-[320px]"
+      role="img"
+      aria-label="学生五维能力雷达图"
+    >
+      {[0.25, 0.5, 0.75, 1].map((scale) => (
+        <polygon
+          key={scale}
+          points={values.map((_, index) => point(index, scale)).join(' ')}
+          fill="none"
+          stroke="currentColor"
+          className="text-slate-200"
+        />
+      ))}
+      {values.map((_, index) => {
+        const [x, y] = point(index).split(',')
+        return (
+          <line
+            key={index}
+            x1={center}
+            y1={center}
+            x2={x}
+            y2={y}
+            stroke="currentColor"
+            className="text-slate-200"
+          />
+        )
+      })}
+      <polygon
+        points={values
+          .map((item, index) => point(index, item.value / 100))
+          .join(' ')}
+        fill="rgba(14, 165, 233, 0.22)"
+        stroke="#0ea5e9"
+        strokeWidth="2.5"
+      />
+      {values.map((item, index) => {
+        const [x, y] = point(index, 1.25).split(',').map(Number)
+        const [dotX, dotY] = point(index, item.value / 100)
+          .split(',')
+          .map(Number)
+        return (
+          <g key={item.label}>
+            <circle cx={dotX} cy={dotY} r="4" fill="#0ea5e9" />
+            <text
+              x={x}
+              y={y - 4}
+              textAnchor="middle"
+              className="fill-foreground text-[11px] font-medium"
+            >
+              {item.label}
+            </text>
+            <text
+              x={x}
+              y={y + 11}
+              textAnchor="middle"
+              className="fill-muted-foreground text-[10px]"
+            >
+              {item.value}%
+            </text>
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
 const stringifyValue = (value: unknown): string => {
   if (value === null || value === undefined || value === '') return '待补充'
   if (typeof value === 'string') return value
@@ -134,6 +223,14 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
     .filter((field) => field.value !== '待补充')
     .slice(0, 4)
     .map((field) => field.label)
+  const radarValues = RADAR_DIMENSIONS.map((dimension) => ({
+    label: dimension.label,
+    value:
+      fields.find((field) => field.key === dimension.key)?.confidence ?? 0,
+  }))
+  const weakestDimensions = [...radarValues]
+    .sort((a, b) => a.value - b.value)
+    .slice(0, 2)
 
   const handleRefresh = () => {
     refreshProfile(projectId)
@@ -210,9 +307,9 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
             <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
               <div className="rounded-[24px] border bg-background p-6 shadow-sm">
                 <div className="mb-5">
-                  <h2 className="text-lg font-semibold">画像字段</h2>
+                  <h2 className="text-lg font-semibold">学生特点</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    使用后端 learner-profile API 返回的真实画像字段。
+                    不同颜色表示不同学生特点，柱状长度表示画像可信度。
                   </p>
                 </div>
 
@@ -256,16 +353,30 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
 
               <div className="space-y-6">
                 <section className="rounded-[24px] border bg-background p-6 shadow-sm">
+                  <h2 className="text-lg font-semibold">五维能力雷达图</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    从五个核心维度观察学生的综合学习状态。
+                  </p>
+                  <StudentRadar values={radarValues} />
+                </section>
+
+                <section className="rounded-[24px] border bg-background p-6 shadow-sm">
                   <h2 className="text-lg font-semibold">画像解读</h2>
                   <div className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
-                    <p>
-                      当前画像来自后端自动刷新规则和手动修改结果，字段中会保留
-                      置信度、状态、证据和更新时间。
-                    </p>
-                    <p>
-                      如果练习记录和知识状态越多，画像中的学习进度、常见错误、
-                      当前学习状态会越稳定。
-                    </p>
+                    {weakestDimensions[0]?.value === 0 ? (
+                      <p>
+                        当前画像证据仍不完整，建议先补充学习记录，以便准确判断薄弱方面。
+                      </p>
+                    ) : (
+                      <p>
+                        学生目前在
+                        <span className="font-semibold text-foreground">
+                          {weakestDimensions.map((item) => item.label).join('、')}
+                        </span>
+                        方面较为薄弱，其中{weakestDimensions[0].label}得分最低（
+                        {weakestDimensions[0].value}%）。建议优先安排该方向的针对性学习与练习。
+                      </p>
+                    )}
                   </div>
                 </section>
 
