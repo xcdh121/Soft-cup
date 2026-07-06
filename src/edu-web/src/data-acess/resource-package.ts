@@ -107,6 +107,7 @@ export type GenerateResourcePackageInput = {
   target_topic: string
   target_goal?: string
   source_document_ids?: Array<string>
+  chapter_ids?: Array<string>
   knowledge_point_ids?: Array<string>
   weak_knowledge_point_ids?: Array<string>
   resource_types?: Array<ResourceType>
@@ -158,6 +159,7 @@ export const generateResourcePackageAtom = runtime.fn(
         target_topic: input.target_topic,
         target_goal: input.target_goal,
         source_document_ids: input.source_document_ids ?? [],
+        chapter_ids: input.chapter_ids ?? [],
         knowledge_point_ids: input.knowledge_point_ids ?? [],
         weak_knowledge_point_ids: input.weak_knowledge_point_ids ?? [],
         resource_types: input.resource_types ?? [

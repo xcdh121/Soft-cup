@@ -3,6 +3,7 @@ import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Effect, Layer } from 'effect'
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
+import type { ProjectDto } from '@/integrations/api/client'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -69,6 +70,12 @@ export type CourseResource = {
   updated_at: string
 }
 
+export type ProjectCourseOutline = {
+  courseId: string | null
+  chapters: Array<CourseChapter>
+  knowledgePoints: Array<KnowledgePoint>
+}
+
 const isSuccessStatus = (status: number) => status >= 200 && status < 300
 
 const getJson = <T>(path: string) =>
@@ -86,6 +93,48 @@ const getJson = <T>(path: string) =>
 export const coursesAtom = runtime
   .atom(getJson<Array<Course>>('/api/v1/courses'))
   .pipe(Atom.keepAlive)
+
+export const projectCourseOutlineAtom = Atom.family((projectId: string) =>
+  runtime
+    .atom(
+      Effect.gen(function* () {
+        if (!projectId) {
+          return {
+            courseId: null,
+            chapters: [],
+            knowledgePoints: [],
+          } satisfies ProjectCourseOutline
+        }
+
+        const project = yield* getJson<ProjectDto>(
+          `/api/v1/projects/${projectId}`,
+        )
+        if (!project.course_id) {
+          return {
+            courseId: null,
+            chapters: [],
+            knowledgePoints: [],
+          } satisfies ProjectCourseOutline
+        }
+
+        const [chapters, knowledgePoints] = yield* Effect.all([
+          getJson<Array<CourseChapter>>(
+            `/api/v1/courses/${project.course_id}/chapters`,
+          ),
+          getJson<Array<KnowledgePoint>>(
+            `/api/v1/courses/${project.course_id}/knowledge-points`,
+          ),
+        ])
+
+        return {
+          courseId: project.course_id,
+          chapters,
+          knowledgePoints,
+        } satisfies ProjectCourseOutline
+      }),
+    )
+    .pipe(Atom.keepAlive),
+)
 
 export const courseChaptersAtom = Atom.family((courseId: string) =>
   runtime

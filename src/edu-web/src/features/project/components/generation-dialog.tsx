@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Loader2Icon } from 'lucide-react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { toast } from 'sonner'
-import type { DocumentDto } from '@/integrations/api/client'
+import type { CourseChapter } from '@/data-acess/course-library'
 import {
   Dialog,
   DialogContent,
@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { indexedDocumentsAtom } from '@/data-acess/document'
+import { projectCourseOutlineAtom } from '@/data-acess/course-library'
 import { generateResourcePackageAtom } from '@/data-acess/resource-package'
 
 type GenerationDialogStore = {
@@ -53,7 +53,7 @@ type DifficultyOption = 'easy' | 'medium' | 'hard'
 export function GenerationDialog() {
   const { isOpen, projectId, close } = useGenerationDialog()
   const [customInstructions, setCustomInstructions] = useState('')
-  const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(
+  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(
     new Set(),
   )
   const [selectedType, setSelectedType] = useState<GenerationType>('note')
@@ -61,30 +61,34 @@ export function GenerationDialog() {
   const [difficulty, setDifficulty] = useState<DifficultyOption>('medium')
   const [isGenerating, setIsGenerating] = useState(false)
 
-  const documentsResult = useAtomValue(indexedDocumentsAtom(projectId || ''))
+  const courseOutlineResult = useAtomValue(
+    projectCourseOutlineAtom(projectId || ''),
+  )
   const generateResourcePackage = useAtomSet(generateResourcePackageAtom, {
     mode: 'promise',
   })
 
-  const handleToggleDocument = (documentId: string) => {
-    setSelectedDocumentIds((prev) => {
+  const handleToggleChapter = (chapterId: string) => {
+    setSelectedChapterIds((prev) => {
       const next = new Set(prev)
-      if (next.has(documentId)) {
-        next.delete(documentId)
+      if (next.has(chapterId)) {
+        next.delete(chapterId)
       } else {
-        next.add(documentId)
+        next.add(chapterId)
       }
       return next
     })
   }
 
   const handleSelectAll = () => {
-    if (!Result.isSuccess(documentsResult)) return
-    setSelectedDocumentIds(new Set(documentsResult.value.map((doc) => doc.id)))
+    if (!Result.isSuccess(courseOutlineResult)) return
+    setSelectedChapterIds(
+      new Set(courseOutlineResult.value.chapters.map((chapter) => chapter.id)),
+    )
   }
 
   const handleDeselectAll = () => {
-    setSelectedDocumentIds(new Set())
+    setSelectedChapterIds(new Set())
   }
 
   const handleGenerate = async () => {
@@ -98,11 +102,21 @@ export function GenerationDialog() {
 
     setIsGenerating(true)
     try {
+      const knowledgePointIds = Result.isSuccess(courseOutlineResult)
+        ? courseOutlineResult.value.knowledgePoints
+            .filter(
+              (point) =>
+                point.chapter_id && selectedChapterIds.has(point.chapter_id),
+            )
+            .map((point) => point.id)
+        : []
+
       await generateResourcePackage({
         projectId,
         target_topic: instructions,
         title: buildGeneratedTitle(actionLabel, instructions),
-        source_document_ids: Array.from(selectedDocumentIds),
+        chapter_ids: Array.from(selectedChapterIds),
+        knowledge_point_ids: knowledgePointIds,
         resource_types: [toResourcePackageType(selectedType)],
         difficulty_level: toDifficultyLevel(difficulty),
         custom_instructions: instructions,
@@ -114,8 +128,8 @@ export function GenerationDialog() {
         },
       })
 
-      if (selectedDocumentIds.size > 0) {
-        toast.info('已将所选文档一并作为统一资源生成链路的上下文。')
+      if (selectedChapterIds.size > 0) {
+        toast.info('已将所选章节及其知识点作为统一资源生成链路的上下文。')
       }
       toast.success(`${actionLabel} 已提交到统一多 Agent 生成链路。`)
 
@@ -124,7 +138,9 @@ export function GenerationDialog() {
       }, 500)
     } catch (error) {
       console.error('Generation failed:', error)
-      toast.error(error instanceof Error ? error.message : '生成失败，请稍后重试。')
+      toast.error(
+        error instanceof Error ? error.message : '生成失败，请稍后重试。',
+      )
     } finally {
       setIsGenerating(false)
     }
@@ -134,17 +150,17 @@ export function GenerationDialog() {
     if (isGenerating) return
     close()
     setCustomInstructions('')
-    setSelectedDocumentIds(new Set())
+    setSelectedChapterIds(new Set())
     setSelectedType('note')
     setLength('normal')
     setDifficulty('medium')
   }
 
-  const hasSelectedDocuments = selectedDocumentIds.size > 0
-  const allDocumentsSelected =
-    Result.isSuccess(documentsResult) &&
-    documentsResult.value.length > 0 &&
-    selectedDocumentIds.size === documentsResult.value.length
+  const hasSelectedChapters = selectedChapterIds.size > 0
+  const allChaptersSelected =
+    Result.isSuccess(courseOutlineResult) &&
+    courseOutlineResult.value.chapters.length > 0 &&
+    selectedChapterIds.size === courseOutlineResult.value.chapters.length
 
   const hasCustomSettings =
     selectedType === 'quiz' ||
@@ -172,7 +188,8 @@ export function GenerationDialog() {
         <DialogHeader className="shrink-0">
           <DialogTitle>生成 AI 内容</DialogTitle>
           <DialogDescription>
-            这里会统一走资源包与多 Agent 编排链路，再按你选择的资源类型落到具体资源。
+            这里会统一走资源包与多 Agent
+            编排链路，再按你选择的资源类型落到具体资源。
           </DialogDescription>
         </DialogHeader>
 
@@ -300,7 +317,7 @@ export function GenerationDialog() {
 
           <div className="space-y-2 flex-1 min-h-0 flex flex-col">
             <div className="flex items-center justify-between shrink-0">
-              <Label>选择文档</Label>
+              <Label>选择课程章节</Label>
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -309,9 +326,9 @@ export function GenerationDialog() {
                   onClick={handleSelectAll}
                   disabled={
                     isGenerating ||
-                    !Result.isSuccess(documentsResult) ||
-                    documentsResult.value.length === 0 ||
-                    allDocumentsSelected
+                    !Result.isSuccess(courseOutlineResult) ||
+                    courseOutlineResult.value.chapters.length === 0 ||
+                    allChaptersSelected
                   }
                 >
                   全选
@@ -321,7 +338,7 @@ export function GenerationDialog() {
                   variant="ghost"
                   size="sm"
                   onClick={handleDeselectAll}
-                  disabled={isGenerating || !hasSelectedDocuments}
+                  disabled={isGenerating || !hasSelectedChapters}
                 >
                   取消全选
                 </Button>
@@ -330,34 +347,48 @@ export function GenerationDialog() {
 
             <div className="flex-1 min-h-0 border rounded-md overflow-hidden flex flex-col">
               <div className="flex-1 overflow-y-auto p-4">
-                {Result.builder(documentsResult)
+                {Result.builder(courseOutlineResult)
                   .onInitialOrWaiting(() => (
                     <div className="flex items-center gap-2 text-muted-foreground py-4">
                       <Loader2Icon className="size-4 animate-spin" />
-                      <span>正在加载文档...</span>
+                      <span>正在加载课程章节...</span>
                     </div>
                   ))
                   .onFailure(() => (
-                    <div className="text-destructive py-4">文档加载失败</div>
+                    <div className="text-destructive py-4">
+                      课程章节加载失败
+                    </div>
                   ))
-                  .onSuccess((documents) => {
-                    if (documents.length === 0) {
+                  .onSuccess((outline) => {
+                    if (!outline.courseId) {
                       return (
                         <div className="text-muted-foreground py-4 text-center">
-                          没有可用文档，请先上传文档。
+                          当前项目尚未绑定课程，请先编辑项目并选择所属课程。
+                        </div>
+                      )
+                    }
+                    if (outline.chapters.length === 0) {
+                      return (
+                        <div className="text-muted-foreground py-4 text-center">
+                          当前课程暂无可选章节。
                         </div>
                       )
                     }
 
                     return (
                       <div className="space-y-3">
-                        {documents.map((document) => (
-                          <DocumentCheckbox
-                            key={document.id}
-                            document={document}
-                            checked={selectedDocumentIds.has(document.id)}
+                        {outline.chapters.map((chapter) => (
+                          <ChapterCheckbox
+                            key={chapter.id}
+                            chapter={chapter}
+                            knowledgePointCount={
+                              outline.knowledgePoints.filter(
+                                (point) => point.chapter_id === chapter.id,
+                              ).length
+                            }
+                            checked={selectedChapterIds.has(chapter.id)}
                             onCheckedChange={() =>
-                              handleToggleDocument(document.id)
+                              handleToggleChapter(chapter.id)
                             }
                             disabled={isGenerating}
                           />
@@ -402,7 +433,10 @@ export function GenerationDialog() {
   )
 }
 
-function buildGeneratedTitle(resourceLabel: string, instructions: string): string {
+function buildGeneratedTitle(
+  resourceLabel: string,
+  instructions: string,
+): string {
   const normalized = instructions.replace(/\s+/g, ' ').trim()
   const suffix =
     normalized.length > 24 ? `${normalized.slice(0, 24)}...` : normalized
@@ -437,46 +471,43 @@ function toDifficultyLevel(difficulty: DifficultyOption) {
   }
 }
 
-type DocumentCheckboxProps = {
-  document: DocumentDto
+type ChapterCheckboxProps = {
+  chapter: CourseChapter
+  knowledgePointCount: number
   checked: boolean
   onCheckedChange: (checked: boolean) => void
   disabled?: boolean
 }
 
-function DocumentCheckbox({
-  document,
+function ChapterCheckbox({
+  chapter,
+  knowledgePointCount,
   checked,
   onCheckedChange,
   disabled,
-}: DocumentCheckboxProps) {
+}: ChapterCheckboxProps) {
   return (
     <div className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50">
       <Checkbox
         checked={checked}
         onCheckedChange={onCheckedChange}
         disabled={disabled}
-        id={`doc-${document.id}`}
+        id={`chapter-${chapter.id}`}
       />
       <Label
-        htmlFor={`doc-${document.id}`}
+        htmlFor={`chapter-${chapter.id}`}
         className="flex-1 cursor-pointer font-normal"
       >
         <div className="flex flex-col">
-          <span className="text-sm">{document.file_name}</span>
+          <span className="text-sm">{chapter.title}</span>
           <span className="text-xs text-muted-foreground">
-            {document.file_type?.toUpperCase()} | {formatFileSize(document.file_size)}
+            {knowledgePointCount} 个知识点
+            {chapter.estimated_minutes
+              ? ` · 预计 ${chapter.estimated_minutes} 分钟`
+              : ''}
           </span>
         </div>
       </Label>
     </div>
   )
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
 }

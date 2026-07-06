@@ -384,6 +384,9 @@ class GenerateResourcePackageRequest(BaseModel):
     source_document_ids: list[str] = Field(
         default_factory=list, description="Source document IDs"
     )
+    chapter_ids: list[str] = Field(
+        default_factory=list, description="Selected course chapter IDs"
+    )
     knowledge_point_ids: list[str] = Field(
         default_factory=list, description="Knowledge point IDs"
     )

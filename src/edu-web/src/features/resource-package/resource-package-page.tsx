@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { indexedDocumentsAtom } from '@/data-acess/document'
+import { projectCourseOutlineAtom } from '@/data-acess/course-library'
 import {
   type DifficultyLevel,
   type GeneratedResource,
@@ -179,7 +179,9 @@ const ResourcePreview = ({
   const resourcesResult = useAtomValue(
     generatedResourcesAtom(`${projectId}:${resourcePackage.id}`),
   )
-  const resources = Result.isSuccess(resourcesResult) ? resourcesResult.value : []
+  const resources = Result.isSuccess(resourcesResult)
+    ? resourcesResult.value
+    : []
 
   if (resourcesResult.waiting) {
     return (
@@ -299,15 +301,14 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
   const generateResourcePackage = useAtomSet(generateResourcePackageAtom, {
     mode: 'promise',
   })
-  const documentsResult = useAtomValue(indexedDocumentsAtom(projectId))
+  const courseOutlineResult = useAtomValue(projectCourseOutlineAtom(projectId))
 
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
   const [goal, setGoal] = useState('')
   const [instructions, setInstructions] = useState('')
-  const [difficulty, setDifficulty] =
-    useState<DifficultyLevel>('intermediate')
-  const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(
+  const [difficulty, setDifficulty] = useState<DifficultyLevel>('intermediate')
+  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(
     new Set(),
   )
   const [selectedTypes, setSelectedTypes] = useState<Array<ResourceType>>([
@@ -318,13 +319,12 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
     'ppt_outline',
     'pptx',
   ])
-  const [selectedPackage, setSelectedPackage] = useState<ResourcePackage | null>(
-    null,
-  )
+  const [selectedPackage, setSelectedPackage] =
+    useState<ResourcePackage | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const indexedDocuments =
-    documentsResult._tag === 'Success' ? documentsResult.value : []
+  const courseOutline =
+    courseOutlineResult._tag === 'Success' ? courseOutlineResult.value : null
 
   const isGenerateDisabled =
     !topic.trim() || selectedTypes.length === 0 || isSubmitting
@@ -343,17 +343,25 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
     )
   }
 
-  const toggleDocument = (documentId: string) => {
-    setSelectedDocumentIds((current) => {
+  const toggleChapter = (chapterId: string) => {
+    setSelectedChapterIds((current) => {
       const next = new Set(current)
-      if (next.has(documentId)) next.delete(documentId)
-      else next.add(documentId)
+      if (next.has(chapterId)) next.delete(chapterId)
+      else next.add(chapterId)
       return next
     })
   }
 
   const handleGenerate = async () => {
     if (!topic.trim() || selectedTypes.length === 0) return
+
+    const knowledgePointIds =
+      courseOutline?.knowledgePoints
+        .filter(
+          (point) =>
+            point.chapter_id && selectedChapterIds.has(point.chapter_id),
+        )
+        .map((point) => point.id) ?? []
 
     setIsSubmitting(true)
     try {
@@ -363,7 +371,8 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
         target_topic: topic.trim(),
         target_goal: goal.trim() || undefined,
         custom_instructions: instructions.trim() || undefined,
-        source_document_ids: Array.from(selectedDocumentIds),
+        chapter_ids: Array.from(selectedChapterIds),
+        knowledge_point_ids: knowledgePointIds,
         resource_types: selectedTypes,
         difficulty_level: difficulty,
         generation_params: { launch_context: 'resource package page' },
@@ -392,9 +401,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
           <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
             <div className="rounded-2xl border bg-background">
               <div className="border-b px-5 py-4">
-                <div className="text-base font-medium">
-                  生成资源包
-                </div>
+                <div className="text-base font-medium">生成资源包</div>
                 <div className="mt-1 text-sm text-muted-foreground">
                   可选资源类型与项目概览里的 AI 生成保持一致。
                 </div>
@@ -435,9 +442,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="resource-package-difficulty">
-                    难度等级
-                  </Label>
+                  <Label htmlFor="resource-package-difficulty">难度等级</Label>
                   <Select
                     value={difficulty}
                     onValueChange={(value) =>
@@ -503,44 +508,53 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <Label>源文档</Label>
+                    <Label>课程章节</Label>
                     <div className="text-xs text-muted-foreground">
-                      已选择 {selectedDocumentIds.size} 个
+                      已选择 {selectedChapterIds.size} 个
                     </div>
                   </div>
 
-                  {documentsResult.waiting ? (
+                  {courseOutlineResult.waiting ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2Icon className="size-4 animate-spin" />
-                      <span>正在加载已索引文档...</span>
+                      <span>正在加载课程章节...</span>
                     </div>
-                  ) : !Result.isSuccess(documentsResult) ? (
+                  ) : !Result.isSuccess(courseOutlineResult) ? (
                     <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
-                      已索引文档加载失败。
+                      课程章节加载失败。
                     </div>
-                  ) : indexedDocuments.length === 0 ? (
+                  ) : !courseOutline?.courseId ? (
                     <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                      暂无可用的已索引文档。
+                      当前项目尚未绑定课程，请先编辑项目并选择所属课程。
+                    </div>
+                  ) : courseOutline.chapters.length === 0 ? (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                      当前课程暂无可选章节。
                     </div>
                   ) : (
                     <div className="max-h-60 space-y-2 overflow-y-auto rounded-xl border p-3">
-                      {indexedDocuments.map((document) => {
-                        const checked = selectedDocumentIds.has(document.id)
+                      {courseOutline.chapters.map((chapter) => {
+                        const checked = selectedChapterIds.has(chapter.id)
+                        const knowledgePointCount =
+                          courseOutline.knowledgePoints.filter(
+                            (point) => point.chapter_id === chapter.id,
+                          ).length
                         return (
                           <label
-                            key={document.id}
+                            key={chapter.id}
                             className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40"
                           >
                             <Checkbox
                               checked={checked}
-                              onCheckedChange={() => toggleDocument(document.id)}
+                              onCheckedChange={() => toggleChapter(chapter.id)}
                             />
                             <div className="space-y-1 text-sm">
-                              <div className="font-medium">
-                                {document.file_name}
-                              </div>
+                              <div className="font-medium">{chapter.title}</div>
                               <div className="text-muted-foreground">
-                                {document.file_type.toUpperCase()} · {document.status}
+                                {knowledgePointCount} 个知识点
+                                {chapter.estimated_minutes
+                                  ? ` · 预计 ${chapter.estimated_minutes} 分钟`
+                                  : ''}
                               </div>
                             </div>
                           </label>

@@ -4,7 +4,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from edu_db.models import Document, GeneratedResource, Project, ResourcePackage
+from edu_db.models import (
+    CourseChapter,
+    CourseResource,
+    Document,
+    GeneratedResource,
+    KnowledgePoint,
+    Project,
+    ResourcePackage,
+)
 from edu_db.session import get_session_factory
 
 from edu_core.exceptions import NotFoundError
@@ -129,6 +137,17 @@ class ResourcePackageService:
                     .all()
                 )
 
+            chapter_ids = self._merge_distinct(payload.get("chapter_ids") or [])
+            chapters, chapter_points, chapter_resources = self._load_chapter_scope(
+                db, project, chapter_ids
+            )
+            chapter_context = self._build_chapter_context(
+                chapters, chapter_points, chapter_resources
+            )
+            scoped_instructions = self._build_scoped_instructions(
+                payload.get("custom_instructions"), chapters
+            )
+
             resource_types = payload.get("resource_types") or [
                 "lecture_note",
                 "mind_map",
@@ -143,6 +162,8 @@ class ResourcePackageService:
             difficulty_level = payload.get("difficulty_level", "intermediate")
             generation_params = {
                 "custom_instructions": payload.get("custom_instructions"),
+                "chapter_ids": chapter_ids,
+                "chapter_titles": [chapter.title for chapter in chapters],
                 **(payload.get("generation_params") or {}),
             }
 
@@ -152,7 +173,7 @@ class ResourcePackageService:
                 package_id=package_id,
                 target_topic=target_topic,
                 difficulty_level=difficulty_level,
-                custom_instructions=payload.get("custom_instructions"),
+                custom_instructions=scoped_instructions,
                 resource_types=resource_types,
                 generation_params=generation_params,
                 diagnosis_id=payload.get("diagnosis_id"),
@@ -161,6 +182,7 @@ class ResourcePackageService:
 
             knowledge_point_ids = self._merge_distinct(
                 payload.get("knowledge_point_ids") or [],
+                [point.id for point in chapter_points],
                 self._extract_knowledge_point_ids(diagnosis),
             )
             weak_points = self._merge_distinct(
@@ -217,7 +239,9 @@ class ResourcePackageService:
                 {"status": "completed"},
             )
 
-            document_context = self._build_document_context(documents)
+            source_context = self._combine_source_context(
+                self._build_document_context(documents), chapter_context
+            )
             recommendation_pool = list(diagnosis.recommendations)
 
             completed = 0
@@ -238,10 +262,10 @@ class ResourcePackageService:
                         topic=target_topic,
                         goal=target_goal,
                         difficulty_level=difficulty_level,
-                        document_context=document_context,
+                        document_context=source_context,
                         knowledge_point_ids=knowledge_point_ids,
                         weak_points=weak_points,
-                        custom_instructions=payload.get("custom_instructions"),
+                        custom_instructions=scoped_instructions,
                         documents=documents,
                         generation_params=generation_params,
                         recommendations=recommendation_pool,
@@ -380,7 +404,21 @@ class ResourcePackageService:
                 )
                 .all()
             )
-            document_context = self._build_document_context(documents)
+            chapter_ids = self._merge_distinct(
+                (package.generation_params or {}).get("chapter_ids") or []
+            )
+            chapters, chapter_points, chapter_resources = self._load_chapter_scope(
+                db, resource.resource_package.project, chapter_ids
+            )
+            document_context = self._combine_source_context(
+                self._build_document_context(documents),
+                self._build_chapter_context(
+                    chapters, chapter_points, chapter_resources
+                ),
+            )
+            scoped_instructions = self._build_scoped_instructions(
+                (package.generation_params or {}).get("custom_instructions"), chapters
+            )
             generated = await self._generate_resource_content_async(
                 resource_type=resource.resource_type,
                 topic=package.target_topic,
@@ -389,9 +427,7 @@ class ResourcePackageService:
                 document_context=document_context,
                 knowledge_point_ids=resource.knowledge_point_ids or [],
                 weak_points=package.weak_knowledge_point_ids or [],
-                custom_instructions=(package.generation_params or {}).get(
-                    "custom_instructions"
-                ),
+                custom_instructions=scoped_instructions,
                 documents=documents,
                 generation_params=package.generation_params or {},
             )
@@ -724,6 +760,113 @@ class ResourcePackageService:
             summary = doc.summary or "No summary available."
             lines.append(f"- {doc.file_name}: {summary}")
         return "\n".join(lines)
+
+    def _load_chapter_scope(
+        self, db, project: Project, chapter_ids: list[str]
+    ) -> tuple[list[CourseChapter], list[KnowledgePoint], list[CourseResource]]:
+        if not chapter_ids:
+            return [], [], []
+        if not project.course_id:
+            raise ValueError("Project must be associated with a course before selecting chapters")
+
+        chapters = (
+            db.query(CourseChapter)
+            .filter(
+                CourseChapter.course_id == project.course_id,
+                CourseChapter.id.in_(chapter_ids),
+            )
+            .order_by(CourseChapter.position, CourseChapter.created_at)
+            .all()
+        )
+        if len(chapters) != len(chapter_ids):
+            raise NotFoundError("One or more selected chapters are not in the project's course")
+
+        points = (
+            db.query(KnowledgePoint)
+            .filter(
+                KnowledgePoint.course_id == project.course_id,
+                KnowledgePoint.chapter_id.in_(chapter_ids),
+            )
+            .order_by(KnowledgePoint.position, KnowledgePoint.created_at)
+            .all()
+        )
+        resources = (
+            db.query(CourseResource)
+            .filter(
+                CourseResource.course_id == project.course_id,
+                CourseResource.chapter_id.in_(chapter_ids),
+            )
+            .order_by(CourseResource.created_at)
+            .all()
+        )
+        return chapters, points, resources
+
+    def _build_chapter_context(
+        self,
+        chapters: list[CourseChapter],
+        points: list[KnowledgePoint],
+        resources: list[CourseResource],
+    ) -> str:
+        if not chapters:
+            return ""
+
+        points_by_chapter: dict[str, list[KnowledgePoint]] = {}
+        for point in points:
+            if point.chapter_id:
+                points_by_chapter.setdefault(point.chapter_id, []).append(point)
+        resources_by_chapter: dict[str, list[CourseResource]] = {}
+        for resource in resources:
+            if resource.chapter_id:
+                resources_by_chapter.setdefault(resource.chapter_id, []).append(resource)
+
+        sections: list[str] = []
+        for chapter in chapters:
+            lines = [f"## Course chapter: {chapter.title}"]
+            if chapter.description:
+                lines.append(chapter.description)
+            if chapter.learning_objectives:
+                lines.append(
+                    "Learning objectives: " + "; ".join(chapter.learning_objectives)
+                )
+            chapter_points = points_by_chapter.get(chapter.id, [])
+            if chapter_points:
+                lines.append("Knowledge points:")
+                lines.extend(
+                    f"- {point.name}: {point.description or 'No description.'}"
+                    for point in chapter_points
+                )
+            chapter_resources = resources_by_chapter.get(chapter.id, [])
+            if chapter_resources:
+                lines.append("Course materials:")
+                lines.extend(
+                    f"- {resource.title}: {resource.description or resource.source_url or 'No description.'}"
+                    for resource in chapter_resources
+                )
+            sections.append("\n".join(lines))
+        return "\n\n".join(sections)
+
+    def _combine_source_context(
+        self, document_context: str, chapter_context: str
+    ) -> str:
+        contexts = []
+        if chapter_context:
+            contexts.append(chapter_context)
+        if document_context and document_context != "No source documents were selected.":
+            contexts.append(document_context)
+        return "\n\n".join(contexts) or "No source context was selected."
+
+    def _build_scoped_instructions(
+        self, custom_instructions: str | None, chapters: list[CourseChapter]
+    ) -> str | None:
+        parts = []
+        if custom_instructions and custom_instructions.strip():
+            parts.append(custom_instructions.strip())
+        if chapters:
+            parts.append(
+                "Generate strictly around these selected course chapters: "
+                + ", ".join(chapter.title for chapter in chapters)
+            )
+        return "\n\n".join(parts) or None
 
     async def _generate_resource_content_async(
         self,
