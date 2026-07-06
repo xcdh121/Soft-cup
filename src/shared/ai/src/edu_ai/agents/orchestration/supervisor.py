@@ -8,8 +8,10 @@ from edu_core.schemas.agent_orchestration import (
     AgentEventType,
     AgentName,
     AgentRunContext,
+    InputReadinessStatus,
     OrchestrationRunRequest,
     RunStatus,
+    SupervisorPreflight,
     SupervisorRunResult,
 )
 
@@ -58,22 +60,84 @@ class SupervisorAgent:
                 **request.meta,
             },
         )
-        started_event = self._event(
-            AgentEventType.RUN_STARTED,
-            run_id,
-            RunStatus.RUNNING,
-            "Agent orchestration started.",
-            AgentName.SUPERVISOR,
-            {"goal": request.goal},
-        )
-        events = [started_event]
+        events = [
+            self._event(
+                AgentEventType.RUN_STARTED,
+                run_id,
+                RunStatus.RUNNING,
+                "Agent orchestration started.",
+                AgentName.SUPERVISOR,
+                {"goal": request.goal},
+            )
+        ]
         if event_sink:
-            await event_sink(started_event)
+            await event_sink(events[-1])
+        preflight = self._preflight(context)
+        route_plan = self._decide_route(preflight)
+        preflight.route_plan = route_plan
+        context.meta["preflight"] = preflight.model_dump(mode="json")
+        events.append(
+            self._event(
+                AgentEventType.ROUTE_DECIDED,
+                run_id,
+                RunStatus.COMPLETED,
+                "Agent route decided.",
+                AgentName.SUPERVISOR,
+                {
+                    "goal": request.goal,
+                    "input_readiness": preflight.input_readiness,
+                    "degrade_mode": preflight.degrade_mode,
+                    "route_plan": [agent.value for agent in route_plan],
+                },
+            )
+        )
+        if event_sink:
+            await event_sink(events[-1])
         agent_results = []
+        route_set = set(route_plan)
+        agents_by_name = {agent.agent_name: agent for agent in self.agents}
 
         try:
             for agent in self.agents:
-                agent_started = self._event(
+                if agent.agent_name not in route_set:
+                    events.append(
+                        self._event(
+                            AgentEventType.AGENT_SKIPPED,
+                            run_id,
+                            RunStatus.COMPLETED,
+                            f"Skipped {agent.agent_name.value}.",
+                            agent.agent_name,
+                            {
+                                "reason": self._skip_reason(
+                                    agent.agent_name, preflight, route_plan
+                                ),
+                                "route_plan": [
+                                    route_agent.value for route_agent in route_plan
+                                ],
+                            },
+                        )
+                    )
+                    if event_sink:
+                        await event_sink(events[-1])
+
+            for agent_name in route_plan:
+                agent = agents_by_name.get(agent_name)
+                if not agent:
+                    events.append(
+                        self._event(
+                            AgentEventType.AGENT_SKIPPED,
+                            run_id,
+                            RunStatus.FAILED,
+                            f"Configured agent is unavailable: {agent_name.value}.",
+                            agent_name,
+                            {"reason": "agent_unavailable"},
+                        )
+                    )
+                    if event_sink:
+                        await event_sink(events[-1])
+                    continue
+
+                started_event = self._event(
                     AgentEventType.AGENT_STEP,
                     run_id,
                     RunStatus.RUNNING,
@@ -81,51 +145,75 @@ class SupervisorAgent:
                     agent.agent_name,
                     {"phase": "started", "artifact_key": agent.artifact_key},
                 )
-                events.append(agent_started)
+                events.append(started_event)
                 if event_sink:
-                    await event_sink(agent_started)
+                    await event_sink(started_event)
                 result = await agent.run(context)
                 agent_results.append(result)
                 context.artifacts[agent.artifact_key] = result.result
-                completed_event = self._event(
-                    AgentEventType.AGENT_STEP,
-                    run_id,
-                    result.status,
-                    result.summary,
-                    result.agent_name,
-                    {
-                        "phase": "completed",
-                        "reason_codes": result.reason_codes,
-                        "next_actions": result.next_actions,
-                    },
+                events.append(
+                    self._event(
+                        AgentEventType.AGENT_STEP,
+                        run_id,
+                        result.status,
+                        result.summary,
+                        result.agent_name,
+                        {
+                            "reason_codes": result.reason_codes,
+                            "next_actions": result.next_actions,
+                            "confidence": result.confidence,
+                            "field_status": result.field_status,
+                            "fallback_used": result.fallback_used,
+                            "fallback_reason": result.fallback_reason,
+                            "phase": "completed",
+                        },
+                    )
                 )
-                events.append(completed_event)
                 if event_sink:
-                    await event_sink(completed_event)
-                artifact_event = self._event(
-                    AgentEventType.ARTIFACT_UPDATED,
-                    run_id,
-                    RunStatus.COMPLETED,
-                    f"Updated artifact: {agent.artifact_key}",
-                    result.agent_name,
-                    {"artifact_key": agent.artifact_key},
+                    await event_sink(events[-1])
+                if result.fallback_used:
+                    events.append(
+                        self._event(
+                            AgentEventType.FALLBACK_APPLIED,
+                            run_id,
+                            result.status,
+                            f"Fallback applied by {result.agent_name.value}.",
+                            result.agent_name,
+                            {
+                                "fallback_reason": result.fallback_reason,
+                                "reason_codes": result.reason_codes,
+                                "confidence": result.confidence,
+                            },
+                        )
+                    )
+                    if event_sink:
+                        await event_sink(events[-1])
+                events.append(
+                    self._event(
+                        AgentEventType.ARTIFACT_UPDATED,
+                        run_id,
+                        RunStatus.COMPLETED,
+                        f"Updated artifact: {agent.artifact_key}",
+                        result.agent_name,
+                        {"artifact_key": agent.artifact_key},
+                    )
                 )
-                events.append(artifact_event)
                 if event_sink:
-                    await event_sink(artifact_event)
+                    await event_sink(events[-1])
 
             final_result = self._build_final_result(context)
-            completed_event = self._event(
-                AgentEventType.RUN_COMPLETED,
-                run_id,
-                RunStatus.COMPLETED,
-                "Agent orchestration completed.",
-                AgentName.SUPERVISOR,
-                {"artifact_keys": list(context.artifacts.keys())},
+            events.append(
+                self._event(
+                    AgentEventType.RUN_COMPLETED,
+                    run_id,
+                    RunStatus.COMPLETED,
+                    "Agent orchestration completed.",
+                    AgentName.SUPERVISOR,
+                    {"artifact_keys": list(context.artifacts.keys())},
+                )
             )
-            events.append(completed_event)
             if event_sink:
-                await event_sink(completed_event)
+                await event_sink(events[-1])
             return SupervisorRunResult(
                 run_id=run_id,
                 status=RunStatus.COMPLETED,
@@ -135,17 +223,18 @@ class SupervisorAgent:
                 final_result=final_result,
             )
         except Exception as exc:
-            failed_event = self._event(
-                AgentEventType.RUN_FAILED,
-                run_id,
-                RunStatus.FAILED,
-                "Agent orchestration failed.",
-                AgentName.SUPERVISOR,
-                {"error": str(exc)},
+            events.append(
+                self._event(
+                    AgentEventType.RUN_FAILED,
+                    run_id,
+                    RunStatus.FAILED,
+                    "Agent orchestration failed.",
+                    AgentName.SUPERVISOR,
+                    {"error": str(exc)},
+                )
             )
-            events.append(failed_event)
             if event_sink:
-                await event_sink(failed_event)
+                await event_sink(events[-1])
             return SupervisorRunResult(
                 run_id=run_id,
                 status=RunStatus.FAILED,
@@ -165,6 +254,114 @@ class SupervisorAgent:
                 "learning_path"
             ),
         }
+
+    def _preflight(self, context: AgentRunContext) -> SupervisorPreflight:
+        readiness = {
+            "learner_profile": self._readiness(context.context.learner_profile),
+            "knowledge_states": self._knowledge_state_readiness(context),
+            "practice_records": self._readiness(context.context.practice_records),
+            "collective_insights": self._readiness(
+                context.context.collective_insights
+            ),
+            "generated_resources": self._readiness(
+                context.context.generated_resources
+            ),
+            "recent_feedback_summary": self._readiness(
+                context.context.recent_feedback_summary
+            ),
+            "evaluation_report_summary": self._readiness(
+                context.context.evaluation_report_summary
+            ),
+        }
+        degrade_mode = []
+        if readiness["learner_profile"] == InputReadinessStatus.MISSING:
+            degrade_mode.append("profile_missing")
+        if readiness["collective_insights"] == InputReadinessStatus.MISSING:
+            degrade_mode.append("collective_insight_unavailable")
+        if readiness["knowledge_states"] == InputReadinessStatus.PARTIAL:
+            degrade_mode.append("knowledge_states_partial")
+        if (
+            readiness["knowledge_states"] == InputReadinessStatus.MISSING
+            and readiness["practice_records"] == InputReadinessStatus.MISSING
+        ):
+            degrade_mode.append("insufficient_evidence")
+        if readiness["generated_resources"] == InputReadinessStatus.MISSING:
+            degrade_mode.append("resource_generation_unavailable")
+
+        return SupervisorPreflight(
+            goal=context.goal,
+            input_readiness=readiness,
+            degrade_mode=degrade_mode,
+        )
+
+    def _decide_route(self, preflight: SupervisorPreflight) -> list[AgentName]:
+        route: list[AgentName]
+        if preflight.goal == "diagnosis":
+            route = [
+                AgentName.PROFILE,
+                AgentName.KT,
+                AgentName.COLLECTIVE_INSIGHT,
+                AgentName.DIAGNOSIS,
+            ]
+        elif preflight.goal == "recommendations":
+            route = [
+                AgentName.PROFILE,
+                AgentName.KT,
+                AgentName.DIAGNOSIS,
+                AgentName.RESOURCE,
+            ]
+        else:
+            route = [
+                AgentName.PROFILE,
+                AgentName.KT,
+                AgentName.DIAGNOSIS,
+                AgentName.PLANNER,
+            ]
+
+        if (
+            preflight.input_readiness["collective_insights"]
+            == InputReadinessStatus.MISSING
+            and AgentName.COLLECTIVE_INSIGHT in route
+        ):
+            route.remove(AgentName.COLLECTIVE_INSIGHT)
+
+        return route
+
+    def _readiness(self, value) -> InputReadinessStatus:
+        if value is None:
+            return InputReadinessStatus.MISSING
+        if isinstance(value, (list, tuple, set, dict)):
+            return (
+                InputReadinessStatus.AVAILABLE
+                if len(value) > 0
+                else InputReadinessStatus.MISSING
+            )
+        return InputReadinessStatus.AVAILABLE if value else InputReadinessStatus.MISSING
+
+    def _knowledge_state_readiness(
+        self, context: AgentRunContext
+    ) -> InputReadinessStatus:
+        if context.context.knowledge_states:
+            return InputReadinessStatus.AVAILABLE
+        if context.context.practice_records:
+            return InputReadinessStatus.PARTIAL
+        return InputReadinessStatus.MISSING
+
+    def _skip_reason(
+        self,
+        agent_name: AgentName,
+        preflight: SupervisorPreflight,
+        route_plan: list[AgentName],
+    ) -> str:
+        if agent_name == AgentName.COLLECTIVE_INSIGHT:
+            return "collective_insight_unavailable"
+        if agent_name == AgentName.RESOURCE and preflight.goal != "recommendations":
+            return "not_required_for_goal"
+        if agent_name == AgentName.PLANNER and preflight.goal != "learning_path":
+            return "not_required_for_goal"
+        if agent_name not in route_plan:
+            return "not_required_for_goal"
+        return "skipped"
 
     def _event(
         self,

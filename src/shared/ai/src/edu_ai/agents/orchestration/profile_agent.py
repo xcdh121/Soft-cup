@@ -2,6 +2,7 @@ from edu_core.schemas.agent_orchestration import (
     AgentName,
     AgentResult,
     AgentRunContext,
+    FieldStatus,
     RunStatus,
 )
 
@@ -40,17 +41,33 @@ class ProfileAgent(BaseOrchestrationAgent):
             },
         }
 
+        if profile:
+            return AgentResult(
+                agent_name=self.agent_name,
+                status=RunStatus.COMPLETED,
+                summary="Loaded learner profile context.",
+                result=result,
+                reason_codes=["profile_loaded"],
+                reason_text=[
+                    "Learner profile is available for personalized diagnosis and recommendations."
+                ],
+                confidence=max(0.5, completeness),
+                field_status=FieldStatus.CONFIRMED,
+            )
+
         return AgentResult(
             agent_name=self.agent_name,
             status=RunStatus.COMPLETED,
-            summary="已读取学习画像并生成偏好上下文"
-            if profile
-            else "未发现学习画像，已使用缺省偏好上下文",
+            summary="Learner profile is missing; default preference context was used.",
             result=result,
-            reason_codes=["profile_loaded" if profile else "profile_missing"],
-            reason_text=["学习画像可用于个性化诊断和推荐"]
-            if profile
-            else ["画像接口尚未提供有效数据，后续 Agent 将降级运行"],
+            reason_codes=["profile_missing"],
+            reason_text=[
+                "No learner profile data was available, so later agents should avoid strong personalization claims."
+            ],
+            confidence=0.3,
+            field_status=FieldStatus.MISSING,
+            fallback_used=True,
+            fallback_reason="profile_missing",
         )
 
     def _score_completeness(self, profile_data: dict) -> float:

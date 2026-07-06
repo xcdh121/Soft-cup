@@ -644,6 +644,17 @@ class AgentOrchestrationService:
                 .limit(20)
                 .all()
             )
+            recommendation_feedback = (
+                db.query(Recommendation)
+                .filter(
+                    Recommendation.user_id == user_id,
+                    Recommendation.project_id == project_id,
+                    Recommendation.feedback.isnot(None),
+                )
+                .order_by(Recommendation.created_at.desc())
+                .limit(50)
+                .all()
+            )
 
             return AgentContextData(
                 learner_profile=None,
@@ -698,7 +709,75 @@ class AgentOrchestrationService:
                     }
                     for resource in generated_resources
                 ],
+                recent_feedback_summary=self._build_recent_feedback_summary(
+                    practice_records=practice_records,
+                    recommendation_feedback=recommendation_feedback,
+                ),
             )
+
+    def _build_recent_feedback_summary(
+        self,
+        practice_records: list[PracticeRecord],
+        recommendation_feedback: list[Recommendation],
+    ) -> dict:
+        completed_resources = 0
+        abandoned_resources = 0
+        clicked_resources = 0
+        incorrect_by_topic: dict[str, int] = {}
+
+        for recommendation in recommendation_feedback:
+            feedback = recommendation.feedback or {}
+            signal = str(
+                feedback.get("event")
+                or feedback.get("action")
+                or feedback.get("status")
+                or feedback.get("type")
+                or ""
+            ).lower()
+            if signal in {"completed", "complete", "finished"}:
+                completed_resources += 1
+            elif signal in {"abandoned", "skipped", "dismissed"}:
+                abandoned_resources += 1
+            elif signal in {"clicked", "opened", "viewed"}:
+                clicked_resources += 1
+
+        for record in practice_records:
+            if record.was_correct:
+                continue
+            topic = record.topic or "general"
+            incorrect_by_topic[topic] = incorrect_by_topic.get(topic, 0) + 1
+
+        struggled_knowledge_points = [
+            self._topic_to_point_id(topic)
+            for topic, count in incorrect_by_topic.items()
+            if count >= 2
+        ]
+        rerun_triggers = []
+        if struggled_knowledge_points:
+            rerun_triggers.append("diagnosis")
+        if abandoned_resources >= 2:
+            rerun_triggers.append("recommendations")
+
+        attempted = len(practice_records)
+        completed = sum(1 for record in practice_records if record.was_correct)
+        last_path_completion_rate = round(completed / attempted, 2) if attempted else None
+        if last_path_completion_rate is not None and last_path_completion_rate < 0.4:
+            rerun_triggers.append("planner")
+
+        return {
+            "completed_resources": completed_resources,
+            "abandoned_resources": abandoned_resources,
+            "clicked_resources": clicked_resources,
+            "struggled_knowledge_points": struggled_knowledge_points,
+            "last_path_completion_rate": last_path_completion_rate,
+            "rerun_triggers": sorted(set(rerun_triggers)),
+        }
+
+    def _topic_to_point_id(self, topic: str) -> str:
+        normalized = "".join(
+            char.lower() if char.isalnum() else "_" for char in topic.strip()
+        ).strip("_")
+        return f"kp_{normalized or 'general'}"
 
     def _ensure_project_access(self, user_id: str, project_id: str) -> None:
         with self._get_db_session() as db:

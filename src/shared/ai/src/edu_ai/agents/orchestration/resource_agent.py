@@ -4,6 +4,7 @@ from edu_core.schemas.agent_orchestration import (
     AgentName,
     AgentResult,
     AgentRunContext,
+    FieldStatus,
     RunStatus,
 )
 
@@ -37,27 +38,60 @@ class ResourceAgent(BaseOrchestrationAgent):
         self.mind_map_service = mind_map_service
 
     async def run(self, context: AgentRunContext) -> AgentResult:
+        diagnosis = context.artifacts.get("diagnosis", {}).get("diagnosis", {})
+        if not diagnosis.get("related_knowledge_points"):
+            return AgentResult(
+                agent_name=self.agent_name,
+                status=RunStatus.COMPLETED,
+                summary="Skipped strong resource recommendation because diagnosis evidence is insufficient.",
+                result={"recommendations": []},
+                reason_codes=["insufficient_evidence"],
+                reason_text=[
+                    "Recommendation generation requires a diagnosis with evidence-backed knowledge points."
+                ],
+                confidence=0.2,
+                field_status=FieldStatus.MISSING,
+                fallback_used=True,
+                fallback_reason="insufficient_evidence",
+            )
+
         resource_types = self._select_resource_types(context)
         topic = self._build_generation_topic(context)
         queued_resources = self._queue_resources(context, resource_types, topic)
         recommendations = self._build_recommendations(queued_resources, context)
 
+        fallback_used = False
+        fallback_reason = None
         if not recommendations:
+            fallback_used = True
+            fallback_reason = "resource_generation_unavailable"
             recommendations = self._build_fallback_recommendations(context)
 
         reason_codes = ["resource_generation_queued"]
-        reason_text = ["基于诊断结果触发资源生成并生成推荐"]
-        if not queued_resources:
-            reason_codes = ["resource_recommendation_generated"]
-            reason_text = ["基于诊断结果和项目资源生成推荐"]
+        reason_text = [
+            "Queued resource generation through the existing resource services."
+        ]
+        confidence = 0.8
+        if fallback_used:
+            reason_codes = ["resource_generation_unavailable"]
+            reason_text = [
+                "Resource generation services were unavailable, so existing resources or practice were recommended."
+            ]
+            confidence = 0.55 if recommendations else 0.2
 
         return AgentResult(
             agent_name=self.agent_name,
             status=RunStatus.COMPLETED,
-            summary=f"已生成 {len(recommendations)} 条推荐",
+            summary=f"Generated {len(recommendations)} recommendations.",
             result={"recommendations": recommendations},
             reason_codes=reason_codes,
             reason_text=reason_text,
+            confidence=confidence,
+            field_status=FieldStatus.INFERRED
+            if fallback_used
+            else FieldStatus.CONFIRMED,
+            fallback_used=fallback_used,
+            fallback_reason=fallback_reason,
         )
 
     def _select_resource_types(self, context: AgentRunContext) -> list[str]:
@@ -218,9 +252,9 @@ class ResourceAgent(BaseOrchestrationAgent):
                         "profile_preference_match",
                     ],
                     "reason_text": [
-                        "相关知识点掌握度较低",
-                        "已通过现有资源服务创建占位资源并加入生成队列",
-                        "资源类型结合学习画像或默认补强策略选择",
+                        "The related knowledge point has low mastery.",
+                        "A new resource was queued through existing generation services.",
+                        "The resource type matches learner preference or default reinforcement strategy.",
                     ],
                     "score": round(0.9 - (index - 1) * 0.05, 2),
                     "recommended_by": self.agent_name.value,
@@ -243,17 +277,18 @@ class ResourceAgent(BaseOrchestrationAgent):
                     "id": f"{context.run_id}_rec_{index:03d}",
                     "recommendation_type": resource.get("resource_type", "resource"),
                     "target_id": resource.get("id"),
-                    "title": resource.get("title", "学习资源"),
+                    "title": resource.get("title", "Learning resource"),
                     "reason_codes": [
                         "weak_mastery",
                         "available_resource",
                     ],
                     "reason_text": [
-                        "相关知识点掌握度较低",
-                        "项目中已有可用学习资源",
+                        "The related knowledge point has low mastery.",
+                        "An existing project resource is available.",
                     ],
-                    "score": round(0.85 - (index - 1) * 0.05, 2),
+                    "score": round(0.75 - (index - 1) * 0.05, 2),
                     "recommended_by": self.agent_name.value,
+                    "recommendation_mode": "fallback",
                 }
             )
 
@@ -264,14 +299,15 @@ class ResourceAgent(BaseOrchestrationAgent):
                     "id": f"{context.run_id}_rec_001",
                     "recommendation_type": "practice",
                     "target_id": first_point["id"],
-                    "title": "完成薄弱知识点专项练习",
+                    "title": "Complete targeted weak-point practice",
                     "reason_codes": ["weak_mastery", "no_existing_resource"],
                     "reason_text": [
-                        "相关知识点掌握度较低",
-                        "当前没有匹配的已生成资源，先推荐专项练习",
+                        "The related knowledge point has low mastery.",
+                        "No matching generated resource is currently available.",
                     ],
-                    "score": 0.78,
+                    "score": 0.6,
                     "recommended_by": self.agent_name.value,
+                    "recommendation_mode": "fallback",
                 }
             )
         return recommendations
@@ -312,12 +348,12 @@ class ResourceAgent(BaseOrchestrationAgent):
 
     def _build_title(self, resource_type: str, topic: str) -> str:
         labels = {
-            "note": "补强笔记",
-            "mind_map": "补强思维导图",
-            "quiz": "补强测验",
-            "flashcards": "补强闪卡",
+            "note": "Reinforcement note",
+            "mind_map": "Reinforcement mind map",
+            "quiz": "Reinforcement quiz",
+            "flashcards": "Reinforcement flashcards",
         }
-        return f"{labels.get(resource_type, '学习资源')}：{topic}"
+        return f"{labels.get(resource_type, 'Learning resource')}: {topic}"
 
     def _build_custom_instructions(self, context: AgentRunContext) -> str:
         requested_instructions = str(
@@ -331,11 +367,11 @@ class ResourceAgent(BaseOrchestrationAgent):
         if requested_instructions:
             parts.append(requested_instructions)
         if summary:
-            parts.append(f"根据诊断结论生成资源：{summary}")
+            parts.append(f"Generate the resource based on this diagnosis: {summary}")
         else:
-            parts.append("根据当前学习诊断生成补强资源")
+            parts.append("Generate a reinforcement resource based on the current learning diagnosis.")
         if difficulty:
-            parts.append(f"目标难度：{difficulty}")
+            parts.append(f"Target difficulty: {difficulty}")
         return "\n".join(parts)
 
     def _queued_resource(
