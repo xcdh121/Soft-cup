@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
 
@@ -7,7 +8,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel, Field
 
 from edu_ai.agents.topic_graph_agent import TopicGraphAgent
-from edu_ai.agents.utils import generate, get_db_session
+from edu_ai.agents.utils import generate, generate_stream, get_db_session
 
 
 class NoteGenerationResult(BaseModel):
@@ -112,3 +113,85 @@ class NoteAgent:
 
             db.flush()
             return note
+
+    async def generate_and_save_stream(
+        self,
+        project_id: str,
+        topic: str | None = None,
+        custom_instructions: str | None = None,
+        note_id: str | None = None,
+    ) -> AsyncGenerator[dict[str, Any]]:
+        if not note_id:
+            raise ValueError("note_id is required for note generation")
+
+        with get_db_session() as db:
+            note = db.query(Note).filter(
+                Note.id == note_id, Note.project_id == project_id
+            ).first()
+            if not note:
+                raise NotFoundError(f"Note {note_id} not found")
+            project = db.query(Project).filter(Project.id == project_id).first()
+            if not project:
+                raise NotFoundError(f"Project {project_id} not found")
+
+            generation_topic = topic
+            if self.topic_graph_agent:
+                topic_graph = await self.topic_graph_agent.generate_topic_graph(
+                    project_id=project_id,
+                    topic=topic,
+                    custom_instructions=custom_instructions,
+                )
+                topics = [
+                    item
+                    for root in topic_graph.root_topics
+                    for item in [root.topic, *(sub.topic for sub in root.subtopics)]
+                ]
+                if topics:
+                    generation_topic = ", ".join(topics)
+
+            previous_content = ""
+            final_result: NoteGenerationResult | None = None
+            async for partial in generate_stream(
+                llm=self.llm,
+                search_service=self.search_service,
+                output_model=self.output_model,
+                prompt_template=self.prompt_template,
+                project_id=project_id,
+                topic=generation_topic or "",
+                language_code=project.language_code,
+                custom_instructions=custom_instructions,
+            ):
+                content = partial.get("content")
+                if isinstance(content, str) and content != previous_content:
+                    delta = (
+                        content[len(previous_content) :]
+                        if content.startswith(previous_content)
+                        else content
+                    )
+                    previous_content = content
+                    if delta:
+                        yield {
+                            "event": "note_delta",
+                            "note_id": note_id,
+                            "delta": delta,
+                            "content": content,
+                        }
+                try:
+                    final_result = self.output_model.model_validate(partial)
+                except Exception:
+                    continue
+
+            if final_result is None:
+                raise ValueError("The model did not return a complete note")
+            note.title = final_result.title
+            note.description = final_result.description
+            note.content = final_result.content
+            note.updated_at = datetime.now()
+            db.commit()
+            yield {
+                "event": "note_completed",
+                "note_id": note_id,
+                "title": note.title,
+                "description": note.description,
+                "content": note.content,
+            }

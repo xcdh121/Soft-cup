@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -8,7 +9,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel, Field
 
 from edu_ai.agents.topic_graph_agent import TopicGraphAgent
-from edu_ai.agents.utils import generate, get_db_session
+from edu_ai.agents.utils import generate, generate_stream, get_db_session
 
 
 class FlashcardGenerationResult(BaseModel):
@@ -44,6 +45,85 @@ class FlashcardAgent:
         self.search_service = search_service
         self.llm = llm
         self.topic_graph_agent = topic_graph_agent
+
+    async def generate_and_save_stream(
+        self, project_id: str, topic: str | None = None,
+        custom_instructions: str | None = None, group_id: str | None = None,
+        count: int | None = None, difficulty: str | None = None,
+    ) -> AsyncGenerator[dict[str, Any]]:
+        """Generate flashcards and emit each complete card as it becomes available."""
+        if not group_id:
+            raise ValueError("group_id is required for flashcard generation")
+        with get_db_session() as db:
+            project = db.query(Project).filter(Project.id == project_id).first()
+            group = db.query(FlashcardGroup).filter(
+                FlashcardGroup.id == group_id, FlashcardGroup.project_id == project_id
+            ).first()
+            if not project or not group:
+                raise NotFoundError("Project or flashcard group not found")
+
+            generation_topic = topic
+            if self.topic_graph_agent:
+                graph = await self.topic_graph_agent.generate_topic_graph(
+                    project_id=project_id, topic=topic,
+                    custom_instructions=custom_instructions,
+                )
+                topics = [item for root in graph.root_topics for item in
+                          [root.topic, *(sub.topic for sub in root.subtopics)]]
+                if topics:
+                    generation_topic = ", ".join(topics)
+            options: dict[str, Any] = {}
+            if count is not None:
+                options["count"] = count
+            if difficulty is not None:
+                options["difficulty"] = difficulty
+
+            sent_count = 0
+            final_result: FlashcardGroupGenerationResult | None = None
+            async for partial in generate_stream(
+                llm=self.llm, search_service=self.search_service,
+                output_model=self.output_model, prompt_template=self.prompt_template,
+                project_id=project_id, topic=generation_topic or "",
+                language_code=project.language_code,
+                custom_instructions=custom_instructions, **options,
+            ):
+                cards = []
+                for raw in partial.get("flashcards") or []:
+                    try:
+                        cards.append(FlashcardGenerationResult.model_validate(raw))
+                    except Exception:
+                        continue
+                try:
+                    final_result = self.output_model.model_validate(partial)
+                except Exception:
+                    final_result = None
+                # The parser can temporarily repair the object currently being
+                # written. Hold that tail item until the next card (or final JSON)
+                # proves that it is complete.
+                stable_cards = cards if final_result is not None else cards[:-1]
+                for position, card in enumerate(
+                    stable_cards[sent_count:], start=sent_count
+                ):
+                    yield {"event": "flashcard_created", "group_id": group_id,
+                           "position": position, "flashcard": card.model_dump()}
+                sent_count = len(stable_cards)
+
+            if final_result is None:
+                raise ValueError("The model did not return a complete flashcard group")
+            group.name, group.description = final_result.name, final_result.description
+            group.updated_at = datetime.now()
+            db.query(Flashcard).filter(Flashcard.group_id == group_id).delete()
+            for position, item in enumerate(final_result.flashcards):
+                db.add(Flashcard(
+                    id=str(uuid4()), group_id=group_id, project_id=project_id,
+                    question=item.question, answer=item.answer,
+                    difficulty_level=item.difficulty_level, position=position,
+                    created_at=datetime.now(),
+                ))
+            db.commit()
+            yield {"event": "flashcards_completed", "group_id": group_id,
+                   "name": group.name, "description": group.description,
+                   "count": len(final_result.flashcards)}
 
     async def generate_and_save(
         self,

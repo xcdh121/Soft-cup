@@ -113,6 +113,47 @@ class TaskRunnerService:
             text_storage=self.storage,
         )
 
+    def _make_streaming_agent_dependencies(self):
+        llm = create_chat_model(self.llm_config, streaming=True)
+        topic_llm = create_chat_model(self.llm_config, streaming=False)
+        topic_graph_agent = TopicGraphAgent(
+            search_service=self.search_service,
+            llm=topic_llm,
+            text_storage=self.storage,
+        )
+        return llm, topic_graph_agent
+
+    async def stream_note(self, payload: dict[str, Any]):
+        llm, topic_graph_agent = self._make_streaming_agent_dependencies()
+        agent = NoteAgent(self.search_service, llm, topic_graph_agent)
+        async for event in agent.generate_and_save_stream(
+            project_id=payload["project_id"], topic=payload.get("topic"),
+            custom_instructions=payload.get("custom_instructions"),
+            note_id=payload["note_id"],
+        ):
+            yield event
+
+    async def stream_mind_map(self, payload: dict[str, Any]):
+        llm, topic_graph_agent = self._make_streaming_agent_dependencies()
+        agent = MindMapAgent(self.search_service, llm, topic_graph_agent)
+        async for event in agent.generate_and_save_stream(
+            project_id=payload["project_id"], topic=payload.get("topic"),
+            custom_instructions=payload.get("custom_instructions"),
+            mind_map_id=payload["mind_map_id"], user_id=payload["user_id"],
+        ):
+            yield event
+
+    async def stream_flashcards(self, payload: dict[str, Any]):
+        llm, topic_graph_agent = self._make_streaming_agent_dependencies()
+        agent = FlashcardAgent(self.search_service, llm, topic_graph_agent)
+        async for event in agent.generate_and_save_stream(
+            project_id=payload["project_id"], topic=payload.get("topic"),
+            custom_instructions=payload.get("custom_instructions"),
+            group_id=payload["group_id"], count=payload.get("count"),
+            difficulty=payload.get("difficulty"),
+        ):
+            yield event
+
     async def _run_flashcards(self, payload: dict[str, Any]) -> None:
         llm, topic_graph_agent = self._make_topic_graph_agent()
         agent = FlashcardAgent(self.search_service, llm, topic_graph_agent)

@@ -56,15 +56,19 @@ export const flashcardsAtom = Atom.family((input: string) => {
 })
 
 const FlashcardProgressUpdate = Schema.Struct({
+  event: Schema.NullishOr(Schema.String),
   status: Schema.String,
   message: Schema.String,
   group_id: Schema.NullishOr(Schema.String),
   error: Schema.NullishOr(Schema.String),
+  flashcard: Schema.NullishOr(Schema.Unknown),
 })
 
 export const flashcardProgressAtom = Atom.make<{
   status: string
   message: string
+  groupId?: string
+  flashcards: Array<Record<string, unknown>>
   error?: string
 } | null>(null)
 
@@ -83,6 +87,7 @@ export const createFlashcardGroupStreamAtom = runtime
     ) {
       const { httpClient } = yield* ApiClientService
       let streamError: string | undefined
+      let streamedFlashcards: Array<Record<string, unknown>> = []
       const body = HttpBody.unsafeJson(
         new GenerateRequest({
           count: input.flashcardCount,
@@ -126,9 +131,17 @@ export const createFlashcardGroupStreamAtom = runtime
             if (progress.error) {
               streamError = progress.error
             }
+            if (progress.flashcard && typeof progress.flashcard === 'object') {
+              streamedFlashcards = [
+                ...streamedFlashcards,
+                progress.flashcard as Record<string, unknown>,
+              ]
+            }
             registry.set(flashcardProgressAtom, {
               status: progress.status,
               message: progress.message,
+              groupId: progress.group_id ?? undefined,
+              flashcards: streamedFlashcards,
               error: progress.error ?? undefined,
             })
           }),

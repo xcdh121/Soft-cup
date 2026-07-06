@@ -9,6 +9,7 @@ import {
   currentFlashcardAtom,
   flashcardDetailStateAtom,
 } from '@/features/flashcard/state/flashcard-detail-state'
+import { flashcardProgressAtom } from '@/data-acess/flashcard'
 
 type FlashcardContentProps = {
   flashcardGroupId: string
@@ -28,6 +29,7 @@ export const FlashcardContent = ({
   onClose,
 }: FlashcardContentProps) => {
   const stateResult = useAtomValue(flashcardDetailStateAtom(flashcardGroupId))
+  const streamProgress = useAtomValue(flashcardProgressAtom)
   const currentCard = useAtomValue(
     currentFlashcardAtom({ projectId, flashcardGroupId }),
   )
@@ -35,6 +37,23 @@ export const FlashcardContent = ({
   const state = Option.isSome(stateResult) ? stateResult.value : null
 
   if (!state || !state.isReady) {
+    if (
+      streamProgress?.groupId === flashcardGroupId &&
+      streamProgress.flashcards.length > 0
+    ) {
+      return (
+        <div className="flex flex-1 flex-col gap-3 overflow-auto p-4">
+          {streamProgress.flashcards.map((card, index) => (
+            <div key={index} className="rounded-xl border p-4">
+              <div className="font-medium">{String(card.question ?? '')}</div>
+              <div className="mt-2 text-sm text-muted-foreground">
+                {String(card.answer ?? '')}
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    }
     return (
       <div className="flex flex-1 items-center justify-center min-h-screen gap-2 text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />

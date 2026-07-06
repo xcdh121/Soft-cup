@@ -1,3 +1,4 @@
+from collections.abc import Awaitable, Callable
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -115,6 +116,7 @@ class ResourcePackageService:
         user_id: str,
         project_id: str,
         payload: dict,
+        event_sink: Callable[[ResourcePackageStreamEventDto], Awaitable[None]] | None = None,
     ) -> ResourcePackageDto:
         with self._get_db_session() as db:
             project = (
@@ -177,6 +179,7 @@ class ResourcePackageService:
                 resource_types=resource_types,
                 generation_params=generation_params,
                 diagnosis_id=payload.get("diagnosis_id"),
+                event_sink=event_sink,
             )
             diagnosis_trace = self._get_diagnosis_trace(diagnosis)
 
@@ -206,7 +209,7 @@ class ResourcePackageService:
                 description=payload.get("description")
                 or f"Personalized package for {target_topic}",
                 generation_mode=payload.get("generation_mode", "manual"),
-                status="completed",
+                status="generating",
                 target_topic=target_topic,
                 target_goal=target_goal,
                 difficulty_level=difficulty_level,
@@ -222,7 +225,7 @@ class ResourcePackageService:
                 failed_resource_count=0,
                 created_at=now,
                 updated_at=now,
-                completed_at=now,
+                completed_at=None,
             )
             db.add(package)
             db.flush()
@@ -236,7 +239,13 @@ class ResourcePackageService:
                 agent_trace,
                 package_id,
                 "package_status_changed",
-                {"status": "completed"},
+                {"status": "generating"},
+            )
+            package.agent_trace = agent_trace
+            db.commit()
+            await self._publish_stream_event(
+                event_sink, package_id, "package_started",
+                {"status": "generating", "resource_count": len(resource_types)},
             )
 
             source_context = self._combine_source_context(
@@ -251,6 +260,10 @@ class ResourcePackageService:
                     agent_trace,
                     package_id,
                     "resource_started",
+                    {"resource_type": resource_type, "order": order},
+                )
+                await self._publish_stream_event(
+                    event_sink, package_id, "resource_started",
                     {"resource_type": resource_type, "order": order},
                 )
 
@@ -315,13 +328,38 @@ class ResourcePackageService:
                 self._append_agent_event(
                     agent_trace,
                     package_id,
-                    "resource_completed" if resource_status == "completed" else "resource_failed",
+                    (
+                        "resource_completed"
+                        if resource_status == "completed"
+                        else "resource_failed"
+                        if resource_status == "failed"
+                        else "resource_generating"
+                    ),
                     {
                         "resource_id": resource.id,
                         "resource_type": resource_type,
                         "title": generated["title"],
                         "error_message": error_message,
                     },
+                )
+                package.completed_resource_count = completed
+                package.failed_resource_count = failed
+                package.agent_trace = agent_trace
+                package.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                db.refresh(resource)
+                resource_event = (
+                    "resource_completed"
+                    if resource_status == "completed"
+                    else "resource_failed"
+                    if resource_status == "failed"
+                    else "resource_generating"
+                )
+                await self._publish_stream_event(
+                    event_sink,
+                    package_id,
+                    resource_event,
+                    {"resource": self._resource_to_dto(resource).model_dump(mode="json")},
                 )
 
             package.status = "completed" if failed == 0 else "failed"
@@ -338,6 +376,12 @@ class ResourcePackageService:
 
             db.commit()
             db.refresh(package)
+            await self._publish_stream_event(
+                event_sink, package_id, "package_completed",
+                {"status": package.status,
+                 "completed_resource_count": completed,
+                 "failed_resource_count": failed},
+            )
             return self._model_to_dto(package)
 
     def update_generated_resource(
@@ -479,6 +523,22 @@ class ResourcePackageService:
                 payload=event["payload"],
             )
 
+    async def _publish_stream_event(
+        self,
+        sink: Callable[[ResourcePackageStreamEventDto], Awaitable[None]] | None,
+        package_id: str,
+        event: str,
+        payload: dict[str, Any],
+    ) -> None:
+        if sink is None:
+            return
+        await sink(ResourcePackageStreamEventDto(
+            event=event,
+            package_id=package_id,
+            timestamp=datetime.now(timezone.utc),
+            payload=payload,
+        ))
+
     def _get_package_or_raise(self, db, user_id: str, project_id: str, package_id: str):
         package = (
             db.query(ResourcePackage)
@@ -517,6 +577,7 @@ class ResourcePackageService:
         resource_types: list[str],
         generation_params: dict[str, Any],
         diagnosis_id: str | None,
+        event_sink: Callable[[ResourcePackageStreamEventDto], Awaitable[None]] | None,
     ) -> "DiagnosisResponse":
         if not self.agent_orchestration_service:
             raise RuntimeError("Agent orchestration service is required")
@@ -536,6 +597,22 @@ class ResourcePackageService:
             if resource_type is not None
         ]
 
+        async def forward_agent_event(agent_event: Any) -> None:
+            await self._publish_stream_event(
+                event_sink,
+                package_id,
+                "agent_step",
+                {
+                    "event_type": agent_event.event_type.value,
+                    "agent_name": agent_event.agent_name.value
+                    if agent_event.agent_name
+                    else None,
+                    "status": agent_event.status.value,
+                    "summary": agent_event.summary,
+                    **agent_event.payload,
+                },
+            )
+
         return await self.agent_orchestration_service.generate_diagnosis(
             user_id=user_id,
             project_id=project_id,
@@ -549,6 +626,7 @@ class ResourcePackageService:
                 "flashcard_count": generation_params.get("flashcard_count"),
                 "launch_context": generation_params.get("launch_context"),
             },
+            event_sink=forward_agent_event,
         )
 
     def _get_diagnosis_trace(self, diagnosis: "DiagnosisResponse") -> list["AgentEvent"]:

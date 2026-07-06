@@ -1,3 +1,4 @@
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -39,7 +40,11 @@ class SupervisorAgent:
             PlannerAgent(llm_config=llm_config),
         ]
 
-    async def run(self, request: OrchestrationRunRequest) -> SupervisorRunResult:
+    async def run(
+        self,
+        request: OrchestrationRunRequest,
+        event_sink: Callable[[AgentEvent], Awaitable[None]] | None = None,
+    ) -> SupervisorRunResult:
         run_id = f"run_{uuid4().hex}"
         context = AgentRunContext(
             run_id=run_id,
@@ -53,58 +58,74 @@ class SupervisorAgent:
                 **request.meta,
             },
         )
-        events = [
-            self._event(
-                AgentEventType.RUN_STARTED,
-                run_id,
-                RunStatus.RUNNING,
-                "Agent orchestration started.",
-                AgentName.SUPERVISOR,
-                {"goal": request.goal},
-            )
-        ]
+        started_event = self._event(
+            AgentEventType.RUN_STARTED,
+            run_id,
+            RunStatus.RUNNING,
+            "Agent orchestration started.",
+            AgentName.SUPERVISOR,
+            {"goal": request.goal},
+        )
+        events = [started_event]
+        if event_sink:
+            await event_sink(started_event)
         agent_results = []
 
         try:
             for agent in self.agents:
+                agent_started = self._event(
+                    AgentEventType.AGENT_STEP,
+                    run_id,
+                    RunStatus.RUNNING,
+                    f"{agent.agent_name.value} started.",
+                    agent.agent_name,
+                    {"phase": "started", "artifact_key": agent.artifact_key},
+                )
+                events.append(agent_started)
+                if event_sink:
+                    await event_sink(agent_started)
                 result = await agent.run(context)
                 agent_results.append(result)
                 context.artifacts[agent.artifact_key] = result.result
-                events.append(
-                    self._event(
-                        AgentEventType.AGENT_STEP,
-                        run_id,
-                        result.status,
-                        result.summary,
-                        result.agent_name,
-                        {
-                            "reason_codes": result.reason_codes,
-                            "next_actions": result.next_actions,
-                        },
-                    )
+                completed_event = self._event(
+                    AgentEventType.AGENT_STEP,
+                    run_id,
+                    result.status,
+                    result.summary,
+                    result.agent_name,
+                    {
+                        "phase": "completed",
+                        "reason_codes": result.reason_codes,
+                        "next_actions": result.next_actions,
+                    },
                 )
-                events.append(
-                    self._event(
-                        AgentEventType.ARTIFACT_UPDATED,
-                        run_id,
-                        RunStatus.COMPLETED,
-                        f"Updated artifact: {agent.artifact_key}",
-                        result.agent_name,
-                        {"artifact_key": agent.artifact_key},
-                    )
-                )
-
-            final_result = self._build_final_result(context)
-            events.append(
-                self._event(
-                    AgentEventType.RUN_COMPLETED,
+                events.append(completed_event)
+                if event_sink:
+                    await event_sink(completed_event)
+                artifact_event = self._event(
+                    AgentEventType.ARTIFACT_UPDATED,
                     run_id,
                     RunStatus.COMPLETED,
-                    "Agent orchestration completed.",
-                    AgentName.SUPERVISOR,
-                    {"artifact_keys": list(context.artifacts.keys())},
+                    f"Updated artifact: {agent.artifact_key}",
+                    result.agent_name,
+                    {"artifact_key": agent.artifact_key},
                 )
+                events.append(artifact_event)
+                if event_sink:
+                    await event_sink(artifact_event)
+
+            final_result = self._build_final_result(context)
+            completed_event = self._event(
+                AgentEventType.RUN_COMPLETED,
+                run_id,
+                RunStatus.COMPLETED,
+                "Agent orchestration completed.",
+                AgentName.SUPERVISOR,
+                {"artifact_keys": list(context.artifacts.keys())},
             )
+            events.append(completed_event)
+            if event_sink:
+                await event_sink(completed_event)
             return SupervisorRunResult(
                 run_id=run_id,
                 status=RunStatus.COMPLETED,
@@ -114,16 +135,17 @@ class SupervisorAgent:
                 final_result=final_result,
             )
         except Exception as exc:
-            events.append(
-                self._event(
-                    AgentEventType.RUN_FAILED,
-                    run_id,
-                    RunStatus.FAILED,
-                    "Agent orchestration failed.",
-                    AgentName.SUPERVISOR,
-                    {"error": str(exc)},
-                )
+            failed_event = self._event(
+                AgentEventType.RUN_FAILED,
+                run_id,
+                RunStatus.FAILED,
+                "Agent orchestration failed.",
+                AgentName.SUPERVISOR,
+                {"error": str(exc)},
             )
+            events.append(failed_event)
+            if event_sink:
+                await event_sink(failed_event)
             return SupervisorRunResult(
                 run_id=run_id,
                 status=RunStatus.FAILED,

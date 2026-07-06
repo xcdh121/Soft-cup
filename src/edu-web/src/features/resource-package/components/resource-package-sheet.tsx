@@ -1,15 +1,18 @@
 import { create } from 'zustand'
 import { useMemo, useState } from 'react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { useNavigate } from '@tanstack/react-router'
 import { FileTextIcon, Loader2Icon, SparklesIcon } from 'lucide-react'
 import { indexedDocumentsAtom } from '@/data-acess/document'
 import {
   type DifficultyLevel,
   type GeneratedResource,
+  type GeneratedResourceStatus,
   type ResourcePackage,
   type ResourceType,
   generateResourcePackageAtom,
   generatedResourcesAtom,
+  resourcePackageProgressAtom,
   resourcePackagesAtom,
 } from '@/data-acess/resource-package'
 import { Badge } from '@/components/ui/badge'
@@ -280,11 +283,46 @@ const ResourcePreview = ({
 const ResourcePreviewPanel = ({
   projectId,
   resourcePackage,
+  streamingResources,
+  streamingStatuses,
 }: {
   projectId: string
   resourcePackage: ResourcePackage | null
+  streamingResources: Array<GeneratedResource>
+  streamingStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>>
 }) => {
   if (!resourcePackage) {
+    if (Object.keys(streamingStatuses).length > 0) {
+      return (
+        <div className="space-y-3">
+          {Object.entries(streamingStatuses)
+            .filter(([type]) => !streamingResources.some((item) => item.resource_type === type))
+            .map(([type, status]) => (
+              <div key={type} className="flex items-center justify-between rounded-xl border p-4">
+                <div className="font-medium">{resourceTypeLabelMap.get(type as ResourceType) ?? type}</div>
+                <Badge variant={statusToneMap[status]}>{status}</Badge>
+              </div>
+            ))}
+          {streamingResources.map((resource) => (
+            <div key={resource.id} className="rounded-xl border p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-medium">{resource.title}</div>
+                <Badge variant={statusToneMap[resource.status]}>{resource.status}</Badge>
+              </div>
+              {resource.content_text ? (
+                <div className="mt-3 whitespace-pre-wrap rounded-lg bg-muted/40 p-3 text-sm">
+                  {resource.content_text.slice(0, 800)}
+                </div>
+              ) : resource.content_json ? (
+                <pre className="mt-3 overflow-x-auto rounded-lg bg-muted/40 p-3 text-xs">
+                  {JSON.stringify(resource.content_json, null, 2)}
+                </pre>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )
+    }
     return (
       <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
         Select a package to preview its generated resources.
@@ -306,10 +344,12 @@ const ResourcePackageSheetBody = ({
   contextLabel?: string
   onClose: () => void
 }) => {
+  const navigate = useNavigate()
   const generateResourcePackage = useAtomSet(generateResourcePackageAtom, {
     mode: 'promise',
   })
   const documentsResult = useAtomValue(indexedDocumentsAtom(projectId))
+  const packageProgress = useAtomValue(resourcePackageProgressAtom)
 
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
@@ -366,7 +406,7 @@ const ResourcePackageSheetBody = ({
 
     setIsSubmitting(true)
     try {
-      const resourcePackage = await generateResourcePackage({
+      const generation = generateResourcePackage({
         projectId,
         title: title.trim() || undefined,
         target_topic: topic.trim(),
@@ -377,8 +417,14 @@ const ResourcePackageSheetBody = ({
         difficulty_level: difficulty,
         generation_params: contextLabel ? { launch_context: contextLabel } : {},
       })
-
-      setSelectedPackage(resourcePackage)
+      onClose()
+      await navigate({
+        to: '/dashboard/p/$projectId/resource-packages',
+        params: { projectId },
+      })
+      void generation.catch(() => {
+        // The shared generation atom exposes the error on the destination page.
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -557,6 +603,8 @@ const ResourcePackageSheetBody = ({
                 <ResourcePreviewPanel
                   projectId={projectId}
                   resourcePackage={selectedPackage}
+                  streamingResources={packageProgress?.resources ?? []}
+                  streamingStatuses={packageProgress?.resourceStatuses ?? {}}
                 />
               </div>
             </div>

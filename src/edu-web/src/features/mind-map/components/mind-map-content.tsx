@@ -2,7 +2,11 @@ import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Loader2Icon } from 'lucide-react'
 import { useEffect } from 'react'
 import { MindMapView } from './mind-map-view'
-import { mindMapAtom, refreshMindMapAtom } from '@/data-acess/mind-map'
+import {
+  mindMapAtom,
+  mindMapProgressAtom,
+  refreshMindMapAtom,
+} from '@/data-acess/mind-map'
 
 type MindMapContentProps = {
   mindMapId: string
@@ -16,6 +20,7 @@ export const MindMapContent = ({
   className,
 }: MindMapContentProps) => {
   const mindMapResult = useAtomValue(mindMapAtom(`${projectId}:${mindMapId}`))
+  const streamProgress = useAtomValue(mindMapProgressAtom)
   const refreshMindMap = useAtomSet(refreshMindMapAtom, { mode: 'promise' })
 
   useEffect(() => {
@@ -47,7 +52,7 @@ export const MindMapContent = ({
         )
       }
 
-      const mapData = mindMap.map_data as {
+      const persistedMapData = mindMap.map_data as {
         nodes: Array<{
           id: string
           type?: string
@@ -62,6 +67,25 @@ export const MindMapContent = ({
           type?: string
         }>
       }
+      const mapData =
+        streamProgress?.mindMapId === mindMapId && streamProgress.nodes.length > 0
+          ? {
+              nodes: streamProgress.nodes.map((node) => ({
+                id: String(node.id),
+                position: node.position as { x: number; y: number },
+                data: {
+                  ...((node.data as Record<string, unknown> | undefined) ?? {}),
+                  label: String(node.label ?? ''),
+                },
+              })),
+              edges: streamProgress.edges.map((edge) => ({
+                id: String(edge.id),
+                source: String(edge.source),
+                target: String(edge.target),
+                label: edge.label == null ? null : String(edge.label),
+              })),
+            }
+          : persistedMapData
 
       return (
         <div className={`flex flex-col h-full ${className || ''}`}>

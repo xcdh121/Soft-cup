@@ -1,5 +1,5 @@
 import { Response } from '@/components/ai-elements/response'
-import { noteAtom, refreshNoteAtom } from '@/data-acess/note'
+import { noteAtom, noteProgressAtom, refreshNoteAtom } from '@/data-acess/note'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Loader2Icon } from 'lucide-react'
 import { useEffect } from 'react'
@@ -16,6 +16,7 @@ export const NoteContent = ({
   className,
 }: NoteContentProps) => {
   const noteResult = useAtomValue(noteAtom(`${projectId}:${noteId}`))
+  const streamProgress = useAtomValue(noteProgressAtom)
   const refreshNote = useAtomSet(refreshNoteAtom, { mode: 'promise' })
 
   useEffect(() => {
@@ -53,6 +54,11 @@ export const NoteContent = ({
         )
       }
 
+      const content =
+        streamProgress?.noteId === noteId && streamProgress.content
+          ? streamProgress.content
+          : note.content
+
       return (
         <div className={`flex flex-col space-y-4 ${className || ''}`}>
           {note.description && (
@@ -60,9 +66,9 @@ export const NoteContent = ({
               {note.description}
             </div>
           )}
-          {note.content.trim() ? (
+          {content.trim() ? (
             <div className="prose prose-sm dark:prose-invert max-w-none">
-              <Response>{note.content}</Response>
+              <Response>{content}</Response>
             </div>
           ) : (
             <div className="flex flex-1 items-center justify-center gap-2 text-muted-foreground">

@@ -1,11 +1,14 @@
 """Router for note CRUD operations."""
 
+import json
 from collections.abc import AsyncGenerator
 
 from auth import get_current_user
 from dependencies import (
     get_note_service,
+    get_task_runner,
 )
+from task_runner import TaskRunnerService
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.notes import NoteDto
 from edu_core.schemas.users import UserDto
@@ -145,42 +148,36 @@ async def generate_note_stream(
     request: GenerateRequest,
     current_user: UserDto = Depends(get_current_user),
     service: NoteService = Depends(get_note_service),
+    task_runner: TaskRunnerService = Depends(get_task_runner),
 ):
-    """Queue note generation request with streaming progress updates."""
+    """Generate a note and stream Markdown content deltas."""
 
     async def generate_stream() -> AsyncGenerator[bytes]:
         """Generate streaming progress updates"""
         try:
-            # Queuing request
-            progress = GenerationProgressUpdate(
-                status="queuing", message="Queuing note generation request..."
-            )
-            yield f"data: {progress.model_dump_json()}\n\n".encode()
-
-            service.queue_generation(
-                note_id=note_id,
-                project_id=project_id,
-                topic=request.topic,
-                custom_instructions=request.custom_instructions,
-                user_id=current_user.id,
-            )
-
-            # Done (queued)
-            progress = GenerationProgressUpdate(
-                status="done", message="Note generation request queued successfully"
-            )
-            yield f"data: {progress.model_dump_json()}\n\n".encode()
+            service.get_note(note_id=note_id, project_id=project_id)
+            started = {"event": "generation_started", "status": "generating",
+                       "message": "Generating note", "note_id": note_id}
+            yield f"data: {json.dumps(started)}\n\n".encode()
+            async for event in task_runner.stream_note({
+                "project_id": project_id, "note_id": note_id,
+                "topic": request.topic,
+                "custom_instructions": request.custom_instructions,
+            }):
+                completed = event.get("event") == "note_completed"
+                payload = {"status": "done" if completed else "generating",
+                           "message": "Note generated" if completed else "Generating note",
+                           **event}
+                yield f"data: {json.dumps(payload)}\n\n".encode()
 
         except NotFoundError as e:
-            error_progress = GenerationProgressUpdate(
-                status="done", message="Error queuing note generation", error=str(e)
-            )
-            yield f"data: {error_progress.model_dump_json()}\n\n".encode()
+            payload = {"event": "generation_failed", "status": "done",
+                       "message": "Note generation failed", "error": str(e)}
+            yield f"data: {json.dumps(payload)}\n\n".encode()
         except Exception as e:
-            error_progress = GenerationProgressUpdate(
-                status="done", message="Error queuing note generation", error=str(e)
-            )
-            yield f"data: {error_progress.model_dump_json()}\n\n".encode()
+            payload = {"event": "generation_failed", "status": "done",
+                       "message": "Note generation failed", "error": str(e)}
+            yield f"data: {json.dumps(payload)}\n\n".encode()
 
     return StreamingResponse(
         generate_stream(),

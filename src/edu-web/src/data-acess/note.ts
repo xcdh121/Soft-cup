@@ -37,15 +37,21 @@ export const noteAtom = Atom.family((input: string) => {
 })
 
 const NoteProgressUpdate = Schema.Struct({
+  event: Schema.NullishOr(Schema.String),
   status: Schema.String,
   message: Schema.String,
   note_id: Schema.NullishOr(Schema.String),
   error: Schema.NullishOr(Schema.String),
+  delta: Schema.NullishOr(Schema.String),
+  content: Schema.NullishOr(Schema.String),
 })
 
 export const noteProgressAtom = Atom.make<{
   status: string
   message: string
+  noteId?: string
+  content: string
+  delta?: string
   error?: string
 } | null>(null)
 
@@ -64,6 +70,7 @@ export const createNoteStreamAtom = Atom.fn(
     Effect.gen(function* () {
       const { httpClient } = yield* ApiClientService
       let streamError: string | undefined
+      let streamedContent = ''
       const body = HttpBody.unsafeJson(
         new GenerateRequest({
           custom_instructions: input.customInstructions,
@@ -106,9 +113,13 @@ export const createNoteStreamAtom = Atom.fn(
             if (progress.error) {
               streamError = progress.error
             }
+            if (progress.content) streamedContent = progress.content
             registry.set(noteProgressAtom, {
               status: progress.status,
               message: progress.message,
+              noteId: progress.note_id ?? undefined,
+              content: streamedContent,
+              delta: progress.delta ?? undefined,
               error: progress.error ?? undefined,
             })
           }),

@@ -4,7 +4,7 @@ import { withToast } from '@/lib/with-toast'
 import { Atom, Registry } from '@effect-atom/atom-react'
 import { HttpBody } from '@effect/platform'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Stream } from 'effect'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -118,6 +118,30 @@ export type GenerateResourcePackageInput = {
   generation_params?: Record<string, unknown>
 }
 
+type ResourcePackageStreamEvent = {
+  event: string
+  package_id: string
+  payload: Record<string, unknown>
+}
+
+export type AgentProgressStep = {
+  agentName: string
+  status: string
+  summary: string
+  phase?: string
+  eventType?: string
+}
+
+export const resourcePackageProgressAtom = Atom.make<{
+  status: ResourcePackageStatus
+  packageId: string | null
+  resources: Array<GeneratedResource>
+  resourceStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>>
+  agentSteps: Array<AgentProgressStep>
+  currentResourceType?: ResourceType
+  error?: string
+} | null>(null)
+
 export const resourcePackagesAtom = Atom.family((projectId: string) =>
   runtime.atom(
     Effect.gen(function* () {
@@ -149,6 +173,15 @@ export const generateResourcePackageAtom = runtime.fn(
     function* (input: GenerateResourcePackageInput) {
       const registry = yield* Registry.AtomRegistry
       const { httpClient } = yield* ApiClientService
+      const requestedTypes = input.resource_types ?? [
+        'lecture_note', 'mind_map', 'practice_set', 'ppt_outline', 'code_lab',
+      ]
+      let resourceStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>> =
+        Object.fromEntries(requestedTypes.map((type) => [type, 'pending']))
+      registry.set(resourcePackageProgressAtom, {
+        status: 'generating', packageId: null, resources: [], resourceStatuses,
+        agentSteps: [],
+      })
 
       const body = HttpBody.unsafeJson({
         profile_id: input.profile_id,
@@ -177,15 +210,108 @@ export const generateResourcePackageAtom = runtime.fn(
       })
 
       const response = yield* httpClient.post(
-        `/api/v1/projects/${input.projectId}/resource-packages/generate`,
+        `/api/v1/projects/${input.projectId}/resource-packages/generate/stream`,
         { body },
       )
-      const resourcePackage = (yield* response.json) as ResourcePackage
+
+      let buffer = ''
+      let packageId: string | null = null
+      let resources: Array<GeneratedResource> = []
+      let streamError: string | undefined
+      let agentSteps: Array<AgentProgressStep> = []
+      const decoder = new TextDecoder()
+      yield* response.stream.pipe(
+        Stream.map((chunk) => {
+          buffer += decoder.decode(chunk, { stream: true })
+          const blocks = buffer.split('\n\n')
+          buffer = blocks.pop() ?? ''
+          return blocks
+        }),
+        Stream.flatMap((blocks) => Stream.fromIterable(blocks)),
+        Stream.map((block) =>
+          block
+            .split('\n')
+            .filter((line) => line.startsWith('data: '))
+            .map((line) => line.slice(6))
+            .join('\n'),
+        ),
+        Stream.filter((line) => line.length > 0),
+        Stream.tap((line) =>
+          Effect.sync(() => {
+            const event = JSON.parse(line) as ResourcePackageStreamEvent
+            packageId = event.package_id || packageId
+            if (event.event === 'agent_step') {
+              const step: AgentProgressStep = {
+                agentName: String(event.payload.agent_name ?? 'SupervisorAgent'),
+                status: String(event.payload.status ?? 'running'),
+                summary: String(event.payload.summary ?? ''),
+                phase: event.payload.phase as string | undefined,
+                eventType: event.payload.event_type as string | undefined,
+              }
+              const existingIndex = agentSteps.findIndex(
+                (item) => item.agentName === step.agentName && item.status === 'running',
+              )
+              if (step.status !== 'running' && existingIndex >= 0) {
+                agentSteps = agentSteps.map((item, index) =>
+                  index === existingIndex ? step : item,
+                )
+              } else if (step.eventType !== 'artifact_updated') {
+                agentSteps = [...agentSteps, step]
+              }
+            }
+            if (
+              ['resource_completed', 'resource_generating', 'resource_failed'].includes(
+                event.event,
+              )
+            ) {
+              const resource = event.payload.resource as GeneratedResource
+              resources = [...resources.filter((item) => item.id !== resource.id), resource]
+              resourceStatuses = {
+                ...resourceStatuses,
+                [resource.resource_type]: resource.status,
+              }
+            } else if (event.event === 'resource_started') {
+              resourceStatuses = {
+                ...resourceStatuses,
+                [event.payload.resource_type as ResourceType]: 'generating',
+              }
+            }
+            if (event.event === 'package_failed') {
+              streamError = String(event.payload.error ?? 'Resource package generation failed')
+            }
+            registry.set(resourcePackageProgressAtom, {
+              status:
+                event.event === 'package_completed'
+                  ? (event.payload.status as ResourcePackageStatus)
+                  : event.event === 'package_failed'
+                    ? 'failed'
+                    : 'generating',
+              packageId,
+              resources,
+              resourceStatuses,
+              agentSteps,
+              currentResourceType: event.payload.resource_type as
+                | ResourceType
+                | undefined,
+              error: streamError,
+            })
+          }),
+        ),
+        Stream.runDrain,
+      )
+      if (streamError) throw new Error(streamError)
+      if (!packageId) throw new Error('Resource package stream returned no package ID')
+
+      const packageResponse = yield* httpClient.get(
+        `/api/v1/projects/${input.projectId}/resource-packages/${packageId}`,
+      )
+      const resourcePackage = (yield* packageResponse.json) as ResourcePackage
 
       registry.refresh(resourcePackagesAtom(input.projectId))
       registry.refresh(
         generatedResourcesAtom(`${input.projectId}:${resourcePackage.id}`),
       )
+      registry.set(resourcePackageProgressAtom, null)
 
       return resourcePackage
     },

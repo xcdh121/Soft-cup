@@ -1,10 +1,13 @@
+import asyncio
 from collections.abc import AsyncGenerator
+from datetime import datetime, timezone
 
 from auth import get_current_user
 from dependencies import get_resource_package_service
 from edu_core.schemas.resource_packages import (
     GeneratedResourceDto,
     ResourcePackageDto,
+    ResourcePackageStreamEventDto,
 )
 from edu_core.services.resource_packages import ResourcePackageService
 from fastapi import APIRouter, Depends, Query, status
@@ -52,6 +55,47 @@ async def generate_resource_package(
         user_id=user.id,
         project_id=project_id,
         payload=request.model_dump(),
+    )
+
+
+@resource_packages_router.post("/generate/stream")
+async def generate_resource_package_stream(
+    project_id: str,
+    request: GenerateResourcePackageRequest,
+    user=Depends(get_current_user),
+    service: ResourcePackageService = Depends(get_resource_package_service),
+):
+    """Generate a package while streaming per-resource lifecycle events."""
+
+    async def generate_stream() -> AsyncGenerator[bytes]:
+        queue: asyncio.Queue[ResourcePackageStreamEventDto] = asyncio.Queue()
+        task = asyncio.create_task(service.generate_resource_package(
+            user_id=user.id,
+            project_id=project_id,
+            payload=request.model_dump(),
+            event_sink=queue.put,
+        ))
+        try:
+            while not task.done() or not queue.empty():
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=0.5)
+                except TimeoutError:
+                    continue
+                yield f"data: {event.model_dump_json()}\n\n".encode("utf-8")
+            await task
+        except Exception as exc:
+            event = ResourcePackageStreamEventDto(
+                event="package_failed",
+                package_id="",
+                timestamp=datetime.now(timezone.utc),
+                payload={"status": "failed", "error": str(exc)},
+            )
+            yield f"data: {event.model_dump_json()}\n\n".encode("utf-8")
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
 
 

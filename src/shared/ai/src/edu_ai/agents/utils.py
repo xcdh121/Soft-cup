@@ -1,10 +1,12 @@
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from edu_db.session import get_session_factory
-from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.outputs import Generation
 from pydantic import BaseModel
 
 from edu_core.model_providers import LlmProviderConfig, create_chat_model
@@ -136,3 +138,61 @@ async def generate[T](
     except Exception as e:
         logger.error(f"AI Generation failed: {e}")
         raise
+
+
+async def generate_stream[T](
+    llm: BaseChatModel,
+    search_service: "SearchService",
+    output_model: type[T],
+    prompt_template: str,
+    project_id: str,
+    topic: str,
+    language_code: str,
+    custom_instructions: str | None = None,
+    document_content: str | None = None,
+    **kwargs: Any,
+) -> AsyncGenerator[dict[str, Any]]:
+    """Stream partially parsed structured JSON from a chat model.
+
+    ``JsonOutputParser`` can repair incomplete JSON when ``partial=True``.  This
+    lets callers expose stable domain units (paragraphs, nodes, cards) without
+    leaking provider-specific token chunks into the API contract.
+    """
+    context_text = (
+        document_content
+        if document_content
+        else await get_context(project_id, topic, search_service)
+    )
+    parser = JsonOutputParser(pydantic_object=output_model)
+    prompt_input = render_prompt(
+        prompt_template,
+        document_content=context_text,
+        topic=topic,
+        custom_instructions=custom_instructions or "No specific instructions.",
+        format_instructions=parser.get_format_instructions(),
+        language_code=language_code or "en",
+        **kwargs,
+    )
+
+    accumulated = ""
+    last_partial: dict[str, Any] | None = None
+    async for chunk in llm.astream(prompt_input):
+        content = chunk.content
+        if isinstance(content, str):
+            accumulated += content
+        elif isinstance(content, list):
+            accumulated += "".join(
+                str(item.get("text", "")) if isinstance(item, dict) else str(item)
+                for item in content
+            )
+        if not accumulated:
+            continue
+        partial = parser.parse_result([Generation(text=accumulated)], partial=True)
+        if isinstance(partial, dict) and partial != last_partial:
+            last_partial = partial
+            yield partial
+
+    parsed = parser.parse(accumulated)
+    final = output_model(**parsed).model_dump()
+    if final != last_partial:
+        yield final

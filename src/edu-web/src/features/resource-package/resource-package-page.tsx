@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { Loader2Icon, SparklesIcon } from 'lucide-react'
+import { CheckCircle2Icon, Loader2Icon, SparklesIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -16,11 +16,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { projectCourseOutlineAtom } from '@/data-acess/course-library'
 import {
   type DifficultyLevel,
+  type AgentProgressStep,
   type GeneratedResource,
+  type GeneratedResourceStatus,
   type ResourcePackage,
   type ResourceType,
   generateResourcePackageAtom,
   generatedResourcesAtom,
+  resourcePackageProgressAtom,
   resourcePackagesAtom,
 } from '@/data-acess/resource-package'
 import { ProjectHeader } from '@/features/project/components/project-header'
@@ -85,6 +88,47 @@ const statusToneMap: Record<
   completed: 'default',
   failed: 'destructive',
   pending: 'outline',
+}
+
+const agentLabelMap: Record<string, string> = {
+  SupervisorAgent: '总控编排',
+  ProfileAgent: '学习者画像',
+  KTAgent: '知识状态评估',
+  CollectiveInsightAgent: '群体学习洞察',
+  DiagnosisAgent: '学习诊断',
+  ResourceAgent: '资源规划与投递',
+  PlannerAgent: '学习路径规划',
+}
+
+const AgentProgressPanel = ({ steps }: { steps: Array<AgentProgressStep> }) => {
+  if (steps.length === 0) return null
+  return (
+    <div className="rounded-2xl border bg-background p-5">
+      <div className="font-medium">多智能体生成过程</div>
+      <div className="mt-1 text-sm text-muted-foreground">
+        资源包正在依次完成画像、知识状态、诊断、资源规划与学习路径编排。
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {steps.map((step, index) => (
+          <div key={`${step.agentName}-${index}`} className="flex items-start gap-2 rounded-lg border p-3">
+            {step.status === 'running' ? (
+              <Loader2Icon className="mt-0.5 size-4 shrink-0 animate-spin text-primary" />
+            ) : (
+              <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+            )}
+            <div className="min-w-0">
+              <div className="text-sm font-medium">
+                {agentLabelMap[step.agentName] ?? step.agentName}
+              </div>
+              <div className="line-clamp-2 text-xs text-muted-foreground">
+                {step.summary}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 const ResourcePackageList = ({
@@ -280,11 +324,46 @@ const ResourcePreview = ({
 const ResourcePreviewPanel = ({
   projectId,
   resourcePackage,
+  streamingResources,
+  streamingStatuses,
 }: {
   projectId: string
   resourcePackage: ResourcePackage | null
+  streamingResources: Array<GeneratedResource>
+  streamingStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>>
 }) => {
   if (!resourcePackage) {
+    if (Object.keys(streamingStatuses).length > 0) {
+      return (
+        <div className="space-y-3">
+          {Object.entries(streamingStatuses)
+            .filter(([type]) => !streamingResources.some((item) => item.resource_type === type))
+            .map(([type, status]) => (
+              <div key={type} className="flex items-center justify-between rounded-xl border p-4">
+                <div className="font-medium">{resourceTypeLabelMap.get(type as ResourceType) ?? type}</div>
+                <Badge variant={statusToneMap[status]}>{status}</Badge>
+              </div>
+            ))}
+          {streamingResources.map((resource) => (
+            <div key={resource.id} className="rounded-xl border p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-medium">{resource.title}</div>
+                <Badge variant={statusToneMap[resource.status]}>{resource.status}</Badge>
+              </div>
+              {resource.content_text ? (
+                <div className="mt-3 whitespace-pre-wrap rounded-lg bg-muted/40 p-3 text-sm">
+                  {resource.content_text.slice(0, 800)}
+                </div>
+              ) : resource.content_json ? (
+                <pre className="mt-3 overflow-x-auto rounded-lg bg-muted/40 p-3 text-xs">
+                  {JSON.stringify(resource.content_json, null, 2)}
+                </pre>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )
+    }
     return (
       <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
         选择一个资源包以查看生成结果。
@@ -302,6 +381,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
     mode: 'promise',
   })
   const courseOutlineResult = useAtomValue(projectCourseOutlineAtom(projectId))
+  const packageProgress = useAtomValue(resourcePackageProgressAtom)
 
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
@@ -397,6 +477,8 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
             </div>
             <p className="text-sm text-muted-foreground">{helperText}</p>
           </div>
+
+          <AgentProgressPanel steps={packageProgress?.agentSteps ?? []} />
 
           <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
             <div className="rounded-2xl border bg-background">
@@ -609,6 +691,8 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                   <ResourcePreviewPanel
                     projectId={projectId}
                     resourcePackage={selectedPackage}
+                    streamingResources={packageProgress?.resources ?? []}
+                    streamingStatuses={packageProgress?.resourceStatuses ?? {}}
                   />
                 </div>
               </div>

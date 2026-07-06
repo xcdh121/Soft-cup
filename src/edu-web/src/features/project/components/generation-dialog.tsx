@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { useState } from 'react'
 import { Loader2Icon } from 'lucide-react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import type { CourseChapter } from '@/data-acess/course-library'
 import {
@@ -51,6 +52,7 @@ type LengthOption = 'less' | 'normal' | 'more'
 type DifficultyOption = 'easy' | 'medium' | 'hard'
 
 export function GenerationDialog() {
+  const navigate = useNavigate()
   const { isOpen, projectId, close } = useGenerationDialog()
   const [customInstructions, setCustomInstructions] = useState('')
   const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(
@@ -111,7 +113,7 @@ export function GenerationDialog() {
             .map((point) => point.id)
         : []
 
-      await generateResourcePackage({
+      const generation = generateResourcePackage({
         projectId,
         target_topic: instructions,
         title: buildGeneratedTitle(actionLabel, instructions),
@@ -126,6 +128,16 @@ export function GenerationDialog() {
           flashcard_count: selectedType === 'flashcard' ? 30 : undefined,
           preferred_length: selectedType === 'flashcard' ? length : undefined,
         },
+      })
+
+      void generation.catch((error) => {
+        console.error('Generation failed:', error)
+      })
+      setIsGenerating(false)
+      close()
+      await navigate({
+        to: '/dashboard/p/$projectId/resource-packages',
+        params: { projectId },
       })
 
       if (selectedChapterIds.size > 0) {

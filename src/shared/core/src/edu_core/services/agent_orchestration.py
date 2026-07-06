@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -458,6 +459,7 @@ class AgentOrchestrationService:
         project_id: str,
         trigger: AgentTrigger | None = None,
         meta: dict | None = None,
+        event_sink: Callable[[AgentEvent], Awaitable[None]] | None = None,
     ) -> DiagnosisResponse:
         result = await self._run_supervisor(
             user_id=user_id,
@@ -465,6 +467,7 @@ class AgentOrchestrationService:
             goal="diagnosis",
             trigger=trigger,
             meta=meta,
+            event_sink=event_sink,
         )
         self.store.save_run_events(result)
 
@@ -578,6 +581,7 @@ class AgentOrchestrationService:
         goal: str,
         trigger: AgentTrigger | None,
         meta: dict | None = None,
+        event_sink: Callable[[AgentEvent], Awaitable[None]] | None = None,
     ) -> SupervisorRunResult:
         context = self._load_context(user_id, project_id)
         return await self.supervisor.run(
@@ -588,7 +592,8 @@ class AgentOrchestrationService:
                 trigger=trigger or AgentTrigger(),
                 context=context,
                 meta=meta or {},
-            )
+            ),
+            event_sink=event_sink,
         )
 
     def _load_context(self, user_id: str, project_id: str) -> AgentContextData:
