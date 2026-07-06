@@ -15,6 +15,12 @@ COPY src /app/src
 WORKDIR /app/src/edu-api
 # Create the virtualenv outside /app/src so docker-compose bind mounts don't overwrite it
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
+ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV UV_SYSTEM_CERTS=true
+RUN sed -i \
+    -e 's#https://files.pythonhosted.org#https://pypi.tuna.tsinghua.edu.cn#g' \
+    -e 's#https://pypi.org/simple#https://pypi.tuna.tsinghua.edu.cn/simple#g' \
+    /app/uv.lock
 RUN uv sync --frozen
 
 # 4. Run FastAPI
