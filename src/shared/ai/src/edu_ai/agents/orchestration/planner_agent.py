@@ -6,6 +6,7 @@ from edu_core.schemas.agent_orchestration import (
     AgentName,
     AgentResult,
     AgentRunContext,
+    FieldStatus,
     RunStatus,
 )
 from edu_core.schemas.learning_path_generation import LearningPathContent
@@ -62,6 +63,14 @@ class PlannerAgent(BaseOrchestrationAgent):
             result={"learning_path": learning_path},
             reason_codes=reason_codes,
             reason_text=reason_text,
+            confidence=0.8 if generation_mode == "llm" else 0.6,
+            field_status=FieldStatus.CONFIRMED
+            if generation_mode == "llm"
+            else FieldStatus.INFERRED,
+            fallback_used=generation_mode in {"rule", "rule_fallback"},
+            fallback_reason="planner_rule_fallback"
+            if generation_mode in {"rule", "rule_fallback"}
+            else None,
         )
 
     def _build_rule_learning_path(self, context: AgentRunContext) -> dict:

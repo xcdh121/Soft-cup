@@ -5,6 +5,7 @@ from edu_core.schemas.agent_orchestration import (
     AgentName,
     AgentResult,
     AgentRunContext,
+    FieldStatus,
     RunStatus,
     Trend,
 )
@@ -18,6 +19,7 @@ class KTAgent(BaseOrchestrationAgent):
 
     async def run(self, context: AgentRunContext) -> AgentResult:
         explicit_states = context.context.knowledge_states
+        inferred_from_practice = False
         if explicit_states:
             summary = self._summarize_explicit_states(explicit_states)
             details = {
@@ -26,6 +28,7 @@ class KTAgent(BaseOrchestrationAgent):
                 if state.get("knowledge_point_id")
             }
         else:
+            inferred_from_practice = True
             summary, details = self._infer_from_practice_records(
                 context.context.practice_records
             )
@@ -36,20 +39,46 @@ class KTAgent(BaseOrchestrationAgent):
         }
         weak_points = summary["weak_points"]
 
+        if not explicit_states and not context.context.practice_records:
+            return AgentResult(
+                agent_name=self.agent_name,
+                status=RunStatus.COMPLETED,
+                summary="Knowledge state evidence is missing.",
+                result=result,
+                reason_codes=["insufficient_evidence"],
+                reason_text=[
+                    "No explicit knowledge states or practice records were available."
+                ],
+                confidence=0.2,
+                field_status=FieldStatus.MISSING,
+                fallback_used=True,
+                fallback_reason="insufficient_evidence",
+            )
+
         return AgentResult(
             agent_name=self.agent_name,
             status=RunStatus.COMPLETED,
-            summary=f"已识别 {len(weak_points)} 个薄弱知识点",
+            summary=f"Identified {len(weak_points)} weak knowledge points.",
             result=result,
             reason_codes=["weak_mastery"] if weak_points else ["no_weak_point_found"],
-            reason_text=["根据知识状态或练习记录识别薄弱点"],
+            reason_text=[
+                "Weak points were identified from explicit knowledge states or recent practice records."
+            ],
             evidences=[
                 AgentEvidence(
-                    source_type="knowledge_state",
+                    source_type="knowledge_state"
+                    if explicit_states
+                    else "practice_record",
                     source_id=item["knowledge_point_id"],
                 )
                 for item in weak_points
             ],
+            confidence=0.55 if inferred_from_practice else 0.8,
+            field_status=FieldStatus.INFERRED
+            if inferred_from_practice
+            else FieldStatus.CONFIRMED,
+            fallback_used=inferred_from_practice,
+            fallback_reason="knowledge_states_partial" if inferred_from_practice else None,
         )
 
     def _summarize_explicit_states(

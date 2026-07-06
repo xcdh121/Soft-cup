@@ -28,6 +28,12 @@ class FieldStatus(StrEnum):
     MISSING = "missing"
 
 
+class InputReadinessStatus(StrEnum):
+    AVAILABLE = "available"
+    PARTIAL = "partial"
+    MISSING = "missing"
+
+
 class Trend(StrEnum):
     UP = "up"
     DOWN = "down"
@@ -36,8 +42,11 @@ class Trend(StrEnum):
 
 class AgentEventType(StrEnum):
     RUN_STARTED = "run_started"
+    ROUTE_DECIDED = "route_decided"
     AGENT_STEP = "agent_step"
+    AGENT_SKIPPED = "agent_skipped"
     ARTIFACT_UPDATED = "artifact_updated"
+    FALLBACK_APPLIED = "fallback_applied"
     RUN_COMPLETED = "run_completed"
     RUN_FAILED = "run_failed"
 
@@ -59,6 +68,8 @@ class AgentContextData(BaseModel):
     resource_packages: list[dict[str, Any]] = Field(default_factory=list)
     generated_resources: list[dict[str, Any]] = Field(default_factory=list)
     collective_insights: list[dict[str, Any]] = Field(default_factory=list)
+    recent_feedback_summary: dict[str, Any] = Field(default_factory=dict)
+    evaluation_report_summary: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentRunContext(BaseModel):
@@ -86,6 +97,17 @@ class AgentResult(BaseModel):
     reason_text: list[str] = Field(default_factory=list)
     evidences: list[AgentEvidence] = Field(default_factory=list)
     next_actions: list[str] = Field(default_factory=list)
+    confidence: float = Field(0.5, ge=0.0, le=1.0)
+    field_status: FieldStatus = FieldStatus.INFERRED
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+
+
+class SupervisorPreflight(BaseModel):
+    goal: Literal["diagnosis", "recommendations", "learning_path"]
+    input_readiness: dict[str, InputReadinessStatus]
+    degrade_mode: list[str] = Field(default_factory=list)
+    route_plan: list[AgentName] = Field(default_factory=list)
 
 
 class AgentEvent(BaseModel):
