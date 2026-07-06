@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { CheckCircle2Icon, Loader2Icon, SparklesIcon } from 'lucide-react'
+import type {
+  AgentProgressStep,
+  DifficultyLevel,
+  GeneratedResource,
+  GeneratedResourceStatus,
+  ResourcePackage,
+  ResourceType,
+} from '@/data-acess/resource-package'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -15,18 +23,13 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { projectCourseOutlineAtom } from '@/data-acess/course-library'
 import {
-  type DifficultyLevel,
-  type AgentProgressStep,
-  type GeneratedResource,
-  type GeneratedResourceStatus,
-  type ResourcePackage,
-  type ResourceType,
   generateResourcePackageAtom,
   generatedResourcesAtom,
   resourcePackageProgressAtom,
   resourcePackagesAtom,
 } from '@/data-acess/resource-package'
 import { ProjectHeader } from '@/features/project/components/project-header'
+import { ResourceResultPreview } from '@/features/resource-package/components/resource-result-preview'
 import { cn } from '@/lib/utils'
 
 const RESOURCE_TYPE_OPTIONS: Array<{
@@ -131,7 +134,7 @@ const AgentProgressPanel = ({ steps }: { steps: Array<AgentProgressStep> }) => {
   )
 }
 
-const ResourcePackageList = ({
+const ResourcePackageSelector = ({
   projectId,
   selectedPackageId,
   onSelect,
@@ -169,47 +172,25 @@ const ResourcePackageList = ({
   }
 
   return (
-    <div className="space-y-2">
-      {packages.map((resourcePackage) => {
-        const isActive = resourcePackage.id === selectedPackageId
-
-        return (
-          <button
-            key={resourcePackage.id}
-            type="button"
-            onClick={() => onSelect(resourcePackage)}
-            className={cn(
-              'w-full rounded-xl border p-3 text-left transition-colors',
-              isActive
-                ? 'border-primary bg-primary/5'
-                : 'hover:border-muted-foreground/30 hover:bg-muted/40',
-            )}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <div className="font-medium">{resourcePackage.title}</div>
-                <div className="text-sm text-muted-foreground">
-                  {resourcePackage.target_topic}
-                </div>
-              </div>
-              <Badge variant={statusToneMap[resourcePackage.status]}>
-                {resourcePackage.status}
-              </Badge>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <span>
-                {resourcePackage.completed_resource_count}/
-                {resourcePackage.resource_count} 个资源
-              </span>
-              {resourcePackage.estimated_minutes ? (
-                <span>{resourcePackage.estimated_minutes} 分钟</span>
-              ) : null}
-              <span>{resourcePackage.difficulty_level}</span>
-            </div>
-          </button>
-        )
-      })}
-    </div>
+    <Select
+      value={selectedPackageId ?? undefined}
+      onValueChange={(packageId) => {
+        const resourcePackage = packages.find((item) => item.id === packageId)
+        if (resourcePackage) onSelect(resourcePackage)
+      }}
+    >
+      <SelectTrigger className="w-full md:w-80">
+        <SelectValue placeholder="选择一个资源包" />
+      </SelectTrigger>
+      <SelectContent>
+        {packages.map((resourcePackage) => (
+          <SelectItem key={resourcePackage.id} value={resourcePackage.id}>
+            {resourcePackage.title} · {resourcePackage.completed_resource_count}/
+            {resourcePackage.resource_count}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -303,18 +284,9 @@ const ResourcePreview = ({
             </div>
           ) : null}
 
-          {resource.content_text ? (
-            <div className="mt-3 rounded-lg bg-muted/40 p-3 text-sm whitespace-pre-wrap">
-              {resource.content_text.slice(0, 800)}
-              {resource.content_text.length > 800 ? '...' : ''}
-            </div>
-          ) : null}
-
-          {!resource.content_text && resource.content_json ? (
-            <pre className="mt-3 overflow-x-auto rounded-lg bg-muted/40 p-3 text-xs">
-              {JSON.stringify(resource.content_json, null, 2)}
-            </pre>
-          ) : null}
+          <div className="mt-3 rounded-lg bg-muted/40 p-3">
+            <ResourceResultPreview projectId={projectId} resource={resource} />
+          </div>
         </div>
       ))}
     </div>
@@ -350,15 +322,9 @@ const ResourcePreviewPanel = ({
                 <div className="font-medium">{resource.title}</div>
                 <Badge variant={statusToneMap[resource.status]}>{resource.status}</Badge>
               </div>
-              {resource.content_text ? (
-                <div className="mt-3 whitespace-pre-wrap rounded-lg bg-muted/40 p-3 text-sm">
-                  {resource.content_text.slice(0, 800)}
-                </div>
-              ) : resource.content_json ? (
-                <pre className="mt-3 overflow-x-auto rounded-lg bg-muted/40 p-3 text-xs">
-                  {JSON.stringify(resource.content_json, null, 2)}
-                </pre>
-              ) : null}
+              <div className="mt-3 rounded-lg bg-muted/40 p-3">
+                <ResourceResultPreview projectId={projectId} resource={resource} />
+              </div>
             </div>
           ))}
         </div>
@@ -385,7 +351,6 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
 
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
-  const [goal, setGoal] = useState('')
   const [instructions, setInstructions] = useState('')
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('intermediate')
   const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(
@@ -449,7 +414,6 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
         projectId,
         title: title.trim() || undefined,
         target_topic: topic.trim(),
-        target_goal: goal.trim() || undefined,
         custom_instructions: instructions.trim() || undefined,
         chapter_ids: Array.from(selectedChapterIds),
         knowledge_point_ids: knowledgePointIds,
@@ -480,7 +444,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
 
           <AgentProgressPanel steps={packageProgress?.agentSteps ?? []} />
 
-          <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="flex min-h-0 flex-1 flex-col gap-6">
             <div className="rounded-2xl border bg-background">
               <div className="border-b px-5 py-4">
                 <div className="text-base font-medium">生成资源包</div>
@@ -489,7 +453,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                 </div>
               </div>
 
-              <div className="space-y-5 p-5">
+              <div className="grid gap-5 p-5 md:grid-cols-2 xl:grid-cols-4">
                 <div className="space-y-2">
                   <Label htmlFor="resource-package-title">资源包标题</Label>
                   <Textarea
@@ -509,17 +473,6 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                     onChange={(event) => setTopic(event.target.value)}
                     placeholder="这组资源希望重点围绕什么内容生成？"
                     className="min-h-24 resize-none"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="resource-package-goal">学习目标</Label>
-                  <Textarea
-                    id="resource-package-goal"
-                    value={goal}
-                    onChange={(event) => setGoal(event.target.value)}
-                    placeholder="可选：例如考前复习、查漏补缺、知识串讲"
-                    className="min-h-20 resize-none"
                   />
                 </div>
 
@@ -544,7 +497,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                   </Select>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-3 md:col-span-2 xl:col-span-2 xl:row-start-2">
                   <Label>资源类型</Label>
                   <div className="grid gap-2 md:grid-cols-2">
                     {RESOURCE_TYPE_OPTIONS.map((option) => {
@@ -575,7 +528,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 md:col-span-2 xl:col-span-1 xl:col-start-4 xl:row-start-1">
                   <Label htmlFor="resource-package-instructions">
                     自定义要求
                   </Label>
@@ -588,7 +541,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                   />
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-3 md:col-span-2 xl:col-span-2 xl:row-start-2">
                   <div className="flex items-center justify-between">
                     <Label>课程章节</Label>
                     <div className="text-xs text-muted-foreground">
@@ -649,7 +602,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                 <Button
                   onClick={handleGenerate}
                   disabled={isGenerateDisabled}
-                  className="w-full"
+                  className="w-full md:col-span-2 xl:col-span-4"
                 >
                   {isSubmitting ? (
                     <>
@@ -663,21 +616,21 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
               </div>
             </div>
 
-            <div className="grid min-h-0 gap-6 xl:grid-rows-[auto_1fr]">
+            <div className="flex min-h-0 flex-col gap-6">
               <div className="rounded-2xl border bg-background p-5">
-                <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>
                     <div className="text-base font-medium">资源包列表</div>
                     <div className="text-sm text-muted-foreground">
                       查看当前项目下已生成的资源包。
                     </div>
                   </div>
+                  <ResourcePackageSelector
+                    projectId={projectId}
+                    selectedPackageId={selectedPackage?.id ?? null}
+                    onSelect={setSelectedPackage}
+                  />
                 </div>
-                <ResourcePackageList
-                  projectId={projectId}
-                  selectedPackageId={selectedPackage?.id ?? null}
-                  onSelect={setSelectedPackage}
-                />
               </div>
 
               <div className="min-h-0 rounded-2xl border bg-background p-5">
@@ -687,7 +640,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                     预览统一 AI 生成链路产出的资源内容。
                   </div>
                 </div>
-                <div className="max-h-[calc(100vh-22rem)] overflow-y-auto pr-1">
+                <div>
                   <ResourcePreviewPanel
                     projectId={projectId}
                     resourcePackage={selectedPackage}

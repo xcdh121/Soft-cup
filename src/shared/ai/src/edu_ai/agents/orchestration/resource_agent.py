@@ -39,7 +39,13 @@ class ResourceAgent(BaseOrchestrationAgent):
 
     async def run(self, context: AgentRunContext) -> AgentResult:
         diagnosis = context.artifacts.get("diagnosis", {}).get("diagnosis", {})
-        if not diagnosis.get("related_knowledge_points"):
+        requested_resource_types = self._normalize_resource_types(
+            context.meta.get("requested_resource_types", [])
+        )
+        if (
+            not diagnosis.get("related_knowledge_points")
+            and not requested_resource_types
+        ):
             return AgentResult(
                 agent_name=self.agent_name,
                 status=RunStatus.COMPLETED,
@@ -71,7 +77,7 @@ class ResourceAgent(BaseOrchestrationAgent):
         reason_text = [
             "Queued resource generation through the existing resource services."
         ]
-        confidence = 0.8
+        confidence = 0.8 if diagnosis.get("related_knowledge_points") else 0.55
         if fallback_used:
             reason_codes = ["resource_generation_unavailable"]
             reason_text = [
@@ -160,20 +166,28 @@ class ResourceAgent(BaseOrchestrationAgent):
         topic: str,
     ) -> dict[str, Any] | None:
         if resource_type == "note" and self.note_service:
+            custom_instructions = self._build_custom_instructions(context)
             note = self.note_service.create_note(
                 project_id=context.project_id,
                 title=self._build_title("note", topic),
                 description="ResourceAgent queued note generation",
                 content="",
             )
-            self.note_service.queue_generation(
-                note_id=note.id,
-                project_id=context.project_id,
-                topic=topic,
-                custom_instructions=self._build_custom_instructions(context),
-                user_id=context.student_id,
-            )
-            return self._queued_resource("note", note, note.id, note.title)
+            stream_on_client = context.trigger.type == "resource_package"
+            if not stream_on_client:
+                self.note_service.queue_generation(
+                    note_id=note.id,
+                    project_id=context.project_id,
+                    topic=topic,
+                    custom_instructions=custom_instructions,
+                    user_id=context.student_id,
+                )
+            return {
+                **self._queued_resource("note", note, note.id, note.title),
+                "topic": topic,
+                "custom_instructions": custom_instructions,
+                "stream_on_client": stream_on_client,
+            }
 
         if resource_type == "quiz" and self.quiz_service:
             quiz = self.quiz_service.create_quiz(
@@ -258,6 +272,9 @@ class ResourceAgent(BaseOrchestrationAgent):
                     ],
                     "score": round(0.9 - (index - 1) * 0.05, 2),
                     "recommended_by": self.agent_name.value,
+                    "topic": resource.get("topic"),
+                    "custom_instructions": resource.get("custom_instructions"),
+                    "stream_on_client": bool(resource.get("stream_on_client")),
                 }
             )
         return recommendations

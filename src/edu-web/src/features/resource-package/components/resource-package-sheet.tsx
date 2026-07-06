@@ -3,13 +3,16 @@ import { useMemo, useState } from 'react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { useNavigate } from '@tanstack/react-router'
 import { FileTextIcon, Loader2Icon, SparklesIcon } from 'lucide-react'
+import { ResourceResultPreview } from './resource-result-preview'
+import type {
+  DifficultyLevel,
+  GeneratedResource,
+  GeneratedResourceStatus,
+  ResourcePackage,
+  ResourceType,
+} from '@/data-acess/resource-package'
 import { indexedDocumentsAtom } from '@/data-acess/document'
 import {
-  type DifficultyLevel,
-  type GeneratedResource,
-  type GeneratedResourceStatus,
-  type ResourcePackage,
-  type ResourceType,
   generateResourcePackageAtom,
   generatedResourcesAtom,
   resourcePackageProgressAtom,
@@ -264,16 +267,10 @@ const ResourcePreview = ({
                 Open generated PPT
               </a>
             </div>
-          ) : resource.content_text ? (
-            <div className="mt-3 rounded-lg bg-muted/40 p-3 text-sm whitespace-pre-wrap">
-              {resource.content_text.slice(0, 600)}
-              {resource.content_text.length > 600 ? '...' : ''}
-            </div>
-          ) : resource.content_json ? (
-            <pre className="mt-3 overflow-x-auto rounded-lg bg-muted/40 p-3 text-xs">
-              {JSON.stringify(resource.content_json, null, 2)}
-            </pre>
           ) : null}
+          <div className="mt-3 rounded-lg bg-muted/40 p-3">
+            <ResourceResultPreview projectId={projectId} resource={resource} />
+          </div>
         </div>
       ))}
     </div>
@@ -309,15 +306,9 @@ const ResourcePreviewPanel = ({
                 <div className="font-medium">{resource.title}</div>
                 <Badge variant={statusToneMap[resource.status]}>{resource.status}</Badge>
               </div>
-              {resource.content_text ? (
-                <div className="mt-3 whitespace-pre-wrap rounded-lg bg-muted/40 p-3 text-sm">
-                  {resource.content_text.slice(0, 800)}
-                </div>
-              ) : resource.content_json ? (
-                <pre className="mt-3 overflow-x-auto rounded-lg bg-muted/40 p-3 text-xs">
-                  {JSON.stringify(resource.content_json, null, 2)}
-                </pre>
-              ) : null}
+              <div className="mt-3 rounded-lg bg-muted/40 p-3">
+                <ResourceResultPreview projectId={projectId} resource={resource} />
+              </div>
             </div>
           ))}
         </div>

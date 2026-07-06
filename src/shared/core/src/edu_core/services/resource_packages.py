@@ -582,11 +582,11 @@ class ResourcePackageService:
         if not self.agent_orchestration_service:
             raise RuntimeError("Agent orchestration service is required")
 
+        diagnosis = None
         if diagnosis_id:
             diagnosis = self.agent_orchestration_service.get_diagnosis(diagnosis_id)
             if diagnosis.project_id != project_id or diagnosis.student_id != user_id:
                 raise NotFoundError(f"Diagnosis {diagnosis_id} not found")
-            return diagnosis
 
         orchestration_types = [
             resource_type
@@ -613,21 +613,37 @@ class ResourcePackageService:
                 },
             )
 
-        return await self.agent_orchestration_service.generate_diagnosis(
-            user_id=user_id,
-            project_id=project_id,
-            trigger=AgentTrigger(type="resource_package", id=package_id),
-            meta={
-                "requested_topic": target_topic,
-                "requested_instructions": custom_instructions,
-                "requested_resource_types": orchestration_types,
-                "difficulty": difficulty_level,
-                "quiz_count": generation_params.get("quiz_count"),
-                "flashcard_count": generation_params.get("flashcard_count"),
-                "launch_context": generation_params.get("launch_context"),
-            },
-            event_sink=forward_agent_event,
+        trigger = AgentTrigger(type="resource_package", id=package_id)
+        meta = {
+            "requested_topic": target_topic,
+            "requested_instructions": custom_instructions,
+            "requested_resource_types": orchestration_types,
+            "difficulty": difficulty_level,
+            "quiz_count": generation_params.get("quiz_count"),
+            "flashcard_count": generation_params.get("flashcard_count"),
+            "launch_context": generation_params.get("launch_context"),
+        }
+        if diagnosis is None:
+            diagnosis = await self.agent_orchestration_service.generate_diagnosis(
+                user_id=user_id,
+                project_id=project_id,
+                trigger=trigger,
+                meta=meta,
+                event_sink=forward_agent_event,
+            )
+
+        recommendations = (
+            await self.agent_orchestration_service.generate_recommendations(
+                user_id=user_id,
+                project_id=project_id,
+                diagnosis_id=diagnosis.diagnosis_id,
+                trigger=trigger,
+                meta=meta,
+                event_sink=forward_agent_event,
+            )
         )
+        diagnosis.recommendations = recommendations.recommendations
+        return diagnosis
 
     def _get_diagnosis_trace(self, diagnosis: "DiagnosisResponse") -> list["AgentEvent"]:
         if not self.agent_orchestration_service:
@@ -796,7 +812,10 @@ class ResourcePackageService:
                 "target_type": reference_type,
                 "project_id": project_id,
                 "reason_text": recommendation.get("reason_text", []),
-                "custom_instructions": custom_instructions,
+                "topic": recommendation.get("topic"),
+                "custom_instructions": recommendation.get("custom_instructions")
+                or custom_instructions,
+                "stream_on_client": bool(recommendation.get("stream_on_client")),
             },
             "content_text": None,
         }
