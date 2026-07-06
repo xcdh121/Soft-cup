@@ -41,6 +41,7 @@ import {
   ToolInput,
   ToolOutput,
 } from '@/components/ai-elements/tool'
+import { Badge } from '@/components/ui/badge'
 import {
   chatAtom,
   chatStreamStatusAtom,
@@ -54,11 +55,19 @@ import type {
   ToolCallPartDto,
 } from '@/integrations/api/client'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { CopyIcon, GlobeIcon } from 'lucide-react'
-import { useCallback, useState } from 'react'
-// Simple ID generator
+import {
+  ActivityIcon,
+  CheckCircle2Icon,
+  Clock3Icon,
+  CopyIcon,
+  GlobeIcon,
+  WrenchIcon,
+  XCircleIcon,
+} from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+
 const generateId = () =>
-  `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 
 const models = [
   {
@@ -71,10 +80,144 @@ const models = [
   },
 ]
 
+type ToolTimelineItem = {
+  id: string
+  messageId: string
+  toolName: string
+  toolState: string
+  toolInput: unknown
+  toolOutput: unknown
+}
+
 interface ChatbotProps {
   chatId: string
   projectId: string
 }
+
+const formatToolName = (name: string) =>
+  name
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+
+const normalizeToolInput = (toolInput: unknown): Record<string, unknown> => {
+  if (!toolInput) return {}
+  if (Array.isArray(toolInput)) {
+    return toolInput.reduce<Record<string, unknown>>((acc, item) => {
+      if (
+        item &&
+        typeof item === 'object' &&
+        'key' in item &&
+        typeof item.key === 'string'
+      ) {
+        acc[item.key] = 'value' in item ? item.value : null
+      }
+      return acc
+    }, {})
+  }
+  if (typeof toolInput === 'object') {
+    return toolInput as Record<string, unknown>
+  }
+  return { value: toolInput }
+}
+
+const parseToolOutput = (toolCall: ToolCallPartDto) => {
+  if (toolCall.tool_state === 'output-error') {
+    return {
+      output: undefined,
+      errorText:
+        typeof toolCall.tool_output === 'string'
+          ? toolCall.tool_output
+          : JSON.stringify(toolCall.tool_output),
+    }
+  }
+
+  if (
+    typeof toolCall.tool_output === 'string' &&
+    toolCall.tool_output.trim().startsWith('{')
+  ) {
+    try {
+      return { output: JSON.parse(toolCall.tool_output), errorText: undefined }
+    } catch {
+      return { output: toolCall.tool_output, errorText: undefined }
+    }
+  }
+
+  return { output: toolCall.tool_output, errorText: undefined }
+}
+
+const toToolUiState = (
+  state: string,
+):
+  | 'input-streaming'
+  | 'input-available'
+  | 'output-available'
+  | 'output-error' => {
+  if (
+    state === 'input-streaming' ||
+    state === 'input-available' ||
+    state === 'output-available' ||
+    state === 'output-error'
+  ) {
+    return state
+  }
+  return 'input-available'
+}
+
+const getToolStatusLabel = (state: string) => {
+  if (state === 'output-available') return 'Done'
+  if (state === 'output-error') return 'Failed'
+  if (state === 'input-streaming') return 'Preparing'
+  return 'Running'
+}
+
+const getToolStatusIcon = (state: string) => {
+  if (state === 'output-available') {
+    return <CheckCircle2Icon className="size-3.5 text-green-600" />
+  }
+  if (state === 'output-error') {
+    return <XCircleIcon className="size-3.5 text-destructive" />
+  }
+  if (state === 'input-streaming') {
+    return <Clock3Icon className="size-3.5 text-muted-foreground" />
+  }
+  return <ActivityIcon className="size-3.5 animate-pulse text-primary" />
+}
+
+const getToolStatusVariant = (
+  state: string,
+): 'secondary' | 'destructive' => {
+  return state === 'output-error' ? 'destructive' : 'secondary'
+}
+
+const summarizeToolValue = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return 'None'
+  if (typeof value === 'string') {
+    return value.length > 120 ? `${value.slice(0, 120)}...` : value
+  }
+  try {
+    const text = JSON.stringify(value)
+    return text.length > 120 ? `${text.slice(0, 120)}...` : text
+  } catch {
+    return String(value)
+  }
+}
+
+const collectToolTimeline = (
+  messages: ReadonlyArray<ChatMessageDto>,
+): ToolTimelineItem[] =>
+  messages.flatMap((message) =>
+    Array.from(message.parts ?? [])
+      .filter((part): part is ToolCallPartDto => part.type === 'tool_call')
+      .map((part, index) => ({
+        id: part.id ?? `${message.id}-${part.tool_call_id ?? index}`,
+        messageId: message.id,
+        toolName: part.tool_name,
+        toolState: part.tool_state,
+        toolInput: part.tool_input,
+        toolOutput: part.tool_output,
+      })),
+  )
 
 export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
   const [input, setInput] = useState('')
@@ -92,21 +235,18 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
     ? (chatResult.value.messages ?? [])
     : []
   const isStreaming = streamStatus !== null
+  const toolTimeline = useMemo(() => collectToolTimeline(messages), [messages])
 
-  // Convert blob URL to data URL
-  const blobToDataUrl = useCallback(
-    async (blobUrl: string): Promise<string> => {
-      const response = await fetch(blobUrl)
-      const blob = await response.blob()
-      return new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onloadend = () => resolve(reader.result as string)
-        reader.onerror = reject
-        reader.readAsDataURL(blob)
-      })
-    },
-    [],
-  )
+  const blobToDataUrl = useCallback(async (blobUrl: string): Promise<string> => {
+    const response = await fetch(blobUrl)
+    const blob = await response.blob()
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  }, [])
 
   const handleSubmit = async (message: PromptInputMessage) => {
     const hasText = Boolean(message.text)
@@ -117,7 +257,6 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
 
     const parts: (TextPartDto | FilePartDto)[] = []
 
-    // Process text part
     if (hasText) {
       parts.push({
         type: 'text',
@@ -126,10 +265,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
       })
     }
 
-    // Process file attachments - convert to base64 data URLs
     const fileParts = await Promise.all(
-      message.files.map(async (file) => {
-        // If it's already a URL (from Azure), use it directly
+      message.files.map(async (file, index) => {
         if (
           file.url &&
           !file.url.startsWith('blob:') &&
@@ -140,11 +277,10 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
             file_name: file.filename || 'file',
             file_type: file.mediaType,
             file_url: file.url,
-            order: parts.length + message.files.indexOf(file),
+            order: parts.length + index,
           } as FilePartDto
         }
 
-        // Convert blob URL to data URL if needed
         let dataUrl = file.url
         if (file.url?.startsWith('blob:')) {
           dataUrl = await blobToDataUrl(file.url)
@@ -154,21 +290,18 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
           throw new Error('Invalid file URL')
         }
 
-        // Return file part with base64 data URL
-        // The backend will upload it to blob storage and replace with SAS URL
         return {
           type: 'file' as const,
           file_name: file.filename || 'file',
           file_type: file.mediaType,
-          file_url: dataUrl, // Base64 data URL - backend will handle upload
-          order: parts.length + message.files.indexOf(file),
+          file_url: dataUrl,
+          order: parts.length + index,
         } as FilePartDto
       }),
     )
 
     parts.push(...fileParts)
 
-    // Create user message
     const userMessage: ChatMessageDto = {
       id: generateId(),
       chat_id: chatId,
@@ -177,11 +310,10 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
       parts,
     }
 
-    // Stream the message
     streamMessage({
       message: userMessage,
-      projectId: projectId,
-      chatId: chatId,
+      projectId,
+      chatId,
     })
 
     setInput('')
@@ -192,335 +324,312 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
   }, [])
 
   return (
-    <div className="max-w-4xl mx-auto relative size-full h-full">
-      <div className="flex flex-col h-full">
-        <Conversation className="h-full">
-          <ConversationContent>
-            {messages.map((message: ChatMessageDto) => (
-              <div key={message.id} className="space-y-2">
-                {/* Render file attachments for user messages */}
-                {message.role === 'user' &&
-                  message.parts &&
-                  message.parts.filter((part) => part.type === 'file').length >
-                    0 && (
-                    <Message from="user">
-                      <MessageContent>
-                        <div className="space-y-2">
-                          {message.parts
-                            .filter(
-                              (part): part is FilePartDto =>
-                                part.type === 'file',
-                            )
-                            .map((part: FilePartDto, i: number) => (
-                              <div
-                                key={`${message.id}-file-${i}`}
-                                className="flex items-center gap-2 p-2 bg-muted rounded"
-                              >
-                                <span className="text-sm">
-                                  {part.file_name}
-                                </span>
-                                <a
-                                  href={part.file_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-primary hover:underline"
+    <div className="grid size-full min-h-0 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="min-h-0 min-w-0 overflow-hidden border-r">
+        <div className="mx-auto flex h-full min-h-0 max-w-4xl flex-col px-4 lg:px-6">
+          <Conversation className="min-h-0">
+            <ConversationContent>
+              {messages.map((message: ChatMessageDto) => (
+                <div key={message.id} className="flex flex-col gap-2">
+                  {message.role === 'user' &&
+                    message.parts &&
+                    message.parts.filter((part) => part.type === 'file')
+                      .length > 0 && (
+                      <Message from="user">
+                        <MessageContent>
+                          <div className="flex flex-col gap-2">
+                            {message.parts
+                              .filter(
+                                (part): part is FilePartDto =>
+                                  part.type === 'file',
+                              )
+                              .map((part: FilePartDto, index: number) => (
+                                <div
+                                  key={`${message.id}-file-${index}`}
+                                  className="flex items-center gap-2 rounded bg-muted p-2"
                                 >
-                                  查看
-                                </a>
-                              </div>
-                            ))}
-                        </div>
-                      </MessageContent>
-                    </Message>
-                  )}
+                                  <span className="text-sm">
+                                    {part.file_name}
+                                  </span>
+                                  <a
+                                    href={part.file_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-primary hover:underline"
+                                  >
+                                    View
+                                  </a>
+                                </div>
+                              ))}
+                          </div>
+                        </MessageContent>
+                      </Message>
+                    )}
 
-                {/* Collect and render source-document parts together */}
-                {message.parts &&
-                  (() => {
-                    const sourceDocuments = message.parts.filter(
-                      (p): p is SourceDocumentPartDto =>
-                        p.type === 'source-document',
-                    )
-                    return sourceDocuments.length > 0 ? (
-                      <Sources key={`${message.id}-sources`}>
-                        <SourcesTrigger count={sourceDocuments.length} />
-                        <SourcesContent>
-                          {sourceDocuments.map((sourceDoc, idx) => {
-                            // Build URL to view the document
-                            // If we have a document_id in provider_metadata, we could link to it
-                            // For now, we'll use a placeholder or the source_id
-                            const documentUrl = sourceDoc.provider_metadata
-                              ?.document_id
-                              ? `/dashboard/p/${projectId}/d/${sourceDoc.provider_metadata.document_id}`
-                              : `#${sourceDoc.source_id}`
+                  {message.parts &&
+                    (() => {
+                      const sourceDocuments = message.parts.filter(
+                        (part): part is SourceDocumentPartDto =>
+                          part.type === 'source-document',
+                      )
+
+                      return sourceDocuments.length > 0 ? (
+                        <Sources key={`${message.id}-sources`}>
+                          <SourcesTrigger count={sourceDocuments.length} />
+                          <SourcesContent>
+                            {sourceDocuments.map((sourceDoc, index) => {
+                              const documentUrl = sourceDoc.provider_metadata
+                                ?.document_id
+                                ? `/dashboard/p/${projectId}/d/${sourceDoc.provider_metadata.document_id}`
+                                : `#${sourceDoc.source_id}`
+
+                              return (
+                                <Source
+                                  key={`${message.id}-source-${index}`}
+                                  href={documentUrl}
+                                  title={
+                                    sourceDoc.title ||
+                                    sourceDoc.filename ||
+                                    'Document'
+                                  }
+                                />
+                              )
+                            })}
+                          </SourcesContent>
+                        </Sources>
+                      ) : null
+                    })()}
+
+                  {message.parts &&
+                    message.parts
+                      .filter((part) => part.type !== 'source-document')
+                      .map((part, index: number) => {
+                        switch (part.type) {
+                          case 'text':
+                            return (
+                              <Message
+                                key={`${message.id}-${index}`}
+                                from={
+                                  message.role as
+                                    | 'user'
+                                    | 'assistant'
+                                    | 'system'
+                                }
+                              >
+                                <MessageContent>
+                                  <Response>{part.text_content}</Response>
+                                </MessageContent>
+                                {message.role === 'assistant' &&
+                                  index === (message.parts?.length || 0) - 1 && (
+                                    <div className="mt-2 flex gap-2">
+                                      <button
+                                        onClick={() =>
+                                          handleCopy(part.text_content)
+                                        }
+                                        className="rounded p-1 hover:bg-muted"
+                                        title="Copy"
+                                      >
+                                        <CopyIcon className="size-3" />
+                                      </button>
+                                    </div>
+                                  )}
+                              </Message>
+                            )
+                          case 'file':
+                            return null
+                          case 'tool_call': {
+                            const toolCall = part as ToolCallPartDto
+                            const normalizedInput = normalizeToolInput(
+                              toolCall.tool_input,
+                            )
+                            const { output, errorText } =
+                              parseToolOutput(toolCall)
 
                             return (
-                              <Source
-                                key={`${message.id}-source-${idx}`}
-                                href={documentUrl}
-                                title={
-                                  sourceDoc.title ||
-                                  sourceDoc.filename ||
-                                  '文档'
+                              <Tool
+                                key={`${message.id}-part-${index}`}
+                                defaultOpen={
+                                  toolCall.tool_state === 'output-error'
                                 }
-                              />
-                            )
-                          })}
-                        </SourcesContent>
-                      </Sources>
-                    ) : null
-                  })()}
-
-                {/* Render all parts except source-document (handled above) */}
-                {message.parts &&
-                  message.parts
-                    .filter((part) => part.type !== 'source-document')
-                    .map((part, i: number) => {
-                      switch (part.type) {
-                        case 'text':
-                          return (
-                            <Message
-                              key={`${message.id}-${i}`}
-                              from={
-                                message.role as 'user' | 'assistant' | 'system'
-                              }
-                            >
-                              <MessageContent>
-                                <Response>{part.text_content}</Response>
-                              </MessageContent>
-                              {message.role === 'assistant' &&
-                                i === (message.parts?.length || 0) - 1 && (
-                                  <div className="flex gap-2 mt-2">
-                                    <button
-                                      onClick={() =>
-                                        handleCopy(part.text_content)
-                                      }
-                                      className="p-1 hover:bg-muted rounded"
-                                      title="复制"
-                                    >
-                                      <CopyIcon className="size-3" />
-                                    </button>
-                                  </div>
-                                )}
-                            </Message>
-                          )
-                        case 'file':
-                          // File parts are handled above in the user message section
-                          return null
-                        // case 'reasoning':
-                        //   return (
-                        //     <Reasoning
-                        //       key={`${message.id}-part-${i}`}
-                        //       className="w-full"
-                        //       isStreaming={
-                        //         isStreaming &&
-                        //         i === (message.parts?.length || 0) - 1 &&
-                        //         message.id === messages[messages.length - 1]?.id
-                        //       }
-                        //     >
-                        //       <ReasoningTrigger />
-                        //       <ReasoningContent>
-                        //         {String(
-                        //           (
-                        //             part as {
-                        //               text_content?: string
-                        //               text?: string
-                        //             }
-                        //           ).text_content ||
-                        //             (
-                        //               part as {
-                        //                 text_content?: string
-                        //                 text?: string
-                        //               }
-                        //             ).text ||
-                        //             '',
-                        //         )}
-                        //       </ReasoningContent>
-                        //     </Reasoning>
-                        //   )
-                        case 'tool_call': {
-                          const toolCall = part as ToolCallPartDto
-
-                          // Parse tool_output if it's a JSON string
-                          let parsedOutput: any = toolCall.tool_output
-                          let errorText: string | undefined
-
-                          if (toolCall.tool_state === 'output-error') {
-                            errorText =
-                              typeof toolCall.tool_output === 'string'
-                                ? toolCall.tool_output
-                                : JSON.stringify(toolCall.tool_output)
-                          } else if (
-                            typeof toolCall.tool_output === 'string' &&
-                            toolCall.tool_output.trim().startsWith('{')
-                          ) {
-                            try {
-                              parsedOutput = JSON.parse(toolCall.tool_output)
-                            } catch {
-                              // If parsing fails, use the string as-is
-                            }
-                          }
-
-                          // Format tool name for display
-                          const formatToolName = (name: string) => {
-                            return name
-                              .split('_')
-                              .map(
-                                (word) =>
-                                  word.charAt(0).toUpperCase() + word.slice(1),
-                              )
-                              .join(' ')
-                          }
-
-                          // Normalize tool_input to object format
-                          let normalizedInput: Record<string, any> = {}
-                          if (toolCall.tool_input) {
-                            if (Array.isArray(toolCall.tool_input)) {
-                              normalizedInput = toolCall.tool_input.reduce(
-                                (acc, item: any) => {
-                                  acc[item.key] = item.value
-                                  return acc
-                                },
-                                {} as Record<string, any>,
-                              )
-                            } else {
-                              normalizedInput = toolCall.tool_input as Record<
-                                string,
-                                any
                               >
-                            }
+                                <ToolHeader
+                                  title={formatToolName(toolCall.tool_name)}
+                                  type={`tool-${toolCall.tool_name}`}
+                                  state={toToolUiState(toolCall.tool_state)}
+                                />
+                                <ToolContent>
+                                  {Object.keys(normalizedInput).length > 0 && (
+                                    <ToolInput input={normalizedInput} />
+                                  )}
+                                  {(output || errorText) && (
+                                    <ToolOutput
+                                      output={output}
+                                      errorText={errorText}
+                                    />
+                                  )}
+                                </ToolContent>
+                              </Tool>
+                            )
                           }
-
-                          // Map tool_state to ToolUIPart state format
-                          // Map to valid states, defaulting to 'input-available' for unknown states
-                          const stateMap: Record<
-                            string,
-                            | 'input-streaming'
-                            | 'input-available'
-                            | 'output-available'
-                            | 'output-error'
-                          > = {
-                            'input-streaming': 'input-streaming',
-                            'input-available': 'input-available',
-                            'output-available': 'output-available',
-                            'output-error': 'output-error',
-                          }
-                          const toolState =
-                            stateMap[toolCall.tool_state] || 'input-available'
-
-                          return (
-                            <Tool
-                              key={`${message.id}-part-${i}`}
-                              defaultOpen={
-                                toolCall.tool_state === 'output-error'
-                              }
-                            >
-                              <ToolHeader
-                                title={formatToolName(toolCall.tool_name)}
-                                type={`tool-${toolCall.tool_name}`}
-                                state={toolState}
-                              />
-                              <ToolContent>
-                                {Object.keys(normalizedInput).length > 0 && (
-                                  <ToolInput input={normalizedInput} />
-                                )}
-                                {(parsedOutput || errorText) && (
-                                  <ToolOutput
-                                    output={parsedOutput}
-                                    errorText={errorText}
-                                  />
-                                )}
-                              </ToolContent>
-                            </Tool>
-                          )
+                          default:
+                            return null
                         }
-                        // case 'source-url':
-                        //   return (
-                        //     <div
-                        //       key={`${message.id}-part-${i}`}
-                        //       className="bg-card text-card-foreground p-3 rounded-lg border-l-4 border-primary ring-1 ring-foreground/10"
-                        //     >
-                        //       <span className="text-xs text-muted-foreground font-medium">
-                        //         Source URL:
-                        //       </span>
-                        //       <a
-                        //         href={(part as { url?: string }).url}
-                        //         target="_blank"
-                        //         rel="noopener noreferrer"
-                        //         className="block text-primary hover:text-primary/80 underline text-sm mt-1 underline-offset-4"
-                        //       >
-                        //         {(part as { url?: string }).url}
-                        //       </a>
-                        //     </div>
-                        //   )
-                        // source-document parts are handled above in the Sources component
-                        default:
-                          return null
-                      }
-                    })}
-              </div>
-            ))}
-            {isStreaming && <Loader />}
-          </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation>
-        <PromptInput
-          onSubmit={handleSubmit}
-          className="mt-4"
-          globalDrop
-          multiple
-        >
-          <PromptInputHeader>
-            <PromptInputAttachments>
-              {(attachment) => <PromptInputAttachment data={attachment} />}
-            </PromptInputAttachments>
-          </PromptInputHeader>
-          <PromptInputBody>
-            <PromptInputTextarea
-              onChange={(e) => setInput(e.target.value)}
-              value={input}
-            />
-          </PromptInputBody>
-          <PromptInputFooter>
-            <PromptInputTools>
-              <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger />
-                <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments />
-                </PromptInputActionMenuContent>
-              </PromptInputActionMenu>
-              <PromptInputButton
-                variant={webSearch ? 'default' : 'ghost'}
-                onClick={() => setWebSearch(!webSearch)}
-              >
-                <GlobeIcon size={16} />
-                <span>搜索</span>
-              </PromptInputButton>
-              <PromptInputSelect
-                onValueChange={(value) => {
-                  setModel(value as string)
-                }}
-                value={model}
-              >
-                <PromptInputSelectTrigger>
-                  <PromptInputSelectValue />
-                </PromptInputSelectTrigger>
-                <PromptInputSelectContent>
-                  {models.map((item) => (
-                    <PromptInputSelectItem key={item.value} value={item.value}>
-                      {item.name}
-                    </PromptInputSelectItem>
-                  ))}
-                </PromptInputSelectContent>
-              </PromptInputSelect>
-            </PromptInputTools>
-            <PromptInputSubmit
-              disabled={!input && !isStreaming}
-              status={isStreaming ? 'streaming' : 'ready'}
-            />
-          </PromptInputFooter>
-        </PromptInput>
+                      })}
+                </div>
+              ))}
+              {isStreaming && <Loader />}
+            </ConversationContent>
+            <ConversationScrollButton />
+          </Conversation>
+
+          <PromptInput
+            onSubmit={handleSubmit}
+            className="mt-4 shrink-0"
+            globalDrop
+            multiple
+          >
+            <PromptInputHeader>
+              <PromptInputAttachments>
+                {(attachment) => <PromptInputAttachment data={attachment} />}
+              </PromptInputAttachments>
+            </PromptInputHeader>
+            <PromptInputBody>
+              <PromptInputTextarea
+                onChange={(event) => setInput(event.target.value)}
+                value={input}
+              />
+            </PromptInputBody>
+            <PromptInputFooter>
+              <PromptInputTools>
+                <PromptInputActionMenu>
+                  <PromptInputActionMenuTrigger />
+                  <PromptInputActionMenuContent>
+                    <PromptInputActionAddAttachments />
+                  </PromptInputActionMenuContent>
+                </PromptInputActionMenu>
+                <PromptInputButton
+                  variant={webSearch ? 'default' : 'ghost'}
+                  onClick={() => setWebSearch(!webSearch)}
+                >
+                  <GlobeIcon size={16} />
+                  <span>Search</span>
+                </PromptInputButton>
+                <PromptInputSelect
+                  onValueChange={(value) => {
+                    setModel(value as string)
+                  }}
+                  value={model}
+                >
+                  <PromptInputSelectTrigger>
+                    <PromptInputSelectValue />
+                  </PromptInputSelectTrigger>
+                  <PromptInputSelectContent>
+                    {models.map((item) => (
+                      <PromptInputSelectItem key={item.value} value={item.value}>
+                        {item.name}
+                      </PromptInputSelectItem>
+                    ))}
+                  </PromptInputSelectContent>
+                </PromptInputSelect>
+              </PromptInputTools>
+              <PromptInputSubmit
+                disabled={!input && !isStreaming}
+                status={isStreaming ? 'streaming' : 'ready'}
+              />
+            </PromptInputFooter>
+          </PromptInput>
+        </div>
       </div>
+
+      <aside className="hidden min-h-0 bg-background xl:flex xl:flex-col">
+        <div className="border-b px-5 py-4">
+          <div className="flex items-center gap-2">
+            <WrenchIcon className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Tool Activity</h2>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Shows search, generation, and resource tools used while the
+            assistant responds.
+          </p>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {toolTimeline.length === 0 ? (
+            <div className="flex min-h-40 flex-col items-center justify-center rounded-md border border-dashed bg-muted/30 px-4 text-center">
+              {isStreaming ? (
+                <>
+                  <ActivityIcon className="mb-3 size-5 animate-pulse text-primary" />
+                  <div className="text-sm font-medium">Thinking</div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Tool calls will appear here if the assistant searches
+                    documents or generates study resources.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <WrenchIcon className="mb-3 size-5 text-muted-foreground" />
+                  <div className="text-sm font-medium">No tool calls yet</div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Ask for document search, quizzes, flashcards, notes, or mind
+                    maps to populate this panel.
+                  </p>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {toolTimeline.map((tool, index) => (
+                <div
+                  key={tool.id}
+                  className="rounded-md border bg-card p-3 text-card-foreground"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                          {index + 1}
+                        </span>
+                        <div className="truncate text-sm font-medium">
+                          {formatToolName(tool.toolName)}
+                        </div>
+                      </div>
+                      <div className="mt-1 truncate pl-8 text-xs text-muted-foreground">
+                        message: {tool.messageId}
+                      </div>
+                    </div>
+                    <Badge
+                      variant={getToolStatusVariant(tool.toolState)}
+                      className="shrink-0 gap-1"
+                    >
+                      {getToolStatusIcon(tool.toolState)}
+                      {getToolStatusLabel(tool.toolState)}
+                    </Badge>
+                  </div>
+
+                  <div className="mt-3 flex flex-col gap-2 rounded-md bg-muted/40 p-2 text-xs">
+                    <div>
+                      <div className="font-medium text-muted-foreground">
+                        Input
+                      </div>
+                      <div className="mt-1 break-words font-mono text-[11px] leading-4">
+                        {summarizeToolValue(tool.toolInput)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="font-medium text-muted-foreground">
+                        Output
+                      </div>
+                      <div className="mt-1 break-words font-mono text-[11px] leading-4">
+                        {summarizeToolValue(tool.toolOutput)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
     </div>
   )
 }

@@ -107,17 +107,6 @@ const DashboardPage = lazy(() =>
     default: m.DashboardPage,
   })),
 )
-const AgentOrchestrationRoute = lazy(() =>
-  import('./agent-orchestration-route').then((m) => ({
-    default: m.AgentOrchestrationRoute,
-  })),
-)
-const ProjectAgentOrchestrationRoute = lazy(() =>
-  import('./project-agent-orchestration-route').then((m) => ({
-    default: m.ProjectAgentOrchestrationRoute,
-  })),
-)
-
 const requireAuth = async () => {
   const { isSupabaseConfigured } = await import('@/lib/supabase')
 
@@ -195,16 +184,6 @@ export const signUpRoute = createRoute({
   component: () => (
     <Suspense fallback={<LoadingPage />}>
       <SignUpPage />
-    </Suspense>
-  ),
-})
-
-export const agentOrchestrationRoute = createRoute({
-  path: '/agent-orchestration',
-  getParentRoute: () => rootRoute,
-  component: () => (
-    <Suspense fallback={<LoadingPage />}>
-      <AgentOrchestrationRoute />
     </Suspense>
   ),
 })
@@ -369,16 +348,6 @@ export const learningEvaluationRoute = createRoute({
   ),
 })
 
-export const projectAgentOrchestrationRoute = createRoute({
-  path: '/p/$projectId/agent-orchestration',
-  getParentRoute: () => dashboardRoute,
-  component: () => (
-    <Suspense fallback={<LoadingPage />}>
-      <ProjectAgentOrchestrationRoute />
-    </Suspense>
-  ),
-})
-
 export const settingsRoute = createRoute({
   path: '/settings',
   getParentRoute: () => dashboardRoute,
@@ -408,11 +377,9 @@ export const routeTree = rootRoute.addChildren([
     courseLibraryRoute,
     knowledgeGraphRoute,
     learningEvaluationRoute,
-    projectAgentOrchestrationRoute,
     settingsRoute,
   ]),
   indexRoute,
   signInRoute,
   signUpRoute,
-  agentOrchestrationRoute,
 ])
