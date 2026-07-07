@@ -61,6 +61,26 @@ class User(Base):
     knowledge_states = relationship(
         "StudentKnowledgeState", back_populates="user", cascade="all, delete-orphan"
     )
+    dashboard_comments = relationship(
+        "DashboardComment", back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class DashboardComment(Base):
+    __tablename__ = "dashboard_comments"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    user = relationship("User", back_populates="dashboard_comments")
 
 
 class Project(Base):

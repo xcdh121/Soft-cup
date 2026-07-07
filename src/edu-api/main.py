@@ -19,6 +19,7 @@ from routers import (
     chats_router,
     courses_router,
     diagnosis_router,
+    dashboard_router,
     documents_router,
     flashcard_groups_router,
     knowledge_graph_router,
@@ -113,6 +114,7 @@ class Api:
         self.app.include_router(documents_router)
         self.app.include_router(chats_router)
         self.app.include_router(diagnosis_router)
+        self.app.include_router(dashboard_router)
         self.app.include_router(notes_router)
         self.app.include_router(quizzes_router)
         self.app.include_router(flashcard_groups_router)
