@@ -1,5 +1,5 @@
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { Loader2Icon } from 'lucide-react'
+import { ExternalLinkIcon, Loader2Icon, PlayCircleIcon } from 'lucide-react'
 import { useEffect } from 'react'
 import type { GeneratedResource } from '@/data-acess/resource-package'
 import { flashcardsAtom, refreshFlashcardsAtom } from '@/data-acess/flashcard'
@@ -13,6 +13,100 @@ type ResourceReference = {
   topic?: string
   custom_instructions?: string
   stream_on_client?: boolean
+}
+
+type VideoRecommendation = {
+  title: string
+  url: string
+  thumbnail_url?: string | null
+  summary?: string | null
+  source?: string | null
+  published_at?: string | null
+  duration?: string | null
+}
+
+const getVideoRecommendations = (
+  resource: GeneratedResource,
+): Array<VideoRecommendation> => {
+  if (resource.resource_type !== 'video_recommendations') return []
+  const videos = resource.content_json?.videos
+  if (!Array.isArray(videos)) return []
+
+  return videos.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const candidate = item as Record<string, unknown>
+    if (typeof candidate.url !== 'string' || typeof candidate.title !== 'string') {
+      return []
+    }
+    return [{
+      title: candidate.title,
+      url: candidate.url,
+      thumbnail_url:
+        typeof candidate.thumbnail_url === 'string' ? candidate.thumbnail_url : null,
+      summary: typeof candidate.summary === 'string' ? candidate.summary : null,
+      source: typeof candidate.source === 'string' ? candidate.source : null,
+      published_at:
+        typeof candidate.published_at === 'string' ? candidate.published_at : null,
+      duration: typeof candidate.duration === 'string' ? candidate.duration : null,
+    }]
+  })
+}
+
+const VideoRecommendationsPreview = ({
+  videos,
+}: {
+  videos: Array<VideoRecommendation>
+}) => {
+  if (videos.length === 0) return <Empty label="暂未找到相关视频。" />
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {videos.map((video, index) => (
+        <a
+          key={`${video.url}-${index}`}
+          href={video.url}
+          target="_blank"
+          rel="noreferrer"
+          className="group overflow-hidden rounded-xl border bg-background transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-sm"
+        >
+          <div className="relative aspect-video overflow-hidden bg-muted">
+            {video.thumbnail_url ? (
+              <img
+                src={video.thumbnail_url}
+                alt=""
+                referrerPolicy="no-referrer"
+                className="size-full object-cover transition group-hover:scale-[1.02]"
+              />
+            ) : (
+              <div className="flex size-full items-center justify-center">
+                <PlayCircleIcon className="size-10 text-muted-foreground" />
+              </div>
+            )}
+            <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/15">
+              <PlayCircleIcon className="size-11 text-white opacity-0 drop-shadow transition group-hover:opacity-100" />
+            </div>
+            {video.duration ? (
+              <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white">
+                {video.duration}
+              </span>
+            ) : null}
+          </div>
+          <div className="space-y-2 p-3">
+            <div className="line-clamp-2 text-sm font-medium">{video.title}</div>
+            {video.summary ? (
+              <div className="line-clamp-2 text-xs text-muted-foreground">
+                {video.summary}
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span className="truncate">{video.source ?? '视频来源'}</span>
+              <ExternalLinkIcon className="size-3.5 shrink-0" />
+            </div>
+          </div>
+        </a>
+      ))}
+    </div>
+  )
 }
 
 const getReference = (resource: GeneratedResource): ResourceReference | null => {
@@ -141,6 +235,10 @@ export const ResourceResultPreview = ({
   projectId: string
   resource: GeneratedResource
 }) => {
+  if (resource.resource_type === 'video_recommendations') {
+    return <VideoRecommendationsPreview videos={getVideoRecommendations(resource)} />
+  }
+
   if (resource.content_text) {
     return (
       <div className="whitespace-pre-wrap text-sm">

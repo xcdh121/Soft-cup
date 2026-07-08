@@ -77,6 +77,7 @@ class ChatService:
         storage_root: str = "./.localdata",
         usage_service=None,
         queue_service=None,
+        resource_package_service=None,
     ) -> None:
         """Initialize the chat service.
 
@@ -92,6 +93,7 @@ class ChatService:
         self.search_service = search_service
         self.usage_service = usage_service
         self._queue_service = queue_service
+        self.resource_package_service = resource_package_service
         self.storage = LocalStorageService(storage_root)
         llm_config = LlmProviderConfig(
             model=llm_model or "gpt-4o-mini",
@@ -998,6 +1000,7 @@ class ChatService:
             queue=self._queue_service,
             language=language_code,
             llm=self.llm_non_streaming,  # Use non-streaming LLM for tools
+            resource_packages=self.resource_package_service,
         )
 
         # Send initial "thinking" status with start message

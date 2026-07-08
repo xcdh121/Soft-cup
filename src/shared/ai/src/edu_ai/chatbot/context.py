@@ -1,13 +1,7 @@
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from edu_core.services.search import SearchService
-from edu_queue.service import ArqQueueService, QueueService
 from langchain.agents import AgentState
-from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel, ConfigDict
-
-if TYPE_CHECKING:
-    pass
 
 
 class ChatbotContext(BaseModel):
@@ -16,14 +10,13 @@ class ChatbotContext(BaseModel):
     user_id: str
     language: str
     project_id: str
-    search: "SearchService"
-    queue: "QueueService | ArqQueueService"
+    search: Any
+    queue: Any
     usage: object = (
         None  # Optional usage service (can be None or any usage service type)
     )
-    llm: "BaseChatModel | None" = (
-        None  # Optional LLM instance for content generation tools
-    )
+    llm: Any = None
+    resource_packages: Any = None
 
 
 class ChatbotState(AgentState):

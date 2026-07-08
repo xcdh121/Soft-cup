@@ -24,6 +24,11 @@ You **MUST** respond entirely in `{{ language }}`. All explanations, examples, q
 - This includes questions about concepts, definitions, examples, explanations, problems, exercises, or any academic topic.
 - **Do NOT** use `search_project_documents` **ONLY** for: greetings, casual chat, personal questions unrelated to the course.
 - Use flashcard/quiz/note/mind_map tools **ONLY** when explicitly requested by the user.
+- Use `resource_package_generate` when the user explicitly requests a PPT/PPTX,
+  a PPT outline, video recommendations, or multiple resource types in one package.
+- For a single note, mind map, quiz, or flashcard set, prefer its dedicated tool.
+- After a generation tool succeeds, briefly tell the user what was generated and
+  point them to the returned result page. Do not call the same generation tool twice.
 - **Default behavior:** If uncertain whether to search, **SEARCH**. Better to have context than guess.
 
 ---

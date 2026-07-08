@@ -24,6 +24,7 @@ from edu_core.schemas.resource_packages import (
     ResourcePackageStreamEventDto,
 )
 from edu_core.storage import LocalStorageService
+from edu_core.services.baidu_search import BaiduSearchClient
 from edu_core.services.xfyun_ppt import XfyunPptClient, XfyunPptError
 
 if TYPE_CHECKING:
@@ -48,6 +49,7 @@ class ResourcePackageService:
         flashcard_group_service: "FlashcardGroupService | None" = None,
         mind_map_service: "MindMapService | None" = None,
         xfyun_ppt_client: XfyunPptClient | None = None,
+        baidu_search_client: BaiduSearchClient | None = None,
     ) -> None:
         self.storage = LocalStorageService(storage_root)
         self.agent_orchestration_service = agent_orchestration_service
@@ -56,6 +58,7 @@ class ResourcePackageService:
         self.flashcard_group_service = flashcard_group_service
         self.mind_map_service = mind_map_service
         self.xfyun_ppt_client = xfyun_ppt_client
+        self.baidu_search_client = baidu_search_client
 
     def list_resource_packages(
         self,
@@ -831,6 +834,7 @@ class ResourcePackageService:
             "code_lab": 40,
             "reading_material": 18,
             "video_script": 12,
+            "video_recommendations": 15,
         }
         return defaults.get(resource_type, 15)
 
@@ -979,6 +983,22 @@ class ResourcePackageService:
         documents: list[Document],
         generation_params: dict[str, Any],
     ) -> dict:
+        if resource_type == "video_recommendations":
+            if not self.baidu_search_client or not self.baidu_search_client.is_enabled:
+                raise ValueError("Baidu AI Search is not configured")
+            search_result = await self.baidu_search_client.search_videos(topic)
+            videos = search_result["videos"]
+            return {
+                "title": f"{topic} 视频推荐",
+                "summary": f"通过百度搜索找到 {len(videos)} 个相关视频资源。",
+                "format": "video-links",
+                "content_json": search_result,
+                "cover_image_url": videos[0].get("thumbnail_url"),
+                "generator_agent": "ResourceAgent",
+                "generation_reason": "根据学习主题检索公开的视频资源链接。",
+                "estimated_minutes": 15,
+            }
+
         if resource_type == "ppt_outline":
             xfyun_result = await self._generate_xfyun_outline(
                 topic=topic,

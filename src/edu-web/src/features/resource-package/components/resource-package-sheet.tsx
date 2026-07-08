@@ -95,6 +95,11 @@ const RESOURCE_TYPE_OPTIONS: Array<{
     label: 'PPTX',
     description: 'Generated presentation file link',
   },
+  {
+    value: 'video_recommendations',
+    label: 'Video recommendations',
+    description: 'Search Bilibili for relevant learning videos',
+  },
 ]
 
 const difficultyOptions: Array<{
@@ -358,6 +363,7 @@ const ResourcePackageSheetBody = ({
     'flashcards',
     'ppt_outline',
     'pptx',
+    'video_recommendations',
   ])
   const [selectedPackage, setSelectedPackage] = useState<ResourcePackage | null>(
     null,

@@ -23,6 +23,7 @@ from edu_core.services import (
     UsageService,
     UserService,
 )
+from edu_core.services.baidu_search import BaiduSearchClient, BaiduSearchConfig
 from edu_core.services.xfyun_ppt import XfyunPptClient, XfyunPptConfig
 from edu_queue.service import ArqQueueService, QueueService
 from fastapi import Depends
@@ -179,6 +180,19 @@ def get_resource_package_service(
                 poll_timeout_seconds=settings.xfyun_ppt_poll_timeout_seconds,
             )
         ),
+        baidu_search_client=BaiduSearchClient(
+            BaiduSearchConfig(
+                api_key=settings.baidu_search_api_key,
+                base_url=settings.baidu_search_base_url,
+                video_top_k=settings.baidu_search_video_top_k,
+                sites=tuple(
+                    site.strip()
+                    for site in settings.baidu_search_sites.split(",")
+                    if site.strip()
+                ),
+                timeout_seconds=settings.baidu_search_timeout_seconds,
+            )
+        ),
     )
 
 
@@ -192,6 +206,9 @@ def get_chat_service(
     usage_service: UsageService = Depends(get_usage_service),
     queue_service: QueueService = Depends(get_queue_service),
     search_service: SearchService = Depends(get_search_service),
+    resource_package_service: ResourcePackageService = Depends(
+        get_resource_package_service
+    ),
 ) -> ChatService:
     """Get ChatService instance."""
     return ChatService(
@@ -202,6 +219,7 @@ def get_chat_service(
         storage_root=settings.storage_root,
         usage_service=usage_service,
         queue_service=queue_service,
+        resource_package_service=resource_package_service,
     )
 
 
@@ -250,6 +268,9 @@ def get_chat_service_with_streaming(
     settings: Settings = Depends(get_settings_dep),
     usage_service: UsageService = Depends(get_usage_service),
     queue_service: QueueService = Depends(get_queue_service),
+    resource_package_service: ResourcePackageService = Depends(
+        get_resource_package_service
+    ),
 ) -> ChatService:
     """Get ChatService instance configured for streaming with SearchService."""
     return ChatService(
@@ -260,6 +281,7 @@ def get_chat_service_with_streaming(
         storage_root=settings.storage_root,
         usage_service=usage_service,
         queue_service=queue_service,
+        resource_package_service=resource_package_service,
     )
 
 

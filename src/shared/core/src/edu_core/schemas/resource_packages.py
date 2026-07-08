@@ -18,6 +18,7 @@ ResourceType = Literal[
     "code_lab",
     "reading_material",
     "video_script",
+    "video_recommendations",
 ]
 
 

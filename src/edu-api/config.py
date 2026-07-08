@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     xfyun_ppt_poll_interval_seconds: float = 3.0
     xfyun_ppt_poll_timeout_seconds: float = 180.0
 
+    # Baidu AI Search
+    baidu_search_api_key: str = ""
+    baidu_search_base_url: str = "https://qianfan.baidubce.com"
+    baidu_search_video_top_k: int = 6
+    baidu_search_sites: str = "bilibili.com"
+    baidu_search_timeout_seconds: float = 15.0
+
     # Usage Limits (per day per user)
     max_chat_messages_per_day: int = 50
     max_flashcard_generations_per_day: int = 10

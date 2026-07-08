@@ -38,6 +38,7 @@ export type ResourceType =
   | 'code_lab'
   | 'reading_material'
   | 'video_script'
+  | 'video_recommendations'
 
 export type GeneratedResource = {
   id: string

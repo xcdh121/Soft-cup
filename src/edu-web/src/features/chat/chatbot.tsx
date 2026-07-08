@@ -55,11 +55,13 @@ import type {
   ToolCallPartDto,
 } from '@/integrations/api/client'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { Link } from '@tanstack/react-router'
 import {
   ActivityIcon,
   CheckCircle2Icon,
   Clock3Icon,
   CopyIcon,
+  ExternalLinkIcon,
   GlobeIcon,
   WrenchIcon,
   XCircleIcon,
@@ -146,6 +148,18 @@ const parseToolOutput = (toolCall: ToolCallPartDto) => {
   return { output: toolCall.tool_output, errorText: undefined }
 }
 
+const getResourcePackageResult = (toolName: string, output: unknown) => {
+  if (
+    toolName !== 'resource_package_generate' ||
+    !output ||
+    typeof output !== 'object'
+  ) {
+    return null
+  }
+  const value = output as Record<string, unknown>
+  return typeof value.package_id === 'string' ? value : null
+}
+
 const toToolUiState = (
   state: string,
 ):
@@ -184,9 +198,7 @@ const getToolStatusIcon = (state: string) => {
   return <ActivityIcon className="size-3.5 animate-pulse text-primary" />
 }
 
-const getToolStatusVariant = (
-  state: string,
-): 'secondary' | 'destructive' => {
+const getToolStatusVariant = (state: string): 'secondary' | 'destructive' => {
   return state === 'output-error' ? 'destructive' : 'secondary'
 }
 
@@ -237,16 +249,19 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
   const isStreaming = streamStatus !== null
   const toolTimeline = useMemo(() => collectToolTimeline(messages), [messages])
 
-  const blobToDataUrl = useCallback(async (blobUrl: string): Promise<string> => {
-    const response = await fetch(blobUrl)
-    const blob = await response.blob()
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onloadend = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
-    })
-  }, [])
+  const blobToDataUrl = useCallback(
+    async (blobUrl: string): Promise<string> => {
+      const response = await fetch(blobUrl)
+      const blob = await response.blob()
+      return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+    },
+    [],
+  )
 
   const handleSubmit = async (message: PromptInputMessage) => {
     const hasText = Boolean(message.text)
@@ -420,7 +435,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                                   <Response>{part.text_content}</Response>
                                 </MessageContent>
                                 {message.role === 'assistant' &&
-                                  index === (message.parts?.length || 0) - 1 && (
+                                  index ===
+                                    (message.parts?.length || 0) - 1 && (
                                     <div className="mt-2 flex gap-2">
                                       <button
                                         onClick={() =>
@@ -444,12 +460,18 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                             )
                             const { output, errorText } =
                               parseToolOutput(toolCall)
+                            const resourcePackageResult =
+                              getResourcePackageResult(
+                                toolCall.tool_name,
+                                output,
+                              )
 
                             return (
                               <Tool
                                 key={`${message.id}-part-${index}`}
                                 defaultOpen={
-                                  toolCall.tool_state === 'output-error'
+                                  toolCall.tool_state === 'output-error' ||
+                                  resourcePackageResult !== null
                                 }
                               >
                                 <ToolHeader
@@ -466,6 +488,18 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                                       output={output}
                                       errorText={errorText}
                                     />
+                                  )}
+                                  {resourcePackageResult && (
+                                    <div className="border-t p-4">
+                                      <Link
+                                        to="/dashboard/p/$projectId/resource-packages"
+                                        params={{ projectId }}
+                                        className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                                      >
+                                        查看生成的资源包
+                                        <ExternalLinkIcon className="size-4" />
+                                      </Link>
+                                    </div>
                                   )}
                                 </ToolContent>
                               </Tool>
@@ -525,7 +559,10 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                   </PromptInputSelectTrigger>
                   <PromptInputSelectContent>
                     {models.map((item) => (
-                      <PromptInputSelectItem key={item.value} value={item.value}>
+                      <PromptInputSelectItem
+                        key={item.value}
+                        value={item.value}
+                      >
                         {item.name}
                       </PromptInputSelectItem>
                     ))}
@@ -570,8 +607,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                   <WrenchIcon className="mb-3 size-5 text-muted-foreground" />
                   <div className="text-sm font-medium">No tool calls yet</div>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Ask for document search, quizzes, flashcards, notes, or mind
-                    maps to populate this panel.
+                    Ask for document search, PPTs, resource packages, quizzes,
+                    flashcards, notes, or mind maps to populate this panel.
                   </p>
                 </>
               )}

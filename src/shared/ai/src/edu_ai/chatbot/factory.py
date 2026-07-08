@@ -9,6 +9,7 @@ from edu_ai.tools.mind_map import tools as mind_map_tools
 from edu_ai.tools.note import tools as note_tools
 from edu_ai.tools.quiz import tools as quiz_tools
 from edu_ai.tools.rag import tools as rag_tools
+from edu_ai.tools.resource_package import tools as resource_package_tools
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
     ModelRequest,
@@ -98,6 +99,7 @@ def make_chatbot(llm: BaseChatModel):
         *quiz_tools,
         *note_tools,
         *mind_map_tools,
+        *resource_package_tools,
     ]
 
     return create_agent(
