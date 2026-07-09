@@ -35,6 +35,7 @@ export type ResourceType =
   | 'flashcards'
   | 'ppt_outline'
   | 'pptx'
+  | 'programming_questions'
   | 'code_lab'
   | 'reading_material'
   | 'video_script'
@@ -175,7 +176,8 @@ export const generateResourcePackageAtom = runtime.fn(
       const registry = yield* Registry.AtomRegistry
       const { httpClient } = yield* ApiClientService
       const requestedTypes = input.resource_types ?? [
-        'lecture_note', 'mind_map', 'practice_set', 'ppt_outline', 'code_lab',
+        'lecture_note', 'mind_map', 'practice_set', 'ppt_outline',
+        'programming_questions', 'code_lab',
       ]
       let resourceStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>> =
         Object.fromEntries(requestedTypes.map((type) => [type, 'pending']))
@@ -201,6 +203,7 @@ export const generateResourcePackageAtom = runtime.fn(
           'mind_map',
           'practice_set',
           'ppt_outline',
+          'programming_questions',
           'code_lab',
         ],
         difficulty_level: input.difficulty_level ?? 'intermediate',

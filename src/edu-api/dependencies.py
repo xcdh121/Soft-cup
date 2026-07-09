@@ -193,6 +193,12 @@ def get_resource_package_service(
                 timeout_seconds=settings.baidu_search_timeout_seconds,
             )
         ),
+        llm_config=LlmProviderConfig(
+            model=settings.llm_model,
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+            temperature=0.3,
+        ),
     )
 
 

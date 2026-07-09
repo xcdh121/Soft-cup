@@ -1,3 +1,4 @@
+import json
 from collections.abc import Awaitable, Callable
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ from edu_db.models import (
 from edu_db.session import get_session_factory
 
 from edu_core.exceptions import NotFoundError
+from edu_core.model_providers import LlmProviderConfig, create_chat_model
 from edu_core.schemas.agent_orchestration import AgentTrigger
 from edu_core.schemas.resource_packages import (
     GeneratedResourceDto,
@@ -50,6 +52,7 @@ class ResourcePackageService:
         mind_map_service: "MindMapService | None" = None,
         xfyun_ppt_client: XfyunPptClient | None = None,
         baidu_search_client: BaiduSearchClient | None = None,
+        llm_config: LlmProviderConfig | None = None,
     ) -> None:
         self.storage = LocalStorageService(storage_root)
         self.agent_orchestration_service = agent_orchestration_service
@@ -59,6 +62,7 @@ class ResourcePackageService:
         self.mind_map_service = mind_map_service
         self.xfyun_ppt_client = xfyun_ppt_client
         self.baidu_search_client = baidu_search_client
+        self.llm_config = llm_config
 
     def list_resource_packages(
         self,
@@ -158,6 +162,7 @@ class ResourcePackageService:
                 "mind_map",
                 "practice_set",
                 "ppt_outline",
+                "programming_questions",
                 "code_lab",
             ]
             now = datetime.now(timezone.utc)
@@ -831,6 +836,7 @@ class ResourcePackageService:
             "mind_map": 15,
             "ppt_outline": 20,
             "pptx": 25,
+            "programming_questions": 35,
             "code_lab": 40,
             "reading_material": 18,
             "video_script": 12,
@@ -983,6 +989,18 @@ class ResourcePackageService:
         documents: list[Document],
         generation_params: dict[str, Any],
     ) -> dict:
+        if resource_type == "programming_questions":
+            return await self._generate_programming_questions(
+                topic=topic,
+                goal=goal,
+                difficulty_level=difficulty_level,
+                document_context=document_context,
+                knowledge_point_ids=knowledge_point_ids,
+                weak_points=weak_points,
+                custom_instructions=custom_instructions,
+                generation_params=generation_params,
+            )
+
         if resource_type == "video_recommendations":
             if not self.baidu_search_client or not self.baidu_search_client.is_enabled:
                 raise ValueError("Baidu AI Search is not configured")
@@ -1036,6 +1054,326 @@ class ResourcePackageService:
             weak_points=weak_points,
             custom_instructions=custom_instructions,
         )
+
+    async def _generate_programming_questions(
+        self,
+        *,
+        topic: str,
+        goal: str | None,
+        difficulty_level: str,
+        document_context: str,
+        knowledge_point_ids: list[str],
+        weak_points: list[str],
+        custom_instructions: str | None,
+        generation_params: dict[str, Any],
+    ) -> dict[str, Any]:
+        count = self._get_programming_question_count(generation_params)
+        fallback_reason = "Generated with a local fallback because the LLM was unavailable."
+        if self.llm_config and self.llm_config.api_key:
+            try:
+                model = create_chat_model(
+                    self.llm_config,
+                    streaming=False,
+                    temperature=0.35,
+                ).bind(max_tokens=3500)
+                messages = [
+                    (
+                        "system",
+                        (
+                            "You are a senior computer science teacher. "
+                            "Generate concise, original programming assessment "
+                            "questions as strict JSON only."
+                        ),
+                    ),
+                    (
+                        "user",
+                        self._build_programming_questions_prompt(
+                            topic=topic,
+                            goal=goal,
+                            difficulty_level=difficulty_level,
+                            document_context=document_context,
+                            knowledge_point_ids=knowledge_point_ids,
+                            weak_points=weak_points,
+                            custom_instructions=custom_instructions,
+                            count=count,
+                        ),
+                    ),
+                ]
+                response = await model.ainvoke(messages)
+                payload = self._extract_json_payload(str(response.content))
+                content_json = self._normalize_programming_questions_payload(
+                    payload,
+                    topic=topic,
+                    difficulty_level=difficulty_level,
+                    count=count,
+                )
+                return self._build_programming_questions_resource(
+                    topic=topic,
+                    difficulty_level=difficulty_level,
+                    content_json=content_json,
+                    generated_by="DeepSeek",
+                    reason="Generated from the configured OpenAI-compatible LLM endpoint.",
+                )
+            except Exception as exc:
+                fallback_reason = (
+                    "Generated with a local fallback because LLM generation failed: "
+                    f"{exc}"
+                )
+
+        content_json = self._build_fallback_programming_questions(
+            topic=topic,
+            goal=goal,
+            difficulty_level=difficulty_level,
+            knowledge_point_ids=knowledge_point_ids,
+            weak_points=weak_points,
+            count=count,
+        )
+        return self._build_programming_questions_resource(
+            topic=topic,
+            difficulty_level=difficulty_level,
+            content_json=content_json,
+            generated_by="PracticeAgent",
+            reason=fallback_reason,
+        )
+
+    def _get_programming_question_count(
+        self, generation_params: dict[str, Any]
+    ) -> int:
+        raw_count = generation_params.get("programming_question_count", 3)
+        try:
+            count = int(raw_count)
+        except (TypeError, ValueError):
+            count = 3
+        return max(3, min(5, count))
+
+    def _build_programming_questions_prompt(
+        self,
+        *,
+        topic: str,
+        goal: str | None,
+        difficulty_level: str,
+        document_context: str,
+        knowledge_point_ids: list[str],
+        weak_points: list[str],
+        custom_instructions: str | None,
+        count: int,
+    ) -> str:
+        return json.dumps(
+            {
+                "task": "Generate programming assessment questions.",
+                "language": "Chinese",
+                "topic": topic,
+                "learning_goal": goal,
+                "difficulty_level": difficulty_level,
+                "question_count": count,
+                "knowledge_point_ids": knowledge_point_ids,
+                "weak_points": weak_points,
+                "custom_instructions": custom_instructions,
+                "source_context": document_context[:3500],
+                "output_schema": {
+                    "topic": "string",
+                    "difficulty_level": "string",
+                    "questions": [
+                        {
+                            "id": "q1",
+                            "title": "string",
+                            "description": "string",
+                            "input_format": "string",
+                            "output_format": "string",
+                            "constraints": ["string"],
+                            "examples": [
+                                {
+                                    "input": "string",
+                                    "output": "string",
+                                    "explanation": "string",
+                                }
+                            ],
+                            "starter_code": "string",
+                            "reference_solution": "string",
+                            "hints": ["string"],
+                            "knowledge_points": ["string"],
+                            "difficulty": "beginner|intermediate|advanced",
+                        }
+                    ],
+                },
+                "rules": [
+                    "Return only one JSON object.",
+                    "Create 3 to 5 questions, matching question_count exactly.",
+                    "Each question should be solvable in Python.",
+                    "Keep descriptions suitable for a learning evaluation page.",
+                ],
+            },
+            ensure_ascii=False,
+        )
+
+    def _extract_json_payload(self, text: str) -> dict[str, Any]:
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            stripped = stripped.strip("`")
+            if stripped.lower().startswith("json"):
+                stripped = stripped[4:].strip()
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start >= 0 and end > start:
+            parsed = json.loads(stripped[start : end + 1])
+            if isinstance(parsed, dict):
+                return parsed
+        raise ValueError("LLM did not return a JSON object")
+
+    def _normalize_programming_questions_payload(
+        self,
+        payload: dict[str, Any],
+        *,
+        topic: str,
+        difficulty_level: str,
+        count: int,
+    ) -> dict[str, Any]:
+        raw_questions = payload.get("questions")
+        if not isinstance(raw_questions, list):
+            raise ValueError("Programming question payload has no questions list")
+
+        questions: list[dict[str, Any]] = []
+        for index, raw in enumerate(raw_questions[:count], start=1):
+            if not isinstance(raw, dict):
+                continue
+            title = str(raw.get("title") or f"{topic} programming question {index}")
+            description = str(raw.get("description") or raw.get("problem") or "")
+            if not description.strip():
+                continue
+            questions.append(
+                {
+                    "id": str(raw.get("id") or f"q{index}"),
+                    "title": title,
+                    "description": description,
+                    "input_format": str(raw.get("input_format") or "See description."),
+                    "output_format": str(raw.get("output_format") or "See description."),
+                    "constraints": self._string_list(raw.get("constraints")),
+                    "examples": self._normalize_examples(raw.get("examples")),
+                    "starter_code": str(
+                        raw.get("starter_code")
+                        or "def solve(input_data):\n    # TODO\n    return None\n"
+                    ),
+                    "reference_solution": str(raw.get("reference_solution") or ""),
+                    "hints": self._string_list(raw.get("hints")),
+                    "knowledge_points": self._string_list(raw.get("knowledge_points")),
+                    "difficulty": str(raw.get("difficulty") or difficulty_level),
+                }
+            )
+
+        if len(questions) < 3:
+            raise ValueError("Programming question payload contains fewer than 3 questions")
+
+        return {
+            "topic": str(payload.get("topic") or topic),
+            "difficulty_level": str(payload.get("difficulty_level") or difficulty_level),
+            "questions": questions[:count],
+        }
+
+    def _string_list(self, value: Any) -> list[str]:
+        if isinstance(value, list):
+            return [str(item) for item in value if str(item).strip()]
+        if isinstance(value, str) and value.strip():
+            return [value.strip()]
+        return []
+
+    def _normalize_examples(self, value: Any) -> list[dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+        examples = []
+        for item in value[:2]:
+            if not isinstance(item, dict):
+                continue
+            examples.append(
+                {
+                    "input": str(item.get("input") or ""),
+                    "output": str(item.get("output") or ""),
+                    "explanation": str(item.get("explanation") or ""),
+                }
+            )
+        return examples
+
+    def _build_programming_questions_resource(
+        self,
+        *,
+        topic: str,
+        difficulty_level: str,
+        content_json: dict[str, Any],
+        generated_by: str,
+        reason: str,
+    ) -> dict[str, Any]:
+        questions = content_json.get("questions") or []
+        return {
+            "title": f"{topic} programming questions",
+            "summary": f"{len(questions)} coding problems for learning evaluation.",
+            "format": "json",
+            "generator_agent": generated_by,
+            "generation_reason": reason,
+            "estimated_minutes": 35,
+            "content_json": content_json,
+        }
+
+    def _build_fallback_programming_questions(
+        self,
+        *,
+        topic: str,
+        goal: str | None,
+        difficulty_level: str,
+        knowledge_point_ids: list[str],
+        weak_points: list[str],
+        count: int,
+    ) -> dict[str, Any]:
+        focus = goal or f"Practice core ideas of {topic}."
+        knowledge_points = knowledge_point_ids or [topic]
+        weak_text = ", ".join(weak_points) if weak_points else topic
+        templates = [
+            ("Implement the Core Operation", "Write a function that models the core operation in the topic."),
+            ("Handle Boundary Cases", "Extend the solution to cover empty, minimal, and repeated inputs."),
+            ("Optimize the First Solution", "Improve a straightforward implementation and explain the complexity."),
+            ("Trace and Fix a Bug", "Given a flawed approach, identify the issue and implement a corrected version."),
+            ("Design a Small Evaluator", "Build a helper that checks whether a candidate answer satisfies the rules."),
+        ]
+        questions = []
+        for index, (title, description) in enumerate(templates[:count], start=1):
+            questions.append(
+                {
+                    "id": f"q{index}",
+                    "title": f"{topic}: {title}",
+                    "description": f"{description} Learning goal: {focus}",
+                    "input_format": "Read input_data as a string or structured Python value.",
+                    "output_format": "Return the computed answer from solve(input_data).",
+                    "constraints": [
+                        "Keep the solution deterministic.",
+                        "State time and space complexity after implementation.",
+                    ],
+                    "examples": [
+                        {
+                            "input": "sample input",
+                            "output": "sample output",
+                            "explanation": f"Use this example to verify the {topic} logic.",
+                        }
+                    ],
+                    "starter_code": "def solve(input_data):\n    # TODO: implement\n    return None\n",
+                    "reference_solution": "def solve(input_data):\n    return input_data\n",
+                    "hints": [
+                        f"Focus on {weak_text}.",
+                        "Start with a clear state definition before coding.",
+                    ],
+                    "knowledge_points": knowledge_points,
+                    "difficulty": difficulty_level,
+                }
+            )
+        return {
+            "topic": topic,
+            "difficulty_level": difficulty_level,
+            "questions": questions,
+        }
 
     async def _generate_xfyun_outline(
         self,
@@ -1427,6 +1765,23 @@ class ResourcePackageService:
                     "```\n"
                 ),
             }
+
+        if resource_type == "programming_questions":
+            content_json = self._build_fallback_programming_questions(
+                topic=topic,
+                goal=goal,
+                difficulty_level=difficulty_level,
+                knowledge_point_ids=knowledge_point_ids,
+                weak_points=weak_points,
+                count=3,
+            )
+            return self._build_programming_questions_resource(
+                topic=topic,
+                difficulty_level=difficulty_level,
+                content_json=content_json,
+                generated_by="PracticeAgent",
+                reason="Generated with the local programming question template.",
+            )
 
         if resource_type == "reading_material":
             return {

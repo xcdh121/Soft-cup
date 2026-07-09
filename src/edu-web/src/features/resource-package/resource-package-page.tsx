@@ -68,6 +68,11 @@ const RESOURCE_TYPE_OPTIONS: Array<{
     description: '导出演示文件',
   },
   {
+    value: 'programming_questions',
+    label: 'Coding Problems',
+    description: 'Generate 3-5 coding assessment problems',
+  },
+  {
     value: 'video_recommendations',
     label: '视频推荐',
     description: '从哔哩哔哩检索相关学习视频',
@@ -368,6 +373,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
     'flashcards',
     'ppt_outline',
     'pptx',
+    'programming_questions',
     'video_recommendations',
   ])
   const [selectedPackage, setSelectedPackage] =

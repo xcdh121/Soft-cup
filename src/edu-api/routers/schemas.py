@@ -399,6 +399,7 @@ class GenerateResourcePackageRequest(BaseModel):
             "mind_map",
             "practice_set",
             "ppt_outline",
+            "programming_questions",
             "code_lab",
         ],
         description="Requested resource types",

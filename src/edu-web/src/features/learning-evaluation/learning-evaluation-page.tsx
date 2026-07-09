@@ -6,6 +6,7 @@ import {
   BrainCircuit,
   CheckCircle2,
   CircleAlert,
+  Code2,
   Clock3,
   Layers3,
 } from 'lucide-react'
@@ -28,6 +29,82 @@ const viewLabels: Record<View, string> = {
   wrong: '错题统计',
 }
 
+const ProgrammingResourceCard = ({
+  projectId,
+  resource,
+}: {
+  projectId: string
+  resource: EvaluationResource
+}) => {
+  const questions = resource.programmingQuestions ?? []
+
+  return (
+    <Card className="rounded-2xl">
+      <CardContent className="space-y-4 p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 gap-3">
+            <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
+              <Code2 className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="truncate font-medium">{resource.name}</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Coding Problems - {questions.length} items
+              </div>
+            </div>
+          </div>
+          <Badge variant="secondary">Practice</Badge>
+        </div>
+
+        <div className="space-y-3">
+          {questions.map((question, index) => (
+            <div key={question.id} className="rounded-lg border bg-muted/30 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="font-medium">
+                  {index + 1}. {question.title}
+                </div>
+                {question.difficulty ? (
+                  <Badge variant="outline">{question.difficulty}</Badge>
+                ) : null}
+              </div>
+              <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
+                {question.description}
+              </p>
+              {question.examples[0] ? (
+                <div className="mt-3 grid gap-2 rounded-md bg-background p-2 text-xs sm:grid-cols-2">
+                  <div>
+                    <div className="font-medium">Input</div>
+                    <pre className="mt-1 whitespace-pre-wrap">
+                      {question.examples[0].input}
+                    </pre>
+                  </div>
+                  <div>
+                    <div className="font-medium">Output</div>
+                    <pre className="mt-1 whitespace-pre-wrap">
+                      {question.examples[0].output}
+                    </pre>
+                  </div>
+                </div>
+              ) : null}
+              {question.hints.length ? (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Hint: {question.hints[0]}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+
+        <Button size="sm" variant="outline" asChild>
+          <Link to="/dashboard/p/$projectId/resource-packages" params={{ projectId }}>
+            View Package
+          </Link>
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
 const ResourceCard = ({
   projectId,
   resource,
@@ -35,6 +112,12 @@ const ResourceCard = ({
   projectId: string
   resource: EvaluationResource
 }) => {
+  if (resource.type === 'programming_questions') {
+    return (
+      <ProgrammingResourceCard projectId={projectId} resource={resource} />
+    )
+  }
+
   const progress = resource.itemCount
     ? Math.round((resource.answeredCount / resource.itemCount) * 100)
     : 0

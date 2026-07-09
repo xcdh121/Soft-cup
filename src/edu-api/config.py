@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     xfyun_ppt_poll_interval_seconds: float = 3.0
     xfyun_ppt_poll_timeout_seconds: float = 180.0
 
+    # XFYun Chinese speech recognition (IAT)
+    xfyun_iat_enabled: bool = False
+    xfyun_iat_app_id: str = ""
+    xfyun_iat_api_key: str = ""
+    xfyun_iat_api_secret: str = ""
+    xfyun_iat_host: str = "iat.xf-yun.com"
+    xfyun_iat_path: str = "/v1"
+
     # Baidu AI Search
     baidu_search_api_key: str = ""
     baidu_search_base_url: str = "https://qianfan.baidubce.com"

@@ -23,6 +23,7 @@ import {
   PromptInputSelectItem,
   PromptInputSelectTrigger,
   PromptInputSelectValue,
+  PromptInputSpeechButton,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
@@ -66,7 +67,7 @@ import {
   WrenchIcon,
   XCircleIcon,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 
 const generateId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
@@ -235,6 +236,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
   const [input, setInput] = useState('')
   const [model, setModel] = useState<string>(models[0].value)
   const [webSearch, setWebSearch] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   const chatKey = `${projectId}:${chatId}`
   const chatResult = useAtomValue(chatAtom(chatKey))
@@ -530,6 +532,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
             <PromptInputBody>
               <PromptInputTextarea
                 onChange={(event) => setInput(event.target.value)}
+                ref={textareaRef}
                 value={input}
               />
             </PromptInputBody>
@@ -548,6 +551,12 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                   <GlobeIcon size={16} />
                   <span>Search</span>
                 </PromptInputButton>
+                <PromptInputSpeechButton
+                  aria-label="中文语音输入"
+                  onTranscriptionChange={setInput}
+                  textareaRef={textareaRef}
+                  value={input}
+                />
                 <PromptInputSelect
                   onValueChange={(value) => {
                     setModel(value as string)

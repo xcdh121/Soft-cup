@@ -18,10 +18,11 @@ from routers import (
     auth_router,
     chats_router,
     courses_router,
-    diagnosis_router,
     dashboard_router,
+    diagnosis_router,
     documents_router,
     flashcard_groups_router,
+    generated_resources_router,
     knowledge_graph_router,
     knowledge_points_router,
     knowledge_states_router,
@@ -33,8 +34,8 @@ from routers import (
     projects_router,
     quizzes_router,
     recommendations_router,
-    generated_resources_router,
     resource_packages_router,
+    speech_router,
     study_plans_router,
     usage_router,
     users_router,
@@ -125,6 +126,7 @@ class Api:
         self.app.include_router(learning_paths_router)
         self.app.include_router(resource_packages_router)
         self.app.include_router(generated_resources_router)
+        self.app.include_router(speech_router)
         self.app.include_router(usage_router)
         self.app.include_router(users_router)
         self.app.include_router(auth_router)

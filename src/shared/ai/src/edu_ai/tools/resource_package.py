@@ -15,6 +15,7 @@ ResourceType = Literal[
     "flashcards",
     "ppt_outline",
     "pptx",
+    "programming_questions",
     "code_lab",
     "reading_material",
     "video_script",

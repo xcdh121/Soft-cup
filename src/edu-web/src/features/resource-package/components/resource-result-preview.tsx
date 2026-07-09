@@ -25,6 +25,102 @@ type VideoRecommendation = {
   duration?: string | null
 }
 
+type ProgrammingQuestion = {
+  id: string
+  title: string
+  description: string
+  examples: Array<{
+    input: string
+    output: string
+    explanation?: string
+  }>
+  hints: Array<string>
+  difficulty?: string
+}
+
+const getProgrammingQuestions = (
+  resource: GeneratedResource,
+): Array<ProgrammingQuestion> => {
+  if (resource.resource_type !== 'programming_questions') return []
+  const questions = resource.content_json?.questions
+  if (!Array.isArray(questions)) return []
+
+  return questions.flatMap((item, index) => {
+    if (!item || typeof item !== 'object') return []
+    const candidate = item as Record<string, unknown>
+    const title = candidate.title
+    const description = candidate.description
+    if (typeof title !== 'string' || typeof description !== 'string') return []
+    const examples = Array.isArray(candidate.examples)
+      ? candidate.examples.flatMap((example) => {
+          if (!example || typeof example !== 'object') return []
+          const row = example as Record<string, unknown>
+          return [{
+            input: String(row.input ?? ''),
+            output: String(row.output ?? ''),
+            explanation:
+              typeof row.explanation === 'string' ? row.explanation : undefined,
+          }]
+        })
+      : []
+    const hints = Array.isArray(candidate.hints)
+      ? candidate.hints.map(String)
+      : []
+
+    return [{
+      id: String(candidate.id ?? `q${index + 1}`),
+      title,
+      description,
+      examples,
+      hints,
+      difficulty:
+        typeof candidate.difficulty === 'string' ? candidate.difficulty : undefined,
+    }]
+  })
+}
+
+const ProgrammingQuestionsPreview = ({
+  questions,
+}: {
+  questions: Array<ProgrammingQuestion>
+}) => {
+  if (questions.length === 0) return <Empty label="No coding problems generated yet." />
+
+  return (
+    <div className="space-y-3">
+      {questions.slice(0, 5).map((question, index) => (
+        <div key={question.id} className="rounded-lg border bg-background p-3 text-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="font-medium">
+              {index + 1}. {question.title}
+            </div>
+            {question.difficulty ? (
+              <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+                {question.difficulty}
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-2 line-clamp-3 text-muted-foreground">
+            {question.description}
+          </div>
+          {question.examples[0] ? (
+            <div className="mt-3 grid gap-2 rounded-md bg-muted/50 p-2 text-xs sm:grid-cols-2">
+              <div>
+                <div className="font-medium">Input</div>
+                <pre className="mt-1 whitespace-pre-wrap">{question.examples[0].input}</pre>
+              </div>
+              <div>
+                <div className="font-medium">Output</div>
+                <pre className="mt-1 whitespace-pre-wrap">{question.examples[0].output}</pre>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const getVideoRecommendations = (
   resource: GeneratedResource,
 ): Array<VideoRecommendation> => {
@@ -235,6 +331,14 @@ export const ResourceResultPreview = ({
   projectId: string
   resource: GeneratedResource
 }) => {
+  if (resource.resource_type === 'programming_questions') {
+    return (
+      <ProgrammingQuestionsPreview
+        questions={getProgrammingQuestions(resource)}
+      />
+    )
+  }
+
   if (resource.resource_type === 'video_recommendations') {
     return <VideoRecommendationsPreview videos={getVideoRecommendations(resource)} />
   }
