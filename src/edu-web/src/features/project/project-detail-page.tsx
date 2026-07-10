@@ -1,14 +1,24 @@
 import { Button } from '@/components/ui/button'
 import { chatsAtom, createChatAtom } from '@/data-acess/chat'
-import { documentsAtom, refreshDocumentsAtom } from '@/data-acess/document'
+import {
+  courseBooksAtom,
+  documentsAtom,
+  refreshDocumentsAtom,
+} from '@/data-acess/document'
 import { currentProjectIdAtom } from '@/data-acess/project'
 import { studyResourcesAtom } from '@/data-acess/study-resources'
 import { useUploadDocumentDialog } from '@/features/document/components/upload-document-dialog'
 import { useDocumentPolling } from '@/hooks/use-document-polling'
 import { cn } from '@/lib/utils'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { useNavigate } from '@tanstack/react-router'
-import { Loader2Icon, PlusIcon, RotateCw } from 'lucide-react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import {
+  BookOpenIcon,
+  FileTextIcon,
+  Loader2Icon,
+  PlusIcon,
+  RotateCw,
+} from 'lucide-react'
 import { useEffect } from 'react'
 import { ChatListItem } from './components/chat-list-item'
 import { DocumentListItem } from './components/document-list-item'
@@ -29,9 +39,7 @@ const ChatsSection = ({ projectId }: { projectId: string }) => {
         <span>正在加载聊天...</span>
       </div>
     ))
-    .onFailure(() => (
-      <div className="text-destructive">聊天加载失败</div>
-    ))
+    .onFailure(() => <div className="text-destructive">聊天加载失败</div>)
     .onSuccess((chats) => (
       <>
         {chats.length === 0 && (
@@ -60,9 +68,7 @@ const DocumentsSection = ({ projectId }: { projectId: string }) => {
         <span>正在加载文档...</span>
       </div>
     ))
-    .onFailure(() => (
-      <div className="text-destructive">文档加载失败</div>
-    ))
+    .onFailure(() => <div className="text-destructive">文档加载失败</div>)
     .onSuccess((documents) => (
       <>
         {documents.length === 0 && (
@@ -79,6 +85,53 @@ const DocumentsSection = ({ projectId }: { projectId: string }) => {
       </>
     ))
     .render()
+}
+
+const CourseBooksSection = ({ projectId }: { projectId: string }) => {
+  const courseBooksResult = useAtomValue(courseBooksAtom(projectId))
+
+  if (courseBooksResult.waiting) {
+    return (
+      <div className="mb-3 flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+        <Loader2Icon className="size-4 animate-spin" />
+        <span>正在加载章节 PDF...</span>
+      </div>
+    )
+  }
+
+  if (
+    !Result.isSuccess(courseBooksResult) ||
+    courseBooksResult.value.length === 0
+  ) {
+    return null
+  }
+
+  return (
+    <div className="mb-3 rounded-md border bg-muted/20 p-3">
+      <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+        <BookOpenIcon className="size-4 text-primary" />
+        <span>章节 PDF</span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {courseBooksResult.value.slice(0, 4).map((book) => (
+          <Button
+            key={book.resource_id}
+            variant="ghost"
+            className="h-auto justify-start px-2 py-2 text-left"
+            asChild
+          >
+            <Link
+              to="/dashboard/p/$projectId/d/$documentId"
+              params={{ projectId, documentId: book.document_id }}
+            >
+              <FileTextIcon className="size-4" />
+              <span className="min-w-0 flex-1 truncate">{book.title}</span>
+            </Link>
+          </Button>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 const AIContentSection = ({ projectId }: { projectId: string }) => {
@@ -210,6 +263,7 @@ const ProjectContent = ({ projectId }: ProjectContentProps) => {
               'dark:[&::-webkit-scrollbar-thumb]:hover:bg-muted-foreground/40',
             )}
           >
+            <CourseBooksSection projectId={projectId} />
             <DocumentsSection projectId={projectId} />
           </div>
         </div>

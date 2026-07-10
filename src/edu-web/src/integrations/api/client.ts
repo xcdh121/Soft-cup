@@ -152,6 +152,12 @@ export class DocumentDto extends S.Class<DocumentDto>('DocumentDto')({
    */
   summary: S.optionalWith(S.String, { nullable: true }),
   /**
+   * Display and source metadata for system or course documents
+   */
+  metadata: S.optionalWith(S.Record({ key: S.String, value: S.Unknown }), {
+    default: () => ({}),
+  }),
+  /**
    * Date and time the document was uploaded
    */
   uploaded_at: S.String,

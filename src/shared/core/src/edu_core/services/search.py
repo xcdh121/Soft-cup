@@ -140,7 +140,7 @@ class SearchService:
             id_column="id",
             content_column="content",
             embedding_column="embedding_vector",
-            metadata_columns=["id", "document_id"],
+            metadata_columns=["id", "document_id", "page_number", "chunk_index"],
         )
 
         return self._vector_store
@@ -162,48 +162,41 @@ class SearchService:
         if not similar_docs:
             return []
 
-        # Group by document_id and get document metadata
-        from collections import defaultdict
-
-        grouped = defaultdict(list)
-        for doc, score in similar_docs:
-            doc_id = doc.metadata.get("document_id", "")
-            if doc_id:
-                grouped[doc_id].append((doc, score))
-
-        # Get all document metadata in one query
-        doc_ids = list(grouped.keys())
+        doc_ids = list(
+            {
+                doc.metadata.get("document_id", "")
+                for doc, _score in similar_docs
+                if doc.metadata.get("document_id")
+            }
+        )
         documents = db.query(Document).filter(Document.id.in_(doc_ids)).all()
         doc_map = {str(d.id): d for d in documents}
 
         results = []
-        for _i, (doc_id, chunks) in enumerate(grouped.items(), start=1):
-            # Combine top segments
-            top_chunks = sorted(chunks, key=lambda x: x[1])[:3]
-            combined_text = "\n".join(
-                c[0].page_content[:500] for c in top_chunks if c[0].page_content
-            )
-
-            if not combined_text.strip():
+        for doc, score in similar_docs:
+            doc_id = doc.metadata.get("document_id", "")
+            if not doc_id or not doc.page_content.strip():
                 continue
 
             doc_meta = doc_map.get(str(doc_id))
-
-            # Get segment ID from first chunk
-            segment_id = top_chunks[0][0].metadata.get("id", doc_id)
+            segment_id = doc.metadata.get("id", doc_id)
+            page_number = self._coerce_int(doc.metadata.get("page_number"))
+            title = doc_meta.file_name if doc_meta else "Unknown Document"
+            if doc_meta and isinstance(doc_meta.extra_metadata, dict):
+                title = doc_meta.extra_metadata.get("display_title") or title
 
             try:
-                # Get the best score from top chunks
-                best_score = min([c[1] for c in top_chunks]) if top_chunks else 1.0
                 # Normalize score (lower is better in similarity search, so invert)
-                normalized_score = max(0.0, min(1.0, 1.0 - best_score))
+                normalized_score = max(0.0, min(1.0, 1.0 - score))
 
                 result = SearchResultItem(
                     id=segment_id,
+                    segment_id=segment_id,
                     document_id=doc_id,
-                    title=doc_meta.file_name if doc_meta else "Unknown Document",
-                    content=combined_text,
+                    title=title,
+                    content=doc.page_content[:1500],
                     score=normalized_score,
+                    page_number=page_number,
                 )
                 results.append(result)
             except Exception:
@@ -211,6 +204,14 @@ class SearchService:
                 continue
 
         return results
+
+    @staticmethod
+    def _coerce_int(value) -> int | None:
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return None
 
     @contextmanager
     def _get_db_session(self):

@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -147,6 +148,7 @@ class Document(Base):
     summary: Mapped[str] = mapped_column(
         Text, nullable=True
     )  # Auto-generated summary of the document
+    extra_metadata: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
     # Document processing metadata
     status: Mapped[str] = mapped_column(String, default="uploaded")
@@ -169,6 +171,14 @@ class Document(Base):
 
 class DocumentSegment(Base):
     __tablename__ = "document_segments"
+    __table_args__ = (
+        Index(
+            "ix_document_segments_document_page",
+            "document_id",
+            "page_number",
+        ),
+    )
+
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: str(uuid4())
     )
@@ -179,6 +189,8 @@ class DocumentSegment(Base):
     # Content
     content: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(String, default="text")
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, default=0)
 
     # Metadata for RAG
     embedding_vector: Mapped[list] = mapped_column(Vector(3072), nullable=True)

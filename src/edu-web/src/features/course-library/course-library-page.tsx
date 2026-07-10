@@ -1,9 +1,19 @@
 import { Result, useAtomValue } from '@effect-atom/atom-react'
-import { useEffect, useMemo, useState } from 'react'
+import { Link } from '@tanstack/react-router'
+import {
+  type CSSProperties,
+  type PointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import {
   BookOpenIcon,
   ExternalLinkIcon,
   FileTextIcon,
+  GripHorizontalIcon,
+  GripVerticalIcon,
   LibraryBigIcon,
   Loader2Icon,
 } from 'lucide-react'
@@ -15,9 +25,11 @@ import type {
 import {
   courseChaptersAtom,
   courseKnowledgePointsAtom,
+  courseResourcesAtom,
   coursesAtom,
   knowledgePointResourcesAtom,
 } from '@/data-acess/course-library'
+import { projectsAtom } from '@/data-acess/project'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -49,6 +61,20 @@ const resourceTypeLabel: Partial<Record<string, string>> = {
   problem: '题目',
   visualization: '可视化',
 }
+
+const DEFAULT_COURSE_PANEL_WIDTH = 280
+const DEFAULT_OUTLINE_PANEL_WIDTH = 420
+const MIN_COURSE_PANEL_WIDTH = 220
+const MAX_COURSE_PANEL_WIDTH = 420
+const MIN_OUTLINE_PANEL_WIDTH = 300
+const MAX_OUTLINE_PANEL_WIDTH = 620
+const MIN_DETAIL_SECTION_HEIGHT = 220
+const MAX_DETAIL_SECTION_HEIGHT = 620
+const DEFAULT_DETAIL_SECTION_HEIGHT = 360
+const RESIZE_HANDLE_SIZE = 6
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max)
 
 const parseMarkdownSections = (markdown?: string | null) => {
   if (!markdown) return []
@@ -99,6 +125,40 @@ const LoadingCard = ({ text }: { text: string }) => (
       {text}
     </CardContent>
   </Card>
+)
+
+const ColumnResizeHandle = ({
+  label,
+  onPointerDown,
+}: {
+  label: string
+  onPointerDown: (event: PointerEvent<HTMLDivElement>) => void
+}) => (
+  <div
+    role="separator"
+    aria-label={label}
+    className="group hidden h-full cursor-col-resize touch-none items-center justify-center border-x bg-border/40 transition-colors hover:bg-primary/20 lg:flex"
+    onPointerDown={onPointerDown}
+  >
+    <GripVerticalIcon className="size-3.5 text-muted-foreground opacity-60 group-hover:text-primary group-hover:opacity-100" />
+  </div>
+)
+
+const RowResizeHandle = ({
+  label,
+  onPointerDown,
+}: {
+  label: string
+  onPointerDown: (event: PointerEvent<HTMLDivElement>) => void
+}) => (
+  <div
+    role="separator"
+    aria-label={label}
+    className="group flex w-full cursor-row-resize touch-none items-center justify-center border-y bg-border/40 transition-colors hover:bg-primary/20"
+    onPointerDown={onPointerDown}
+  >
+    <GripHorizontalIcon className="size-3.5 text-muted-foreground opacity-60 group-hover:text-primary group-hover:opacity-100" />
+  </div>
 )
 
 const ResourceList = ({ knowledgePointId }: { knowledgePointId: string }) => {
@@ -167,17 +227,106 @@ const ResourceList = ({ knowledgePointId }: { knowledgePointId: string }) => {
     .render()
 }
 
+const ChapterPdfList = ({
+  courseId,
+  chapterId,
+}: {
+  courseId: string
+  chapterId: string | null
+}) => {
+  const resourcesResult = useAtomValue(courseResourcesAtom(courseId))
+  const projectsResult = useAtomValue(projectsAtom)
+  const project = Result.isSuccess(projectsResult)
+    ? projectsResult.value.find((item) => item.course_id === courseId)
+    : null
+
+  return Result.builder(resourcesResult)
+    .onSuccess((resources) => {
+      const pdfResources = resources.filter(
+        (resource) =>
+          resource.document_id &&
+          resource.chapter_id === chapterId &&
+          resource.resource_type.toLowerCase() === 'pdf',
+      )
+
+      if (pdfResources.length === 0) {
+        return (
+          <div className="rounded-2xl bg-muted/40 p-4 text-sm text-muted-foreground">
+            当前章节还没有绑定 PDF 文档。
+          </div>
+        )
+      }
+
+      return (
+        <div className="space-y-2">
+          {pdfResources.map((resource) => (
+            <div
+              key={resource.id}
+              className="rounded-2xl border bg-background p-3 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">PDF</Badge>
+                    <span className="truncate text-sm font-medium">
+                      {resource.title}
+                    </span>
+                  </div>
+                  {resource.description ? (
+                    <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+                      {resource.description}
+                    </p>
+                  ) : null}
+                </div>
+
+                {project && resource.document_id ? (
+                  <Button variant="outline" size="sm" asChild>
+                    <Link
+                      to="/dashboard/p/$projectId/d/$documentId"
+                      params={{
+                        projectId: project.id,
+                        documentId: resource.document_id,
+                      }}
+                    >
+                      阅读
+                    </Link>
+                  </Button>
+                ) : (
+                  <Badge variant="outline">无项目入口</Badge>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    })
+    .onInitialOrWaiting(() => <LoadingCard text="正在加载章节 PDF..." />)
+    .onFailure(() => (
+      <Card>
+        <CardContent className="p-6 text-sm text-destructive">
+          章节 PDF 加载失败，请确认后端服务正常。
+        </CardContent>
+      </Card>
+    ))
+    .render()
+}
+
 const CourseBrowser = ({
   course,
   selectedPointId,
+  onOutlineResize,
   onSelectPoint,
 }: {
   course: Course
   selectedPointId: string | null
+  onOutlineResize: (event: PointerEvent<HTMLDivElement>) => void
   onSelectPoint: (pointId: string) => void
 }) => {
   const chaptersResult = useAtomValue(courseChaptersAtom(course.id))
   const pointsResult = useAtomValue(courseKnowledgePointsAtom(course.id))
+  const [detailSectionHeight, setDetailSectionHeight] = useState(
+    DEFAULT_DETAIL_SECTION_HEIGHT,
+  )
 
   const chapters = Result.isSuccess(chaptersResult) ? chaptersResult.value : []
   const points = Result.isSuccess(pointsResult) ? pointsResult.value : []
@@ -201,10 +350,47 @@ const CourseBrowser = ({
     )
   }, [points])
 
+  const selectedChapter = selectedPoint?.chapter_id
+    ? chapters.find((chapter) => chapter.id === selectedPoint.chapter_id) ?? null
+    : null
+
+  const startDetailResize = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      event.currentTarget.setPointerCapture(event.pointerId)
+
+      const startY = event.clientY
+      const startHeight = detailSectionHeight
+
+      const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+        setDetailSectionHeight(
+          clamp(
+            startHeight + moveEvent.clientY - startY,
+            MIN_DETAIL_SECTION_HEIGHT,
+            MAX_DETAIL_SECTION_HEIGHT,
+          ),
+        )
+      }
+
+      const handlePointerUp = () => {
+        window.removeEventListener('pointermove', handlePointerMove)
+        window.removeEventListener('pointerup', handlePointerUp)
+        window.document.body.style.cursor = ''
+        window.document.body.style.userSelect = ''
+      }
+
+      window.document.body.style.cursor = 'row-resize'
+      window.document.body.style.userSelect = 'none'
+      window.addEventListener('pointermove', handlePointerMove)
+      window.addEventListener('pointerup', handlePointerUp, { once: true })
+    },
+    [detailSectionHeight],
+  )
+
   if (!Result.isSuccess(chaptersResult) || !Result.isSuccess(pointsResult)) {
     if (Result.isFailure(chaptersResult) || Result.isFailure(pointsResult)) {
       return (
-        <Card>
+        <Card className="lg:col-span-3">
           <CardContent className="p-6 text-sm text-destructive">
             课程内容加载失败，请确认后端服务和数据库数据。
           </CardContent>
@@ -212,15 +398,19 @@ const CourseBrowser = ({
       )
     }
 
-    return <LoadingCard text="正在加载课程章节和知识点..." />
+    return (
+      <div className="lg:col-span-3">
+        <LoadingCard text="正在加载课程章节和知识点..." />
+      </div>
+    )
   }
 
   const markdownSections = parseMarkdownSections(selectedPoint?.description)
 
   return (
-    <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-      <Card className="overflow-hidden">
-        <CardHeader>
+    <>
+      <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+        <CardHeader className="shrink-0">
           <CardTitle className="flex items-center gap-2">
             <BookOpenIcon className="size-5" />
             章节与知识点
@@ -229,7 +419,7 @@ const CourseBrowser = ({
             按章节浏览知识点，点击后查看正文和资源链接。
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto">
           {chapters.map((chapter: CourseChapter) => {
             const chapterPoints = pointsByChapter[chapter.id] ?? []
 
@@ -277,9 +467,17 @@ const CourseBrowser = ({
         </CardContent>
       </Card>
 
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
+      <ColumnResizeHandle
+        label="调整章节知识点区域宽度"
+        onPointerDown={onOutlineResize}
+      />
+
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <Card
+          className="flex min-h-0 flex-col overflow-hidden"
+          style={{ height: detailSectionHeight }}
+        >
+          <CardHeader className="shrink-0">
             <CardTitle className="flex items-center gap-2">
               <FileTextIcon className="size-5" />
               {selectedPoint?.name ?? '请选择知识点'}
@@ -298,7 +496,7 @@ const CourseBrowser = ({
               </CardDescription>
             ) : null}
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-h-0 flex-1 overflow-y-auto">
             {markdownSections.length > 0 ? (
               <div className="space-y-5">
                 {markdownSections.map((section) => (
@@ -319,21 +517,42 @@ const CourseBrowser = ({
           </CardContent>
         </Card>
 
+        <RowResizeHandle
+          label="调整知识点介绍和相关资料高度"
+          onPointerDown={startDetailResize}
+        />
+
         {selectedPoint ? (
-          <Card>
-            <CardHeader>
+          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <CardHeader className="shrink-0">
               <CardTitle>相关资料/题目</CardTitle>
               <CardDescription>
                 资料链接来自队长提供的数据库内容建议文档。
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="min-h-0 flex-1 space-y-5 overflow-y-auto">
+              <section className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-medium">章节 PDF</div>
+                  {selectedChapter ? (
+                    <Badge variant="outline">{selectedChapter.title}</Badge>
+                  ) : null}
+                </div>
+                <ChapterPdfList
+                  courseId={course.id}
+                  chapterId={selectedPoint.chapter_id}
+                />
+              </section>
+
+              <section className="space-y-3">
+                <div className="text-sm font-medium">相关资料/题目</div>
               <ResourceList knowledgePointId={selectedPoint.id} />
+              </section>
             </CardContent>
           </Card>
         ) : null}
       </div>
-    </section>
+    </>
   )
 }
 
@@ -341,6 +560,12 @@ export const CourseLibraryPage = () => {
   const coursesResult = useAtomValue(coursesAtom)
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
+  const [coursePanelWidth, setCoursePanelWidth] = useState(
+    DEFAULT_COURSE_PANEL_WIDTH,
+  )
+  const [outlinePanelWidth, setOutlinePanelWidth] = useState(
+    DEFAULT_OUTLINE_PANEL_WIDTH,
+  )
 
   const courses = Result.isSuccess(coursesResult) ? coursesResult.value : []
   const selectedCourse =
@@ -359,8 +584,57 @@ export const CourseLibraryPage = () => {
     setSelectedPointId(null)
   }
 
+  const startColumnResize = useCallback(
+    (
+      event: PointerEvent<HTMLDivElement>,
+      side: 'course-panel' | 'outline-panel',
+    ) => {
+      event.preventDefault()
+      event.currentTarget.setPointerCapture(event.pointerId)
+
+      const startX = event.clientX
+      const startCourseWidth = coursePanelWidth
+      const startOutlineWidth = outlinePanelWidth
+
+      const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+        const deltaX = moveEvent.clientX - startX
+        if (side === 'course-panel') {
+          setCoursePanelWidth(
+            clamp(
+              startCourseWidth + deltaX,
+              MIN_COURSE_PANEL_WIDTH,
+              MAX_COURSE_PANEL_WIDTH,
+            ),
+          )
+          return
+        }
+
+        setOutlinePanelWidth(
+          clamp(
+            startOutlineWidth + deltaX,
+            MIN_OUTLINE_PANEL_WIDTH,
+            MAX_OUTLINE_PANEL_WIDTH,
+          ),
+        )
+      }
+
+      const handlePointerUp = () => {
+        window.removeEventListener('pointermove', handlePointerMove)
+        window.removeEventListener('pointerup', handlePointerUp)
+        window.document.body.style.cursor = ''
+        window.document.body.style.userSelect = ''
+      }
+
+      window.document.body.style.cursor = 'col-resize'
+      window.document.body.style.userSelect = 'none'
+      window.addEventListener('pointermove', handlePointerMove)
+      window.addEventListener('pointerup', handlePointerUp, { once: true })
+    },
+    [coursePanelWidth, outlinePanelWidth],
+  )
+
   return (
-    <div className="flex h-full max-h-screen flex-col">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-2">
         <div className="flex flex-1 items-center gap-2 px-3">
           <SidebarTrigger />
@@ -373,7 +647,7 @@ export const CourseLibraryPage = () => {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="container mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6">
+        <div className="mx-auto flex max-w-[1800px] flex-col gap-4 px-4 py-4">
           <section className="rounded-[30px] border bg-gradient-to-br from-sky-50 via-white to-amber-50 p-6 shadow-sm">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
               <div className="space-y-3">
@@ -418,13 +692,22 @@ export const CourseLibraryPage = () => {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-6 xl:grid-cols-[280px_1fr]">
-                <Card className="h-fit">
-                  <CardHeader>
+              <div
+                className="sticky top-0 grid h-[calc(100svh-5.5rem)] min-h-0 gap-0 overflow-hidden lg:grid-cols-[var(--course-panel-width)_var(--resize-handle-size)_var(--outline-panel-width)_var(--resize-handle-size)_minmax(0,1fr)]"
+                style={
+                  {
+                    '--course-panel-width': `${coursePanelWidth}px`,
+                    '--outline-panel-width': `${outlinePanelWidth}px`,
+                    '--resize-handle-size': `${RESIZE_HANDLE_SIZE}px`,
+                  } as CSSProperties
+                }
+              >
+                <Card className="flex min-h-0 flex-col overflow-hidden">
+                  <CardHeader className="shrink-0">
                     <CardTitle>课程</CardTitle>
                     <CardDescription>选择要浏览的课程资料库。</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-2">
+                  <CardContent className="min-h-0 flex-1 space-y-2 overflow-y-auto">
                     {courses.map((course) => (
                       <button
                         key={course.id}
@@ -445,10 +728,20 @@ export const CourseLibraryPage = () => {
                   </CardContent>
                 </Card>
 
+                <ColumnResizeHandle
+                  label="调整课程区域宽度"
+                  onPointerDown={(event) =>
+                    startColumnResize(event, 'course-panel')
+                  }
+                />
+
                 {selectedCourse ? (
                   <CourseBrowser
                     course={selectedCourse}
                     selectedPointId={selectedPointId}
+                    onOutlineResize={(event) =>
+                      startColumnResize(event, 'outline-panel')
+                    }
                     onSelectPoint={setSelectedPointId}
                   />
                 ) : null}
