@@ -3,18 +3,27 @@ import { Link } from '@tanstack/react-router'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import {
+  ArrowUpRightIcon,
   BookOpenIcon,
+  BotIcon,
+  ClipboardCheckIcon,
   Clock3Icon,
   FlameIcon,
   FolderIcon,
   GraduationCapIcon,
+  LibraryBigIcon,
   Loader2Icon,
   MessageCircleIcon,
+  NetworkIcon,
   PlusIcon,
   SendIcon,
   TrophyIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import dashboardSlideOne from '../../../../source/1.png'
+import dashboardSlideTwo from '../../../../source/2.png'
+import dashboardSlideThree from '../../../../source/3.png'
+import type { CarouselApi } from '@/components/ui/carousel'
 import { projectsAtom } from '@/data-acess/project'
 import { usageAtom } from '@/data-acess/usage'
 import { useCreateProjectDialog } from '@/features/project/components/upsert-project-dialog'
@@ -27,12 +36,25 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from '@/components/ui/carousel'
 import { Textarea } from '@/components/ui/textarea'
 import { supabase } from '@/lib/supabase'
 
 type StudyStat = {
   label: string
   value: string
+  description: string
+  icon: typeof BookOpenIcon
+}
+
+type StudyShortcutContentProps = {
+  label: string
   description: string
   icon: typeof BookOpenIcon
 }
@@ -52,6 +74,123 @@ type LeaderboardEntry = {
 }
 
 const serverUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8000'
+
+const dashboardSlides = [
+  {
+    src: dashboardSlideOne,
+    alt: '数据结构知识体系可视化插画',
+    position: 'object-right',
+  },
+  {
+    src: dashboardSlideTwo,
+    alt: '同学们一起学习数据结构',
+    position: 'object-center',
+  },
+  {
+    src: dashboardSlideThree,
+    alt: '在资料库中学习数据结构',
+    position: 'object-center',
+  },
+]
+
+const studyShortcutClassName =
+  'group flex min-h-0 w-full items-center gap-3 rounded-2xl border bg-card/85 px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:bg-card hover:shadow-md'
+
+const StudyShortcutContent = ({
+  label,
+  description,
+  icon: Icon,
+}: StudyShortcutContentProps) => (
+  <>
+    <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
+      <Icon className="h-5 w-5" />
+    </div>
+    <div className="min-w-0 flex-1">
+      <div className="font-medium leading-5">{label}</div>
+      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+        {description}
+      </div>
+    </div>
+    <ArrowUpRightIcon className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />
+  </>
+)
+
+const StudyOverviewCarousel = () => {
+  const [api, setApi] = useState<CarouselApi>()
+  const [current, setCurrent] = useState(0)
+
+  useEffect(() => {
+    if (!api) return
+
+    const updateCurrentSlide = () => setCurrent(api.selectedScrollSnap())
+    updateCurrentSlide()
+    api.on('select', updateCurrentSlide)
+    api.on('reInit', updateCurrentSlide)
+
+    return () => {
+      api.off('select', updateCurrentSlide)
+      api.off('reInit', updateCurrentSlide)
+    }
+  }, [api])
+
+  useEffect(() => {
+    if (!api || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return
+    }
+
+    const interval = window.setInterval(() => api.scrollNext(), 5000)
+    return () => window.clearInterval(interval)
+  }, [api])
+
+  return (
+    <Carousel
+      setApi={setApi}
+      opts={{ loop: true }}
+      className="min-w-0 overflow-hidden rounded-2xl border bg-slate-950 shadow-sm"
+      aria-label="数据结构学习图片"
+    >
+      <CarouselContent className="-ml-0">
+        {dashboardSlides.map((slide) => (
+          <CarouselItem key={slide.src} className="pl-0">
+            <div className="aspect-video overflow-hidden">
+              <img
+                src={slide.src}
+                alt={slide.alt}
+                className={`h-full w-full object-cover ${slide.position}`}
+              />
+            </div>
+          </CarouselItem>
+        ))}
+      </CarouselContent>
+
+      <CarouselPrevious
+        variant="secondary"
+        className="left-3 border-white/20 bg-black/35 text-white shadow-md backdrop-blur-sm hover:bg-black/55 hover:text-white"
+      />
+      <CarouselNext
+        variant="secondary"
+        className="right-3 border-white/20 bg-black/35 text-white shadow-md backdrop-blur-sm hover:bg-black/55 hover:text-white"
+      />
+
+      <div className="absolute inset-x-0 bottom-3 flex justify-center gap-2">
+        {dashboardSlides.map((slide, index) => (
+          <button
+            key={slide.src}
+            type="button"
+            aria-label={`切换到第 ${index + 1} 张图片`}
+            aria-current={current === index ? 'true' : undefined}
+            onClick={() => api?.scrollTo(index)}
+            className={`h-2 rounded-full shadow-sm transition-all ${
+              current === index
+                ? 'w-6 bg-white'
+                : 'w-2 bg-white/55 hover:bg-white/80'
+            }`}
+          />
+        ))}
+      </div>
+    </Carousel>
+  )
+}
 
 const getAuthHeaders = async (): Promise<Record<string, string>> => {
   const {
@@ -295,6 +434,9 @@ export const DashboardPage = () => {
 
   const hasProjects =
     Result.isSuccess(projectsResult) && projectsResult.value.length > 0
+  const firstProjectId = Result.isSuccess(projectsResult)
+    ? projectsResult.value[0]?.id
+    : undefined
 
   const todayStudyStats: Array<StudyStat> = Result.isSuccess(usageResult)
     ? (() => {
@@ -386,31 +528,130 @@ export const DashboardPage = () => {
               集中展示你今天已经学习的内容、投入的时间和掌握情况。
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-3">
-            {todayStudyStats.map((stat) => {
-              const Icon = stat.icon
-              return (
-                <div
-                  key={stat.label}
-                  className="rounded-2xl border bg-card/80 p-5 backdrop-blur"
+          <CardContent className="space-y-5">
+            <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,4fr)_minmax(180px,1fr)]">
+              <StudyOverviewCarousel />
+
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-1 lg:grid-rows-4">
+                {firstProjectId ? (
+                  <Link
+                    to="/dashboard/p/$projectId"
+                    params={{ projectId: firstProjectId }}
+                    className={studyShortcutClassName}
+                  >
+                    <StudyShortcutContent
+                      label="AI 指导"
+                      description="获取个性化学习建议"
+                      icon={BotIcon}
+                    />
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openCreateProjectDialog()}
+                    className={studyShortcutClassName}
+                  >
+                    <StudyShortcutContent
+                      label="AI 指导"
+                      description="创建项目后开始使用"
+                      icon={BotIcon}
+                    />
+                  </button>
+                )}
+
+                {firstProjectId ? (
+                  <Link
+                    to="/dashboard/p/$projectId"
+                    params={{ projectId: firstProjectId }}
+                    className={studyShortcutClassName}
+                  >
+                    <StudyShortcutContent
+                      label="学习题库"
+                      description="练习并巩固知识点"
+                      icon={ClipboardCheckIcon}
+                    />
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openCreateProjectDialog()}
+                    className={studyShortcutClassName}
+                  >
+                    <StudyShortcutContent
+                      label="学习题库"
+                      description="创建项目后开始练习"
+                      icon={ClipboardCheckIcon}
+                    />
+                  </button>
+                )}
+
+                <Link
+                  to="/dashboard/course-library"
+                  className={studyShortcutClassName}
                 >
-                  <div className="mb-4 flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      {stat.label}
-                    </span>
-                    <div className="rounded-full bg-primary/10 p-2 text-primary">
-                      <Icon className="h-4 w-4" />
+                  <StudyShortcutContent
+                    label="课程资料"
+                    description="浏览数据结构资料库"
+                    icon={LibraryBigIcon}
+                  />
+                </Link>
+
+                {firstProjectId ? (
+                  <Link
+                    to="/dashboard/p/$projectId/knowledge-graph"
+                    params={{ projectId: firstProjectId }}
+                    className={studyShortcutClassName}
+                  >
+                    <StudyShortcutContent
+                      label="知识图谱"
+                      description="查看知识关联脉络"
+                      icon={NetworkIcon}
+                    />
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openCreateProjectDialog()}
+                    className={studyShortcutClassName}
+                  >
+                    <StudyShortcutContent
+                      label="知识图谱"
+                      description="创建项目后查看图谱"
+                      icon={NetworkIcon}
+                    />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              {todayStudyStats.map((stat) => {
+                const Icon = stat.icon
+                return (
+                  <div
+                    key={stat.label}
+                    className="group flex min-w-0 items-center gap-4 rounded-2xl border bg-card/85 p-4 backdrop-blur transition-colors hover:border-primary/30 hover:bg-card"
+                  >
+                    <div className="rounded-xl bg-primary/10 p-3 text-primary transition-transform group-hover:scale-105">
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <span className="text-sm text-muted-foreground">
+                          {stat.label}
+                        </span>
+                        <span className="text-2xl font-semibold tracking-tight">
+                          {stat.value}
+                        </span>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                        {stat.description}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-3xl font-semibold tracking-tight">
-                    {stat.value}
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    {stat.description}
-                  </p>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </CardContent>
         </Card>
 
