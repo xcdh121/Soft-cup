@@ -140,6 +140,8 @@ services:
       db:
         condition: service_healthy
     restart: "no"
+    volumes:
+      - ./src:/app/src
 
   redis:
     image: redis:7-alpine

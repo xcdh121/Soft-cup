@@ -1,8 +1,8 @@
-import { AppShell } from '@/routes/_app-shell'
 import { createRootRoute, createRoute, redirect } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { Suspense, lazy } from 'react'
 import { z } from 'zod'
+import { AppShell } from '@/routes/_app-shell'
 
 const LoadingPage = () => {
   return (
@@ -72,6 +72,11 @@ const StudyPlanRoute = lazy(() =>
 const ResourcePackageRoute = lazy(() =>
   import('./resource-package-route').then((m) => ({
     default: m.ResourcePackageRoute,
+  })),
+)
+const ProgrammingPracticeRoute = lazy(() =>
+  import('./programming-practice-route').then((m) => ({
+    default: m.ProgrammingPracticeRoute,
   })),
 )
 const LearnerProfileRoute = lazy(() =>
@@ -308,6 +313,16 @@ export const resourcePackageRoute = createRoute({
   ),
 })
 
+export const programmingPracticeRoute = createRoute({
+  path: '/p/$projectId/programming/$resourceId',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <ProgrammingPracticeRoute />
+    </Suspense>
+  ),
+})
+
 export const learnerProfileRoute = createRoute({
   path: '/p/$projectId/learner-profile',
   getParentRoute: () => dashboardRoute,
@@ -373,6 +388,7 @@ export const routeTree = rootRoute.addChildren([
 
     studyPlanRoute,
     resourcePackageRoute,
+    programmingPracticeRoute,
     learnerProfileRoute,
     courseLibraryRoute,
     knowledgeGraphRoute,

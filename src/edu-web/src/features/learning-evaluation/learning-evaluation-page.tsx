@@ -1,21 +1,27 @@
-import { useState } from 'react'
 import { Result, useAtomValue } from '@effect-atom/atom-react'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import {
-  BookOpenCheck,
-  BrainCircuit,
+  ArrowUpRight,
   CheckCircle2,
   CircleAlert,
-  Code2,
   Clock3,
   Layers3,
+  Star,
 } from 'lucide-react'
+import { useState } from 'react'
 import type { EvaluationResource } from '@/data-acess/learning-evaluation'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { learningEvaluationAtom } from '@/data-acess/learning-evaluation'
 import { ProjectHeader } from '@/features/project/components/project-header'
 import { cn } from '@/lib/utils'
@@ -29,166 +35,316 @@ const viewLabels: Record<View, string> = {
   wrong: '错题统计',
 }
 
-const ProgrammingResourceCard = ({
-  projectId,
-  resource,
-}: {
-  projectId: string
-  resource: EvaluationResource
-}) => {
-  const questions = resource.programmingQuestions ?? []
-
-  return (
-    <Card className="rounded-2xl">
-      <CardContent className="space-y-4 p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 gap-3">
-            <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
-              <Code2 className="size-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="truncate font-medium">{resource.name}</div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Coding Problems - {questions.length} items
-              </div>
-            </div>
-          </div>
-          <Badge variant="secondary">Practice</Badge>
-        </div>
-
-        <div className="space-y-3">
-          {questions.map((question, index) => (
-            <div key={question.id} className="rounded-lg border bg-muted/30 p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="font-medium">
-                  {index + 1}. {question.title}
-                </div>
-                {question.difficulty ? (
-                  <Badge variant="outline">{question.difficulty}</Badge>
-                ) : null}
-              </div>
-              <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
-                {question.description}
-              </p>
-              {question.examples[0] ? (
-                <div className="mt-3 grid gap-2 rounded-md bg-background p-2 text-xs sm:grid-cols-2">
-                  <div>
-                    <div className="font-medium">Input</div>
-                    <pre className="mt-1 whitespace-pre-wrap">
-                      {question.examples[0].input}
-                    </pre>
-                  </div>
-                  <div>
-                    <div className="font-medium">Output</div>
-                    <pre className="mt-1 whitespace-pre-wrap">
-                      {question.examples[0].output}
-                    </pre>
-                  </div>
-                </div>
-              ) : null}
-              {question.hints.length ? (
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Hint: {question.hints[0]}
-                </div>
-              ) : null}
-            </div>
-          ))}
-        </div>
-
-        <Button size="sm" variant="outline" asChild>
-          <Link to="/dashboard/p/$projectId/resource-packages" params={{ projectId }}>
-            View Package
-          </Link>
-        </Button>
-      </CardContent>
-    </Card>
-  )
+const typeLabels: Record<EvaluationResource['type'], string> = {
+  quiz: '选择题',
+  flashcard: '闪卡题',
+  programming_questions: '编程题',
 }
 
-const ResourceCard = ({
+const getDifficultyStars = (difficulty?: string) => {
+  const value = difficulty?.trim().toLowerCase()
+  const numeric = Number(value)
+  if (Number.isInteger(numeric) && numeric >= 1 && numeric <= 5) return numeric
+  if (['very_easy', 'beginner', 'easy', '简单', '初级'].includes(value ?? '')) {
+    return 1
+  }
+  if (
+    ['medium', 'intermediate', 'normal', '中等', '中级'].includes(value ?? '')
+  ) {
+    return 3
+  }
+  if (
+    ['very_hard', 'advanced', 'hard', 'expert', '困难', '高级'].includes(
+      value ?? '',
+    )
+  ) {
+    return 5
+  }
+  return 3
+}
+
+const getResourceStars = (resource: EvaluationResource) => {
+  if (!resource.questions.length) return 3
+  const total = resource.questions.reduce(
+    (sum, question) => sum + getDifficultyStars(question.difficulty),
+    0,
+  )
+  return Math.round(total / resource.questions.length)
+}
+
+const getKnowledgePoints = (resource: EvaluationResource) => {
+  const points = resource.questions.flatMap(
+    (question) => question.knowledgePoints,
+  )
+  return [...new Set(points)].filter(Boolean)
+}
+
+const getProgrammingSubmittedIds = (
+  projectId: string,
+  resource: EvaluationResource,
+) => {
+  if (
+    resource.type !== 'programming_questions' ||
+    typeof window === 'undefined'
+  ) {
+    return []
+  }
+  try {
+    const value = window.localStorage.getItem(
+      `programming-submitted:${projectId}:${resource.id}`,
+    )
+    const parsed = value ? JSON.parse(value) : []
+    return Array.isArray(parsed) ? parsed.map(String) : []
+  } catch {
+    return []
+  }
+}
+
+const getResourceStats = (projectId: string, resource: EvaluationResource) => {
+  const attemptCount = resource.questions.reduce(
+    (sum, question) => sum + question.attemptCount,
+    0,
+  )
+  const correctCount = resource.questions.reduce(
+    (sum, question) => sum + question.correctCount,
+    0,
+  )
+  const submittedCount = getProgrammingSubmittedIds(projectId, resource).length
+  const completed =
+    resource.type === 'programming_questions'
+      ? resource.itemCount > 0 && submittedCount >= resource.itemCount
+      : resource.status === 'completed'
+
+  return {
+    attemptCount:
+      resource.type === 'programming_questions' ? submittedCount : attemptCount,
+    accuracy: attemptCount
+      ? Math.round((correctCount / attemptCount) * 100)
+      : null,
+    completed,
+  }
+}
+
+const ResourceAction = ({
   projectId,
   resource,
+  completed,
 }: {
   projectId: string
   resource: EvaluationResource
+  completed: boolean
 }) => {
-  if (resource.type === 'programming_questions') {
+  const label = completed ? '重做' : '做题'
+  const content = (
+    <>
+      {label}
+      <ArrowUpRight className="size-3.5" />
+    </>
+  )
+
+  if (resource.type === 'quiz') {
     return (
-      <ProgrammingResourceCard projectId={projectId} resource={resource} />
+      <Button size="sm" variant="ghost" className="h-8 gap-1 px-2" asChild>
+        <Link
+          to="/dashboard/p/$projectId/q/$quizId"
+          params={{ projectId, quizId: resource.id }}
+        >
+          {content}
+        </Link>
+      </Button>
     )
   }
 
-  const progress = resource.itemCount
-    ? Math.round((resource.answeredCount / resource.itemCount) * 100)
-    : 0
-  const to =
-    resource.type === 'quiz'
-      ? '/dashboard/p/$projectId/q/$quizId'
-      : '/dashboard/p/$projectId/f/$flashcardGroupId'
-  const params =
-    resource.type === 'quiz'
-      ? { projectId, quizId: resource.id }
-      : { projectId, flashcardGroupId: resource.id }
+  if (resource.type === 'flashcard') {
+    return (
+      <Button size="sm" variant="ghost" className="h-8 gap-1 px-2" asChild>
+        <Link
+          to="/dashboard/p/$projectId/f/$flashcardGroupId"
+          params={{ projectId, flashcardGroupId: resource.id }}
+        >
+          {content}
+        </Link>
+      </Button>
+    )
+  }
 
   return (
-    <Card className="rounded-2xl">
-      <CardContent className="space-y-4 p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 gap-3">
-            <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
-              {resource.type === 'quiz' ? (
-                <BookOpenCheck className="size-5" />
-              ) : (
-                <BrainCircuit className="size-5" />
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="truncate font-medium">{resource.name}</div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {resource.type === 'quiz' ? '测试题' : '闪卡'} ·{' '}
-                {resource.itemCount} 项
-              </div>
-            </div>
-          </div>
-          <Badge variant={resource.status === 'completed' ? 'default' : 'secondary'}>
-            {resource.status === 'completed' ? '已完成' : '未完成'}
-          </Badge>
-        </div>
+    <Button size="sm" variant="ghost" className="h-8 gap-1 px-2" asChild>
+      <Link
+        to="/dashboard/p/$projectId/programming/$resourceId"
+        params={{ projectId, resourceId: resource.id }}
+      >
+        {content}
+      </Link>
+    </Button>
+  )
+}
 
-        <div>
-          <div className="mb-2 flex justify-between text-xs text-muted-foreground">
-            <span>学习进度</span>
-            <span>
-              {resource.answeredCount}/{resource.itemCount}
-            </span>
-          </div>
-          <Progress value={progress} className="h-2" />
-        </div>
+const ResourceList = ({
+  projectId,
+  resources,
+}: {
+  projectId: string
+  resources: Array<EvaluationResource>
+}) => {
+  const navigate = useNavigate()
 
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">
-            错误作答 {resource.wrongCount} 次
-          </span>
-          <Button size="sm" asChild>
-            <Link to={to} params={params as never}>
-              {resource.status === 'completed' ? '再次练习' : '继续学习'}
-            </Link>
-          </Button>
-        </div>
-      </CardContent>
+  const openResource = (resource: EvaluationResource) => {
+    if (resource.type === 'quiz') {
+      void navigate({
+        to: '/dashboard/p/$projectId/q/$quizId',
+        params: { projectId, quizId: resource.id },
+      })
+      return
+    }
+    if (resource.type === 'flashcard') {
+      void navigate({
+        to: '/dashboard/p/$projectId/f/$flashcardGroupId',
+        params: { projectId, flashcardGroupId: resource.id },
+      })
+      return
+    }
+    void navigate({
+      to: '/dashboard/p/$projectId/programming/$resourceId',
+      params: { projectId, resourceId: resource.id },
+    })
+  }
+
+  return (
+    <Card className="overflow-hidden rounded-2xl">
+      <Table className="table-fixed">
+        <TableHeader>
+          <TableRow className="bg-muted/40 hover:bg-muted/40">
+            <TableHead className="w-[22%] pl-4">题目组</TableHead>
+            <TableHead className="w-[9%]">类型</TableHead>
+            <TableHead className="w-[15%]">难度</TableHead>
+            <TableHead className="w-[17%]">涉及知识点</TableHead>
+            <TableHead className="w-[10%]">完成情况</TableHead>
+            <TableHead className="w-[13%]">正确率</TableHead>
+            <TableHead className="w-[7%]">次数</TableHead>
+            <TableHead className="w-[7%] pr-3 text-right">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {resources.map((resource, index) => {
+            const stars = getResourceStars(resource)
+            const knowledgePoints = getKnowledgePoints(resource)
+            const stats = getResourceStats(projectId, resource)
+
+            return (
+              <TableRow
+                key={`${resource.type}-${resource.id}`}
+                className="cursor-pointer"
+                tabIndex={0}
+                onClick={() => openResource(resource)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    openResource(resource)
+                  }
+                }}
+              >
+                <TableCell className="pl-4 align-middle">
+                  <div className="line-clamp-2 whitespace-normal font-medium leading-5">
+                    {index + 1}. {resource.name}
+                  </div>
+                </TableCell>
+                <TableCell className="align-middle font-medium">
+                  {typeLabels[resource.type]}
+                </TableCell>
+                <TableCell className="align-middle">
+                  <div
+                    className="flex items-center gap-1"
+                    aria-label={`${stars} 星难度`}
+                  >
+                    {Array.from({ length: 5 }, (_, starIndex) => (
+                      <Star
+                        key={starIndex}
+                        className={cn(
+                          'size-3.5 text-muted-foreground/25',
+                          starIndex < stars && 'fill-amber-400 text-amber-500',
+                        )}
+                      />
+                    ))}
+                    <span className="text-xs text-muted-foreground">
+                      {stars}/5
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell className="align-middle text-sm text-muted-foreground">
+                  <span className="line-clamp-2 whitespace-normal">
+                    {knowledgePoints.length
+                      ? knowledgePoints.join('、')
+                      : '暂未标注'}
+                  </span>
+                </TableCell>
+                <TableCell
+                  className={cn(
+                    'align-middle font-medium',
+                    stats.completed ? 'text-emerald-600' : 'text-amber-600',
+                  )}
+                >
+                  {stats.completed ? '已完成' : '未完成'}
+                </TableCell>
+                <TableCell className="align-middle">
+                  <div className="mb-1 flex items-center gap-1 text-xs">
+                    <span>
+                      {stats.accuracy === null
+                        ? resource.type === 'programming_questions'
+                          ? '待评阅'
+                          : '暂无作答'
+                        : `${stats.accuracy}%`}
+                    </span>
+                    {stats.accuracy !== null ? (
+                      <span className="text-muted-foreground">
+                        (
+                        {resource.questions.reduce(
+                          (sum, question) => sum + question.correctCount,
+                          0,
+                        )}
+                        /
+                        {resource.questions.reduce(
+                          (sum, question) => sum + question.attemptCount,
+                          0,
+                        )}
+                        )
+                      </span>
+                    ) : null}
+                  </div>
+                  <Progress value={stats.accuracy ?? 0} className="h-1.5" />
+                </TableCell>
+                <TableCell className="align-middle font-medium">
+                  {stats.attemptCount} 次
+                </TableCell>
+                <TableCell className="pr-3 text-right align-middle">
+                  <ResourceAction
+                    projectId={projectId}
+                    resource={resource}
+                    completed={stats.completed}
+                  />
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
     </Card>
   )
 }
 
-export const LearningEvaluationPage = ({ projectId }: { projectId: string }) => {
+export const LearningEvaluationPage = ({
+  projectId,
+}: {
+  projectId: string
+}) => {
   const result = useAtomValue(learningEvaluationAtom(projectId))
   const [view, setView] = useState<View>('generated')
 
   const content = Result.builder(result)
     .onInitialOrWaiting(() => (
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="space-y-3">
         {Array.from({ length: 4 }, (_, index) => (
-          <Skeleton key={index} className="h-48 rounded-2xl" />
+          <Skeleton key={index} className="h-20 rounded-2xl" />
         ))}
       </div>
     ))
@@ -201,23 +357,28 @@ export const LearningEvaluationPage = ({ projectId }: { projectId: string }) => 
     ))
     .onSuccess((evaluation) => {
       const incomplete = evaluation.resources.filter(
-        (resource) => resource.status === 'incomplete',
+        (resource) => !getResourceStats(projectId, resource).completed,
       )
       const completed = evaluation.resources.filter(
-        (resource) => resource.status === 'completed',
+        (resource) => getResourceStats(projectId, resource).completed,
+      )
+      const wrong = evaluation.resources.filter(
+        (resource) => resource.wrongCount > 0,
       )
       const counts: Record<View, number> = {
         generated: evaluation.resources.length,
         incomplete: incomplete.length,
         completed: completed.length,
-        wrong: evaluation.wrongRecords.length,
+        wrong: wrong.length,
       }
       const resources =
         view === 'incomplete'
           ? incomplete
           : view === 'completed'
             ? completed
-            : evaluation.resources
+            : view === 'wrong'
+              ? wrong
+              : evaluation.resources
 
       return (
         <>
@@ -226,7 +387,12 @@ export const LearningEvaluationPage = ({ projectId }: { projectId: string }) => 
               [
                 ['generated', Layers3, 'text-sky-600', 'bg-sky-50'],
                 ['incomplete', Clock3, 'text-amber-600', 'bg-amber-50'],
-                ['completed', CheckCircle2, 'text-emerald-600', 'bg-emerald-50'],
+                [
+                  'completed',
+                  CheckCircle2,
+                  'text-emerald-600',
+                  'bg-emerald-50',
+                ],
                 ['wrong', CircleAlert, 'text-rose-600', 'bg-rose-50'],
               ] as const
             ).map(([key, Icon, color, background]) => (
@@ -245,7 +411,9 @@ export const LearningEvaluationPage = ({ projectId }: { projectId: string }) => 
                       <div className="text-sm text-muted-foreground">
                         {viewLabels[key]}
                       </div>
-                      <div className="mt-1 text-3xl font-semibold">{counts[key]}</div>
+                      <div className="mt-1 text-3xl font-semibold">
+                        {counts[key]}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -254,60 +422,18 @@ export const LearningEvaluationPage = ({ projectId }: { projectId: string }) => 
           </section>
 
           <section>
-            <div className="mb-4 flex items-end justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold">{viewLabels[view]}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {view === 'wrong'
-                    ? '汇总测试题与闪卡练习中的错误作答。'
-                    : '完成资源中的全部题目或闪卡后，状态会自动更新。'}
-                </p>
-              </div>
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold">{viewLabels[view]}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                每次生成的题目作为一组展示，点击任意一行即可进入对应做题页面。
+              </p>
             </div>
 
-            {view === 'wrong' ? (
-              evaluation.wrongRecords.length ? (
-                <div className="space-y-3">
-                  {evaluation.wrongRecords.map((record) => (
-                    <Card key={record.id} className="rounded-2xl">
-                      <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">
-                              {record.itemType === 'quiz' ? '测试题' : '闪卡'}
-                            </Badge>
-                            <span className="truncate font-medium">{record.topic}</span>
-                          </div>
-                          <div className="mt-2 text-sm text-muted-foreground">
-                            你的答案：{record.userAnswer || '未掌握'} · 正确答案：
-                            {record.correctAnswer}
-                          </div>
-                        </div>
-                        <div className="shrink-0 text-xs text-muted-foreground">
-                          {new Date(record.createdAt).toLocaleString('zh-CN')}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed py-12 text-center text-sm text-muted-foreground">
-                  暂无错题记录。
-                </div>
-              )
-            ) : resources.length ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                {resources.map((resource) => (
-                  <ResourceCard
-                    key={`${resource.type}-${resource.id}`}
-                    projectId={projectId}
-                    resource={resource}
-                  />
-                ))}
-              </div>
+            {resources.length ? (
+              <ResourceList projectId={projectId} resources={resources} />
             ) : (
               <div className="rounded-2xl border border-dashed py-12 text-center text-sm text-muted-foreground">
-                这里暂时没有{viewLabels[view]}的学习资源。
+                这里暂时没有{viewLabels[view]}的题目组。
               </div>
             )}
           </section>
