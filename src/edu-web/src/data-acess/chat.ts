@@ -296,6 +296,14 @@ const handleStreamPart = (
           existingPartIdx = newParts.findIndex((p: any) => p.id === partId)
         }
 
+        if (existingPartIdx === -1 && part.type === 'tool_call') {
+          existingPartIdx = newParts.findIndex(
+            (existingPart) =>
+              existingPart.type === 'tool_call' &&
+              existingPart.tool_call_id === part.tool_call_id,
+          )
+        }
+
         if (existingPartIdx !== -1) {
           newParts[existingPartIdx] = part
         } else {

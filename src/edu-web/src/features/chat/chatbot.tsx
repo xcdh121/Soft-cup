@@ -35,14 +35,14 @@ import {
   SourcesContent,
   SourcesTrigger,
 } from '@/components/ai-elements/sources'
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-  ToolOutput,
-} from '@/components/ai-elements/tool'
 import { Badge } from '@/components/ui/badge'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import {
   chatAtom,
   chatStreamStatusAtom,
@@ -95,34 +95,30 @@ type ToolTimelineItem = {
 interface ChatbotProps {
   chatId: string
   projectId: string
+  developerMode: boolean
+  toolActivityOpen: boolean
+  onToolActivityOpenChange: (open: boolean) => void
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  search_project_documents: '检索课程资料',
+  note_create: '创建学习笔记',
+  note_create_scoped: '基于指定资料创建笔记',
+  note_list: '查找笔记',
+  note_get: '读取笔记',
+  note_delete: '删除笔记',
+  quiz_create: '生成测验',
+  flashcard_create: '生成闪卡',
+  mind_map_create: '生成思维导图',
+  resource_package_generate: '生成资源包',
 }
 
 const formatToolName = (name: string) =>
+  TOOL_LABELS[name] ??
   name
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
-
-const normalizeToolInput = (toolInput: unknown): Record<string, unknown> => {
-  if (!toolInput) return {}
-  if (Array.isArray(toolInput)) {
-    return toolInput.reduce<Record<string, unknown>>((acc, item) => {
-      if (
-        item &&
-        typeof item === 'object' &&
-        'key' in item &&
-        typeof item.key === 'string'
-      ) {
-        acc[item.key] = 'value' in item ? item.value : null
-      }
-      return acc
-    }, {})
-  }
-  if (typeof toolInput === 'object') {
-    return toolInput as Record<string, unknown>
-  }
-  return { value: toolInput }
-}
 
 const parseToolOutput = (toolCall: ToolCallPartDto) => {
   if (toolCall.tool_state === 'output-error') {
@@ -161,29 +157,11 @@ const getResourcePackageResult = (toolName: string, output: unknown) => {
   return typeof value.package_id === 'string' ? value : null
 }
 
-const toToolUiState = (
-  state: string,
-):
-  | 'input-streaming'
-  | 'input-available'
-  | 'output-available'
-  | 'output-error' => {
-  if (
-    state === 'input-streaming' ||
-    state === 'input-available' ||
-    state === 'output-available' ||
-    state === 'output-error'
-  ) {
-    return state
-  }
-  return 'input-available'
-}
-
 const getToolStatusLabel = (state: string) => {
-  if (state === 'output-available') return 'Done'
-  if (state === 'output-error') return 'Failed'
-  if (state === 'input-streaming') return 'Preparing'
-  return 'Running'
+  if (state === 'output-available') return '已完成'
+  if (state === 'output-error') return '失败'
+  if (state === 'input-streaming') return '准备中'
+  return '进行中'
 }
 
 const getToolStatusIcon = (state: string) => {
@@ -232,7 +210,181 @@ const collectToolTimeline = (
       })),
   )
 
-export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
+const getTaskTitle = (toolCalls: ReadonlyArray<ToolCallPartDto>) => {
+  const names = toolCalls.map((tool) => tool.tool_name)
+  if (names.some((name) => name.startsWith('note_'))) return '处理学习笔记'
+  if (names.some((name) => name.startsWith('quiz_'))) return '生成学习测验'
+  if (names.some((name) => name.startsWith('flashcard_'))) return '生成学习闪卡'
+  if (names.some((name) => name.startsWith('mind_map_'))) return '生成思维导图'
+  if (names.includes('resource_package_generate')) return '生成学习资源包'
+  return '处理学习任务'
+}
+
+const getTaskState = (toolCalls: ReadonlyArray<ToolCallPartDto>) => {
+  if (toolCalls.some((tool) => tool.tool_state === 'output-error')) {
+    return 'output-error'
+  }
+  if (
+    toolCalls.length > 0 &&
+    toolCalls.every((tool) => tool.tool_state === 'output-available')
+  ) {
+    return 'output-available'
+  }
+  return 'input-available'
+}
+
+const ToolTaskCard = ({
+  toolCalls,
+  projectId,
+}: {
+  toolCalls: ReadonlyArray<ToolCallPartDto>
+  projectId: string
+}) => {
+  const taskState = getTaskState(toolCalls)
+  const resourcePackageResult = toolCalls
+    .map((toolCall) => ({
+      toolName: toolCall.tool_name,
+      output: parseToolOutput(toolCall).output,
+    }))
+    .map(({ toolName, output }) => getResourcePackageResult(toolName, output))
+    .find((result) => result !== null)
+
+  return (
+    <div className="not-prose mb-4 w-full rounded-md border bg-card text-card-foreground">
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <WrenchIcon className="size-4 shrink-0 text-primary" />
+          <span className="truncate text-sm font-medium">
+            {getTaskTitle(toolCalls)}
+          </span>
+        </div>
+        <Badge
+          variant={getToolStatusVariant(taskState)}
+          className="shrink-0 gap-1"
+        >
+          {getToolStatusIcon(taskState)}
+          {getToolStatusLabel(taskState)}
+        </Badge>
+      </div>
+
+      <div className="border-t px-4 py-2">
+        {toolCalls.map((toolCall) => (
+          <div
+            key={toolCall.tool_call_id}
+            className="flex min-h-9 items-center justify-between gap-3 border-b py-2 last:border-b-0"
+          >
+            <div className="flex min-w-0 items-center gap-2 text-sm">
+              {getToolStatusIcon(toolCall.tool_state)}
+              <span className="truncate">
+                {formatToolName(toolCall.tool_name)}
+              </span>
+            </div>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {getToolStatusLabel(toolCall.tool_state)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {resourcePackageResult && (
+        <div className="border-t px-4 py-3">
+          <Link
+            to="/dashboard/p/$projectId/resource-packages"
+            params={{ projectId }}
+            className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+          >
+            查看生成的资源包
+            <ExternalLinkIcon className="size-4" />
+          </Link>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const ToolActivityContent = ({
+  tools,
+  isStreaming,
+}: {
+  tools: ReadonlyArray<ToolTimelineItem>
+  isStreaming: boolean
+}) => (
+  <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+    {tools.length === 0 ? (
+      <div className="flex min-h-40 flex-col items-center justify-center rounded-md border border-dashed bg-muted/30 px-4 text-center">
+        {isStreaming ? (
+          <>
+            <ActivityIcon className="mb-3 size-5 animate-pulse text-primary" />
+            <div className="text-sm font-medium">正在处理</div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              工具调用出现后会显示在这里。
+            </p>
+          </>
+        ) : (
+          <>
+            <WrenchIcon className="mb-3 size-5 text-muted-foreground" />
+            <div className="text-sm font-medium">暂无工具调用</div>
+          </>
+        )}
+      </div>
+    ) : (
+      <div className="flex flex-col gap-3">
+        {tools.map((tool, index) => (
+          <div
+            key={tool.id}
+            className="rounded-md border bg-card p-3 text-card-foreground"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                    {index + 1}
+                  </span>
+                  <div className="truncate text-sm font-medium">
+                    {formatToolName(tool.toolName)}
+                  </div>
+                </div>
+                <div className="mt-1 truncate pl-8 text-xs text-muted-foreground">
+                  message: {tool.messageId}
+                </div>
+              </div>
+              <Badge
+                variant={getToolStatusVariant(tool.toolState)}
+                className="shrink-0 gap-1"
+              >
+                {getToolStatusIcon(tool.toolState)}
+                {getToolStatusLabel(tool.toolState)}
+              </Badge>
+            </div>
+
+            <div className="mt-3 flex flex-col gap-2 rounded-md bg-muted/40 p-2 text-xs">
+              <div>
+                <div className="font-medium text-muted-foreground">Input</div>
+                <div className="mt-1 break-words font-mono text-[11px] leading-4">
+                  {summarizeToolValue(tool.toolInput)}
+                </div>
+              </div>
+              <div>
+                <div className="font-medium text-muted-foreground">Output</div>
+                <div className="mt-1 break-words font-mono text-[11px] leading-4">
+                  {summarizeToolValue(tool.toolOutput)}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+)
+
+export const Chatbot: React.FC<ChatbotProps> = ({
+  chatId,
+  projectId,
+  developerMode,
+  toolActivityOpen,
+  onToolActivityOpenChange,
+}) => {
   const [input, setInput] = useState('')
   const [model, setModel] = useState<string>(models[0].value)
   const [webSearch, setWebSearch] = useState(false)
@@ -341,8 +493,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
   }, [])
 
   return (
-    <div className="grid size-full min-h-0 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="min-h-0 min-w-0 overflow-hidden border-r">
+    <div className="size-full min-h-0 overflow-hidden">
+      <div className="min-h-0 min-w-0 size-full overflow-hidden">
         <div className="mx-auto flex h-full min-h-0 max-w-4xl flex-col px-4 lg:px-6">
           <Conversation className="min-h-0">
             <ConversationContent>
@@ -418,9 +570,26 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                     })()}
 
                   {message.parts &&
-                    message.parts
-                      .filter((part) => part.type !== 'source-document')
-                      .map((part, index: number) => {
+                    (() => {
+                      const visibleParts = message.parts.filter(
+                        (part) => part.type !== 'source-document',
+                      )
+                      const toolCallsById = new Map<string, ToolCallPartDto>()
+                      visibleParts.forEach((part) => {
+                        if (part.type === 'tool_call') {
+                          toolCallsById.set(part.tool_call_id, part)
+                        }
+                      })
+                      const toolCalls = Array.from(toolCallsById.values())
+                      const firstToolIndex = visibleParts.findIndex(
+                        (part) => part.type === 'tool_call',
+                      )
+                      let lastTextIndex = -1
+                      visibleParts.forEach((part, index) => {
+                        if (part.type === 'text') lastTextIndex = index
+                      })
+
+                      return visibleParts.map((part, index: number) => {
                         switch (part.type) {
                           case 'text':
                             return (
@@ -437,8 +606,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                                   <Response>{part.text_content}</Response>
                                 </MessageContent>
                                 {message.role === 'assistant' &&
-                                  index ===
-                                    (message.parts?.length || 0) - 1 && (
+                                  index === lastTextIndex && (
                                     <div className="mt-2 flex gap-2">
                                       <button
                                         onClick={() =>
@@ -455,62 +623,19 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                             )
                           case 'file':
                             return null
-                          case 'tool_call': {
-                            const toolCall = part as ToolCallPartDto
-                            const normalizedInput = normalizeToolInput(
-                              toolCall.tool_input,
-                            )
-                            const { output, errorText } =
-                              parseToolOutput(toolCall)
-                            const resourcePackageResult =
-                              getResourcePackageResult(
-                                toolCall.tool_name,
-                                output,
-                              )
-
-                            return (
-                              <Tool
-                                key={`${message.id}-part-${index}`}
-                                defaultOpen={
-                                  toolCall.tool_state === 'output-error' ||
-                                  resourcePackageResult !== null
-                                }
-                              >
-                                <ToolHeader
-                                  title={formatToolName(toolCall.tool_name)}
-                                  type={`tool-${toolCall.tool_name}`}
-                                  state={toToolUiState(toolCall.tool_state)}
-                                />
-                                <ToolContent>
-                                  {Object.keys(normalizedInput).length > 0 && (
-                                    <ToolInput input={normalizedInput} />
-                                  )}
-                                  {(output || errorText) && (
-                                    <ToolOutput
-                                      output={output}
-                                      errorText={errorText}
-                                    />
-                                  )}
-                                  {resourcePackageResult && (
-                                    <div className="border-t p-4">
-                                      <Link
-                                        to="/dashboard/p/$projectId/resource-packages"
-                                        params={{ projectId }}
-                                        className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                                      >
-                                        查看生成的资源包
-                                        <ExternalLinkIcon className="size-4" />
-                                      </Link>
-                                    </div>
-                                  )}
-                                </ToolContent>
-                              </Tool>
-                            )
-                          }
+                          case 'tool_call':
+                            return index === firstToolIndex ? (
+                              <ToolTaskCard
+                                key={`${message.id}-tool-task`}
+                                toolCalls={toolCalls}
+                                projectId={projectId}
+                              />
+                            ) : null
                           default:
                             return null
                         }
-                      })}
+                      })
+                    })()}
                 </div>
               ))}
               {isStreaming && <Loader />}
@@ -587,95 +712,25 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
         </div>
       </div>
 
-      <aside className="hidden min-h-0 bg-background xl:flex xl:flex-col">
-        <div className="border-b px-5 py-4">
-          <div className="flex items-center gap-2">
-            <WrenchIcon className="size-4 text-primary" />
-            <h2 className="text-sm font-semibold">Tool Activity</h2>
-          </div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Shows search, generation, and resource tools used while the
-            assistant responds.
-          </p>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {toolTimeline.length === 0 ? (
-            <div className="flex min-h-40 flex-col items-center justify-center rounded-md border border-dashed bg-muted/30 px-4 text-center">
-              {isStreaming ? (
-                <>
-                  <ActivityIcon className="mb-3 size-5 animate-pulse text-primary" />
-                  <div className="text-sm font-medium">Thinking</div>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Tool calls will appear here if the assistant searches
-                    documents or generates study resources.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <WrenchIcon className="mb-3 size-5 text-muted-foreground" />
-                  <div className="text-sm font-medium">No tool calls yet</div>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Ask for document search, PPTs, resource packages, quizzes,
-                    flashcards, notes, or mind maps to populate this panel.
-                  </p>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {toolTimeline.map((tool, index) => (
-                <div
-                  key={tool.id}
-                  className="rounded-md border bg-card p-3 text-card-foreground"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                          {index + 1}
-                        </span>
-                        <div className="truncate text-sm font-medium">
-                          {formatToolName(tool.toolName)}
-                        </div>
-                      </div>
-                      <div className="mt-1 truncate pl-8 text-xs text-muted-foreground">
-                        message: {tool.messageId}
-                      </div>
-                    </div>
-                    <Badge
-                      variant={getToolStatusVariant(tool.toolState)}
-                      className="shrink-0 gap-1"
-                    >
-                      {getToolStatusIcon(tool.toolState)}
-                      {getToolStatusLabel(tool.toolState)}
-                    </Badge>
-                  </div>
-
-                  <div className="mt-3 flex flex-col gap-2 rounded-md bg-muted/40 p-2 text-xs">
-                    <div>
-                      <div className="font-medium text-muted-foreground">
-                        Input
-                      </div>
-                      <div className="mt-1 break-words font-mono text-[11px] leading-4">
-                        {summarizeToolValue(tool.toolInput)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="font-medium text-muted-foreground">
-                        Output
-                      </div>
-                      <div className="mt-1 break-words font-mono text-[11px] leading-4">
-                        {summarizeToolValue(tool.toolOutput)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </aside>
+      {developerMode && (
+        <Sheet open={toolActivityOpen} onOpenChange={onToolActivityOpenChange}>
+          <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-md">
+            <SheetHeader className="border-b pr-12">
+              <SheetTitle className="flex items-center gap-2">
+                <WrenchIcon className="size-4 text-primary" />
+                工具调试
+              </SheetTitle>
+              <SheetDescription>
+                仅开发模式显示工具输入、输出和执行状态。
+              </SheetDescription>
+            </SheetHeader>
+            <ToolActivityContent
+              tools={toolTimeline}
+              isStreaming={isStreaming}
+            />
+          </SheetContent>
+        </Sheet>
+      )}
     </div>
   )
 }

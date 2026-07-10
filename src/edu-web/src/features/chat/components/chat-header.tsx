@@ -5,6 +5,7 @@ import {
   HistoryIcon,
   Loader2Icon,
   MessageSquarePlusIcon,
+  WrenchIcon,
 } from 'lucide-react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
@@ -168,10 +169,12 @@ const ChatHistoryMenu = (props: { projectId: string; chatId: string }) => {
 type ChatHeaderProps = {
   chatId: string
   projectId: string
+  developerMode?: boolean
+  onOpenToolActivity?: () => void
 }
 
 export const ChatHeader = (props: ChatHeaderProps) => {
-  const { projectId, chatId } = props
+  const { projectId, chatId, developerMode = false, onOpenToolActivity } = props
 
   return (
     <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-2">
@@ -189,7 +192,19 @@ export const ChatHeader = (props: ChatHeaderProps) => {
         />
         <ChatHeaderContent projectId={projectId} chatId={chatId} />
       </div>
-      <div className="shrink-0 px-3">
+      <div className="flex shrink-0 items-center gap-1 px-3">
+        {developerMode && onOpenToolActivity && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={onOpenToolActivity}
+            title="工具调试"
+          >
+            <WrenchIcon className="size-4" />
+            <span className="sr-only">打开工具调试</span>
+          </Button>
+        )}
         <ChatHistoryMenu projectId={projectId} chatId={chatId} />
       </div>
     </header>

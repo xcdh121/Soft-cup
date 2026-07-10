@@ -1,6 +1,7 @@
 import { chatAtom } from '@/data-acess/chat'
 import { Result, useAtomValue } from '@effect-atom/atom-react'
 import { Loader2Icon } from 'lucide-react'
+import { useState } from 'react'
 import { Chatbot } from './chatbot'
 import { ChatHeader } from './components/chat-header'
 
@@ -10,6 +11,7 @@ type ChatPageProps = {
 }
 
 export const ChatPage = ({ projectId, chatId }: ChatPageProps) => {
+  const [toolActivityOpen, setToolActivityOpen] = useState(false)
   const chatKey = `${projectId}:${chatId}`
   const chatResult = useAtomValue(chatAtom(chatKey))
 
@@ -35,10 +37,21 @@ export const ChatPage = ({ projectId, chatId }: ChatPageProps) => {
 
   return (
     <div className="flex h-full flex-col max-h-screen">
-      <ChatHeader chatId={chatId} projectId={projectId} />
+      <ChatHeader
+        chatId={chatId}
+        projectId={projectId}
+        developerMode={import.meta.env.DEV}
+        onOpenToolActivity={() => setToolActivityOpen(true)}
+      />
 
       <div className="flex flex-1 flex-col min-h-0 max-h-[calc(100vh-3.5rem)] overflow-hidden w-full">
-        <Chatbot chatId={chatId} projectId={projectId} />
+        <Chatbot
+          chatId={chatId}
+          projectId={projectId}
+          developerMode={import.meta.env.DEV}
+          toolActivityOpen={toolActivityOpen}
+          onToolActivityOpenChange={setToolActivityOpen}
+        />
       </div>
     </div>
   )

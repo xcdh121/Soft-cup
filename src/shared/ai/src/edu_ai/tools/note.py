@@ -118,7 +118,10 @@ async def create_note_scoped(
     )
 
 
-@tool("note_list", description="List notes for a project")
+@tool(
+    "note_list",
+    description="List notes only when the user explicitly asks to browse or find notes. Never use it to verify a note created in the current turn.",
+)
 async def list_notes(runtime: ToolRuntime[ChatbotContext]) -> str:
     """List notes for a project."""
     ctx = runtime.context
@@ -133,7 +136,10 @@ async def list_notes(runtime: ToolRuntime[ChatbotContext]) -> str:
     return json.dumps(result, ensure_ascii=False, default=str)
 
 
-@tool("note_get", description="Get a specific note by ID")
+@tool(
+    "note_get",
+    description="Get an existing note by ID only when the user explicitly asks to open or read it. Never use it to verify a note created in the current turn.",
+)
 async def get_note(
     note_id: str,
     runtime: ToolRuntime[ChatbotContext],
