@@ -132,6 +132,14 @@ export type AgentProgressStep = {
   summary: string
   phase?: string
   eventType?: string
+  skillId?: string
+  skillDisplayName?: string
+  toolCallId?: string
+  toolName?: string
+  toolDisplayName?: string
+  evidenceCount?: number
+  durationMs?: number | null
+  fallbackUsed?: boolean
 }
 
 export const resourcePackageProgressAtom = Atom.make<{
@@ -258,6 +266,14 @@ export const generateResourcePackageAtom = runtime.fn(
                 summary: String(event.payload.summary ?? ''),
                 phase: event.payload.phase as string | undefined,
                 eventType: event.payload.event_type as string | undefined,
+                skillId: event.payload.skill_id as string | undefined,
+                skillDisplayName: event.payload.skill_display_name as string | undefined,
+                toolCallId: event.payload.tool_call_id as string | undefined,
+                toolName: event.payload.tool_name as string | undefined,
+                toolDisplayName: event.payload.tool_display_name as string | undefined,
+                evidenceCount: event.payload.evidence_count as number | undefined,
+                durationMs: event.payload.duration_ms as number | null | undefined,
+                fallbackUsed: event.payload.fallback_used as boolean | undefined,
               }
               const existingIndex = agentSteps.findIndex(
                 (item) => item.agentName === step.agentName && item.status === 'running',
