@@ -55,20 +55,54 @@ async def create_note(
         content="",
     )
 
+    generated_resource = None
+    if ctx.resource_packages is not None:
+        generated_resource = await asyncio.to_thread(
+            ctx.resource_packages.register_chat_note,
+            user_id=ctx.user_id,
+            project_id=ctx.project_id,
+            note_id=note.id,
+            topic=topic,
+            custom_instructions=custom_instructions,
+        )
+
     # Send message to queue
-    svc.queue_generation(
-        note_id=note.id,
-        project_id=ctx.project_id,
-        topic=topic,
-        custom_instructions=custom_instructions,
-        user_id=ctx.user_id,
-    )
+    try:
+        svc.queue_generation(
+            note_id=note.id,
+            project_id=ctx.project_id,
+            topic=topic,
+            custom_instructions=custom_instructions,
+            user_id=ctx.user_id,
+            generated_resource_id=(
+                generated_resource.id if generated_resource is not None else None
+            ),
+        )
+    except Exception as exc:
+        if generated_resource is not None:
+            await asyncio.to_thread(
+                ctx.resource_packages.finish_chat_note,
+                project_id=ctx.project_id,
+                generated_resource_id=generated_resource.id,
+                error_message=str(exc),
+            )
+        raise
 
     return json.dumps(
         {
             "status": "queued",
             "message": "Your request to generate a note has been queued.",
             "note_id": note.id,
+            "resource_package_id": (
+                generated_resource.resource_package_id
+                if generated_resource is not None
+                else None
+            ),
+            "preview_url": (
+                generated_resource.preview_url
+                if generated_resource is not None
+                else None
+            ),
         },
         ensure_ascii=False,
     )

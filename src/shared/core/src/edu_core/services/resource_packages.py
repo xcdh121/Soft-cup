@@ -1,7 +1,7 @@
 import json
 from collections.abc import Awaitable, Callable
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -25,9 +25,9 @@ from edu_core.schemas.resource_packages import (
     ResourcePackageDto,
     ResourcePackageStreamEventDto,
 )
-from edu_core.storage import LocalStorageService
 from edu_core.services.baidu_search import BaiduSearchClient
 from edu_core.services.xfyun_ppt import XfyunPptClient, XfyunPptError
+from edu_core.storage import LocalStorageService
 
 if TYPE_CHECKING:
     from edu_core.schemas.agent_orchestration import AgentEvent, DiagnosisResponse
@@ -117,6 +117,165 @@ class ResourcePackageService:
             if not resource:
                 raise NotFoundError(f"Generated resource {resource_id} not found")
             return self._resource_to_dto(resource)
+
+    def register_chat_note(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        note_id: str,
+        topic: str,
+        custom_instructions: str | None = None,
+    ) -> GeneratedResourceDto:
+        """Expose a note queued from chat in the resource-package results UI."""
+        with self._get_db_session() as db:
+            project = (
+                db.query(Project)
+                .filter(Project.id == project_id, Project.owner_id == user_id)
+                .first()
+            )
+            if not project:
+                raise NotFoundError(f"Project {project_id} not found")
+
+            now = datetime.now(UTC)
+            package_id = str(uuid4())
+            resource_id = str(uuid4())
+            package = ResourcePackage(
+                id=package_id,
+                project_id=project_id,
+                user_id=user_id,
+                title=f"聊天生成笔记: {topic}",
+                description="从聊天页面发起的笔记生成任务",
+                generation_mode="manual",
+                status="generating",
+                target_topic=topic,
+                target_goal=custom_instructions,
+                difficulty_level="intermediate",
+                source_document_ids=[],
+                knowledge_point_ids=[],
+                weak_knowledge_point_ids=[],
+                preferred_resource_types=["lecture_note"],
+                generation_params={
+                    "origin": "chat",
+                    "custom_instructions": custom_instructions,
+                    "note_id": note_id,
+                },
+                agent_trace=[],
+                resource_count=1,
+                completed_resource_count=0,
+                failed_resource_count=0,
+                created_at=now,
+                updated_at=now,
+            )
+            resource = GeneratedResource(
+                id=resource_id,
+                resource_package_id=package_id,
+                project_id=project_id,
+                user_id=user_id,
+                resource_type="lecture_note",
+                title=f"{topic}笔记",
+                summary="聊天生成的笔记正在后台生成",
+                status="generating",
+                format="note-ref",
+                content_json={
+                    "target_id": note_id,
+                    "target_type": "note",
+                    "project_id": project_id,
+                    "topic": topic,
+                    "custom_instructions": custom_instructions,
+                    "stream_on_client": False,
+                },
+                preview_url=self._build_preview_url(
+                    project_id=project_id,
+                    resource_type="lecture_note",
+                    target_id=note_id,
+                ),
+                source_document_ids=[],
+                knowledge_point_ids=[],
+                difficulty_level="intermediate",
+                estimated_minutes=25,
+                version=1,
+                generation_order=0,
+                generator_agent="ChatAgent",
+                generation_reason="用户在聊天页面请求生成笔记",
+                created_at=now,
+                updated_at=now,
+            )
+            trace: list[dict] = []
+            self._append_agent_event(
+                trace,
+                package_id,
+                "resource_started",
+                {
+                    "resource_id": resource_id,
+                    "resource_type": "lecture_note",
+                    "origin": "chat",
+                },
+            )
+            package.agent_trace = trace
+            db.add(package)
+            db.add(resource)
+            db.commit()
+            db.refresh(resource)
+            return self._resource_to_dto(resource)
+
+    def finish_chat_note(
+        self,
+        *,
+        project_id: str,
+        generated_resource_id: str,
+        title: str | None = None,
+        description: str | None = None,
+        content: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        """Synchronize a background note result with its generated-resource row."""
+        with self._get_db_session() as db:
+            resource = (
+                db.query(GeneratedResource)
+                .filter(
+                    GeneratedResource.id == generated_resource_id,
+                    GeneratedResource.project_id == project_id,
+                    GeneratedResource.resource_type == "lecture_note",
+                )
+                .first()
+            )
+            if not resource:
+                return
+
+            package = resource.resource_package
+            now = datetime.now(UTC)
+            succeeded = error_message is None
+            resource.status = "completed" if succeeded else "failed"
+            resource.error_message = error_message
+            resource.updated_at = now
+            resource.completed_at = now if succeeded else None
+            if title:
+                resource.title = title
+            if description:
+                resource.summary = description
+            if content is not None:
+                resource.content_text = content
+
+            package.status = "completed" if succeeded else "failed"
+            package.completed_resource_count = 1 if succeeded else 0
+            package.failed_resource_count = 0 if succeeded else 1
+            package.completed_at = now if succeeded else None
+            package.updated_at = now
+            trace = list(package.agent_trace or [])
+            self._append_agent_event(
+                trace,
+                package.id,
+                "resource_completed" if succeeded else "resource_failed",
+                {
+                    "resource_id": resource.id,
+                    "resource_type": resource.resource_type,
+                    "title": resource.title,
+                    "error_message": error_message,
+                },
+            )
+            package.agent_trace = trace
+            db.commit()
 
     async def generate_resource_package(
         self,

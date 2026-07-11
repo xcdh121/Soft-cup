@@ -156,6 +156,13 @@ export const resourcePackagesAtom = Atom.family((projectId: string) =>
   ),
 )
 
+export const refreshResourcePackagesAtom = runtime.fn(
+  Effect.fn(function* (projectId: string) {
+    const registry = yield* Registry.AtomRegistry
+    registry.refresh(resourcePackagesAtom(projectId))
+  }),
+)
+
 export const generatedResourcesAtom = Atom.family((input: string) => {
   const [projectId, packageId] = input.split(':')
 

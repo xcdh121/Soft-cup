@@ -1,6 +1,6 @@
 import asyncio
-from contextlib import contextmanager
 import logging
+from contextlib import contextmanager
 from threading import Thread
 from typing import Any
 from uuid import uuid4
@@ -18,11 +18,15 @@ from edu_core.model_providers import (
     create_embeddings,
 )
 from edu_core.schemas.documents import DocumentStatus
+from edu_core.services.resource_packages import ResourcePackageService
 from edu_core.storage import LocalStorageService
 from edu_db.models import Document, DocumentSegment
 from edu_db.session import get_session_factory
 from edu_queue.schemas import QueueTaskMessage, TaskType
-from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
+from langchain_text_splitters import (
+    MarkdownHeaderTextSplitter,
+    RecursiveCharacterTextSplitter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -188,12 +192,31 @@ class TaskRunnerService:
     async def _run_note(self, payload: dict[str, Any]) -> None:
         llm, topic_graph_agent = self._make_topic_graph_agent()
         agent = NoteAgent(self.search_service, llm, topic_graph_agent)
-        await agent.generate_and_save(
-            project_id=payload["project_id"],
-            topic=payload.get("topic"),
-            custom_instructions=payload.get("custom_instructions"),
-            note_id=payload["note_id"],
-        )
+        generated_resource_id = payload.get("generated_resource_id")
+        resource_packages = ResourcePackageService()
+        try:
+            note = await agent.generate_and_save(
+                project_id=payload["project_id"],
+                topic=payload.get("topic"),
+                custom_instructions=payload.get("custom_instructions"),
+                note_id=payload["note_id"],
+            )
+            if generated_resource_id:
+                resource_packages.finish_chat_note(
+                    project_id=payload["project_id"],
+                    generated_resource_id=generated_resource_id,
+                    title=note.title,
+                    description=note.description,
+                    content=note.content,
+                )
+        except Exception as exc:
+            if generated_resource_id:
+                resource_packages.finish_chat_note(
+                    project_id=payload["project_id"],
+                    generated_resource_id=generated_resource_id,
+                    error_message=str(exc),
+                )
+            raise
 
     async def _run_mind_map(self, payload: dict[str, Any]) -> None:
         llm, topic_graph_agent = self._make_topic_graph_agent()

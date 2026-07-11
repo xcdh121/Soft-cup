@@ -212,6 +212,7 @@ class NoteService:
         topic: str | None = None,
         custom_instructions: str | None = None,
         user_id: str | None = None,
+        generated_resource_id: str | None = None,
     ) -> NoteDto:
         """Queue a note generation request to be processed by a worker.
 
@@ -245,6 +246,8 @@ class NoteService:
             task_data["custom_instructions"] = custom_instructions
         if user_id:
             task_data["user_id"] = user_id
+        if generated_resource_id:
+            task_data["generated_resource_id"] = generated_resource_id
 
         # Send message to queue
         task_message: QueueTaskMessage = {

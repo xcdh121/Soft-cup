@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { CheckCircle2Icon, Loader2Icon, SparklesIcon } from 'lucide-react'
 import type {
@@ -25,6 +25,7 @@ import { projectCourseOutlineAtom } from '@/data-acess/course-library'
 import {
   generateResourcePackageAtom,
   generatedResourcesAtom,
+  refreshResourcePackagesAtom,
   resourcePackageProgressAtom,
   resourcePackagesAtom,
 } from '@/data-acess/resource-package'
@@ -358,6 +359,13 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
   })
   const courseOutlineResult = useAtomValue(projectCourseOutlineAtom(projectId))
   const packageProgress = useAtomValue(resourcePackageProgressAtom)
+  const refreshResourcePackages = useAtomSet(refreshResourcePackagesAtom, {
+    mode: 'promise',
+  })
+
+  useEffect(() => {
+    void refreshResourcePackages(projectId)
+  }, [projectId, refreshResourcePackages])
 
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
