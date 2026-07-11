@@ -27,38 +27,40 @@ code {
 }
 
 :root {
-  --background: oklch(0.9818 0.0054 95.0986);
-  --foreground: oklch(0.3438 0.0269 95.7226);
-  --card: oklch(0.9818 0.0054 95.0986);
-  --card-foreground: oklch(0.1908 0.002 106.5859);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2671 0.0196 98.939);
-  --primary: oklch(0.6171 0.1375 39.0427);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.9245 0.0138 92.9892);
-  --secondary-foreground: oklch(0.4334 0.0177 98.6048);
-  --muted: oklch(0.9341 0.0153 90.239);
-  --muted-foreground: oklch(0.6059 0.0075 97.4233);
-  --accent: oklch(0.9245 0.0138 92.9892);
-  --accent-foreground: oklch(0.2671 0.0196 98.939);
-  --destructive: oklch(0.1908 0.002 106.5859);
-  --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.8847 0.0069 97.3627);
-  --input: oklch(0.7621 0.0156 98.3528);
-  --ring: oklch(0.6171 0.1375 39.0427);
-  --chart-1: oklch(0.5583 0.1276 42.9956);
-  --chart-2: oklch(0.6898 0.1581 290.4107);
-  --chart-3: oklch(0.8816 0.0276 93.128);
-  --chart-4: oklch(0.8822 0.0403 298.1792);
-  --chart-5: oklch(0.5608 0.1348 42.0584);
-  --sidebar: oklch(0.9663 0.008 98.8792);
-  --sidebar-foreground: oklch(0.359 0.0051 106.6524);
-  --sidebar-primary: oklch(0.6171 0.1375 39.0427);
-  --sidebar-primary-foreground: oklch(0.9881 0 0);
-  --sidebar-accent: oklch(0.9245 0.0138 92.9892);
-  --sidebar-accent-foreground: oklch(0.325 0 0);
-  --sidebar-border: oklch(0.9401 0 0);
-  --sidebar-ring: oklch(0.7731 0 0);
+  --background: #f7fbff;
+  --foreground: #021024;
+  --card: #ffffff;
+  --card-foreground: #021024;
+  --popover: #ffffff;
+  --popover-foreground: #021024;
+  --primary: #052659;
+  --primary-foreground: #ffffff;
+  --secondary: #c1e8ff;
+  --secondary-foreground: #052659;
+  --muted: #eaf6ff;
+  --muted-foreground: #5483b3;
+  --accent: #c1e8ff;
+  --accent-foreground: #021024;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --border: #c1e8ff;
+  --input: #7da0ca;
+  --ring: #5483b3;
+  --chart-1: #021024;
+  --chart-2: #052659;
+  --chart-3: #5483b3;
+  --chart-4: #7da0ca;
+  --chart-5: #c1e8ff;
+  --sidebar: #052659;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #c1e8ff;
+  --sidebar-primary-foreground: #021024;
+  --sidebar-accent: #021024;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-active: #5483b3;
+  --sidebar-active-foreground: #ffffff;
+  --sidebar-border: #5483b3;
+  --sidebar-ring: #c1e8ff;
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif,
@@ -91,38 +93,40 @@ code {
 }
 
 .dark {
-  --background: oklch(0.2679 0.0036 106.6427);
-  --foreground: oklch(0.8074 0.0142 93.0137);
-  --card: oklch(0.2679 0.0036 106.6427);
-  --card-foreground: oklch(0.9818 0.0054 95.0986);
-  --popover: oklch(0.3085 0.0035 106.6039);
-  --popover-foreground: oklch(0.9211 0.004 106.4781);
-  --primary: oklch(0.6724 0.1308 38.7559);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.9818 0.0054 95.0986);
-  --secondary-foreground: oklch(0.3085 0.0035 106.6039);
-  --muted: oklch(0.2213 0.0038 106.707);
-  --muted-foreground: oklch(0.7713 0.0169 99.0657);
-  --accent: oklch(0.213 0.0078 95.4245);
-  --accent-foreground: oklch(0.9663 0.008 98.8792);
-  --destructive: oklch(0.6368 0.2078 25.3313);
-  --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.3618 0.0101 106.8928);
-  --input: oklch(0.4336 0.0113 100.2195);
-  --ring: oklch(0.6724 0.1308 38.7559);
-  --chart-1: oklch(0.5583 0.1276 42.9956);
-  --chart-2: oklch(0.6898 0.1581 290.4107);
-  --chart-3: oklch(0.213 0.0078 95.4245);
-  --chart-4: oklch(0.3074 0.0516 289.323);
-  --chart-5: oklch(0.5608 0.1348 42.0584);
-  --sidebar: oklch(0.2357 0.0024 67.7077);
-  --sidebar-foreground: oklch(0.8074 0.0142 93.0137);
-  --sidebar-primary: oklch(0.325 0 0);
-  --sidebar-primary-foreground: oklch(0.9881 0 0);
-  --sidebar-accent: oklch(0.168 0.002 106.6177);
-  --sidebar-accent-foreground: oklch(0.8074 0.0142 93.0137);
-  --sidebar-border: oklch(0.9401 0 0);
-  --sidebar-ring: oklch(0.7731 0 0);
+  --background: #021024;
+  --foreground: #c1e8ff;
+  --card: #052659;
+  --card-foreground: #ffffff;
+  --popover: #052659;
+  --popover-foreground: #ffffff;
+  --primary: #7da0ca;
+  --primary-foreground: #021024;
+  --secondary: #052659;
+  --secondary-foreground: #c1e8ff;
+  --muted: #052659;
+  --muted-foreground: #7da0ca;
+  --accent: #5483b3;
+  --accent-foreground: #ffffff;
+  --destructive: #f04438;
+  --destructive-foreground: #ffffff;
+  --border: #5483b3;
+  --input: #5483b3;
+  --ring: #7da0ca;
+  --chart-1: #c1e8ff;
+  --chart-2: #7da0ca;
+  --chart-3: #5483b3;
+  --chart-4: #052659;
+  --chart-5: #ffffff;
+  --sidebar: #052659;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #c1e8ff;
+  --sidebar-primary-foreground: #021024;
+  --sidebar-accent: #021024;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-active: #5483b3;
+  --sidebar-active-foreground: #ffffff;
+  --sidebar-border: #5483b3;
+  --sidebar-ring: #c1e8ff;
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif,
@@ -183,6 +187,8 @@ code {
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-foreground: var(--sidebar-active-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
@@ -212,6 +218,22 @@ code {
   body {
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);
+    background-image: linear-gradient(
+      135deg,
+      #ffffff 0%,
+      #f7fbff 55%,
+      #eaf6ff 100%
+    );
+    background-attachment: fixed;
+  }
+
+  .dark body {
+    background-image: linear-gradient(135deg, #021024 0%, #052659 100%);
+  }
+
+  ::selection {
+    color: #021024;
+    background: #c1e8ff;
   }
 
   ::-webkit-scrollbar {

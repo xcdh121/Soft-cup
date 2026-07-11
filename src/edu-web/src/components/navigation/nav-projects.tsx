@@ -1,5 +1,5 @@
 import { Result, useAtomValue } from '@effect-atom/atom-react'
-import { Link } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import {
   BookOpenIcon,
   ChevronRightIcon,
@@ -62,12 +62,10 @@ const buildProjectGroups = (
       ? courseById.get(project.course_id)
       : undefined
     const groupId = course?.id ?? unassignedCourseGroup.id
-    const group =
-      groups.get(groupId) ??
-      {
-        ...unassignedCourseGroup,
-        projects: [],
-      }
+    const group = groups.get(groupId) ?? {
+      ...unassignedCourseGroup,
+      projects: [],
+    }
 
     group.projects.push(project)
     groups.set(groupId, group)
@@ -81,11 +79,18 @@ const buildProjectGroups = (
 }
 
 const CourseProjectGroup = ({ group }: { group: ProjectGroup }) => {
+  const { location } = useRouterState()
+
   return (
     <Collapsible defaultOpen className="group/course-project">
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
-          <SidebarMenuButton tooltip={group.name}>
+          <SidebarMenuButton
+            tooltip={group.name}
+            isActive={group.projects.some((project) =>
+              location.pathname.startsWith(`/dashboard/p/${project.id}`),
+            )}
+          >
             <BookOpenIcon className="size-4 opacity-70" />
             <span className="truncate">{group.name}</span>
             {group.code ? (
@@ -109,7 +114,13 @@ const CourseProjectGroup = ({ group }: { group: ProjectGroup }) => {
             ) : (
               group.projects.map((project) => (
                 <SidebarMenuSubItem key={project.id}>
-                  <SidebarMenuSubButton asChild size="md">
+                  <SidebarMenuSubButton
+                    asChild
+                    size="md"
+                    isActive={location.pathname.startsWith(
+                      `/dashboard/p/${project.id}`,
+                    )}
+                  >
                     <Link
                       to="/dashboard/p/$projectId"
                       params={{ projectId: project.id }}
@@ -141,7 +152,8 @@ export function NavProjects() {
   )
 
   const isLoading = coursesResult.waiting || projectsResult.waiting
-  const hasError = Result.isFailure(coursesResult) || Result.isFailure(projectsResult)
+  const hasError =
+    Result.isFailure(coursesResult) || Result.isFailure(projectsResult)
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">

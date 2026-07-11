@@ -99,18 +99,18 @@ const STATUS_META: Record<
 > = {
   confirmed: {
     label: '已确认',
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    dotClassName: 'bg-emerald-500',
+    className: 'border-[#5483B3] bg-[#C1E8FF]/50 text-[#052659]',
+    dotClassName: 'bg-[#052659]',
   },
   inferred: {
     label: '系统推断',
-    className: 'border-sky-200 bg-sky-50 text-sky-700',
-    dotClassName: 'bg-sky-500',
+    className: 'border-[#7DA0CA] bg-[#C1E8FF]/35 text-[#052659]',
+    dotClassName: 'bg-[#5483B3]',
   },
   missing: {
     label: '待补充',
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
-    dotClassName: 'bg-amber-500',
+    className: 'border-[#C1E8FF] bg-[#C1E8FF]/20 text-[#5483B3]',
+    dotClassName: 'bg-[#7DA0CA]',
   },
 }
 
@@ -271,11 +271,11 @@ const PracticeTrendChart = ({ data }: { data: Array<DailyPractice> }) => {
     <div>
       <div className="mb-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-2">
-          <span className="size-2.5 rounded-full bg-sky-500" />
+          <span className="size-2.5 rounded-full bg-[#5483B3]" />
           正确率
         </span>
         <span className="flex items-center gap-2">
-          <span className="size-2.5 rounded-sm bg-amber-300" />
+          <span className="size-2.5 rounded-sm bg-[#C1E8FF]" />
           练习量
         </span>
       </div>
@@ -325,7 +325,7 @@ const PracticeTrendChart = ({ data }: { data: Array<DailyPractice> }) => {
                 width="20"
                 height={barHeight}
                 rx="5"
-                className="fill-amber-300/80"
+                className="fill-[#C1E8FF]/80"
               />
               {point.y !== null && nextPoint && nextPoint.y !== null ? (
                 <line
@@ -333,14 +333,14 @@ const PracticeTrendChart = ({ data }: { data: Array<DailyPractice> }) => {
                   y1={point.y}
                   x2={nextPoint.x}
                   y2={nextPoint.y}
-                  stroke="#0ea5e9"
+                  stroke="#5483b3"
                   strokeWidth="3"
                   strokeLinecap="round"
                 />
               ) : null}
               {point.y !== null ? (
                 <g>
-                  <circle cx={point.x} cy={point.y} r="5" fill="#0ea5e9" />
+                  <circle cx={point.x} cy={point.y} r="5" fill="#5483b3" />
                   <circle cx={point.x} cy={point.y} r="2" fill="white" />
                 </g>
               ) : null}
@@ -375,12 +375,12 @@ const MasteryBars = ({ nodes }: { nodes: Array<KnowledgeGraphNode> }) => {
       {weakest.map((node) => {
         const color =
           node.mastery_score < 40
-            ? 'bg-rose-500'
+            ? 'bg-[#021024]'
             : node.mastery_score < 60
-              ? 'bg-amber-500'
+              ? 'bg-[#052659]'
               : node.mastery_score < 80
-                ? 'bg-sky-500'
-                : 'bg-emerald-500'
+                ? 'bg-[#5483B3]'
+                : 'bg-[#7DA0CA]'
         return (
           <div key={node.id} className="space-y-1.5">
             <div className="flex items-center justify-between gap-4 text-sm">
@@ -572,26 +572,26 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
     {
       label: '需补基础',
       count: nodes.filter((node) => node.mastery_score < 40).length,
-      color: '#f43f5e',
+      color: '#021024',
     },
     {
       label: '需要巩固',
       count: nodes.filter(
         (node) => node.mastery_score >= 40 && node.mastery_score < 60,
       ).length,
-      color: '#f59e0b',
+      color: '#052659',
     },
     {
       label: '基本掌握',
       count: nodes.filter(
         (node) => node.mastery_score >= 60 && node.mastery_score < 80,
       ).length,
-      color: '#0ea5e9',
+      color: '#5483b3',
     },
     {
       label: '掌握良好',
       count: nodes.filter((node) => node.mastery_score >= 80).length,
-      color: '#10b981',
+      color: '#7da0ca',
     },
   ]
   let masteryCursor = 0
@@ -633,12 +633,12 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="container mx-auto flex max-w-7xl flex-1 flex-col gap-6 px-4 py-6">
-          <section className="relative overflow-hidden rounded-[30px] bg-gradient-to-br from-slate-50 via-white to-amber-50 p-6 shadow-sm dark:from-slate-950 dark:via-background dark:to-amber-950/20">
-            <div className="absolute -right-16 -top-24 size-64 rounded-full bg-sky-200/30 blur-3xl" />
+          <section className="relative overflow-hidden rounded-[30px] border border-primary/15 bg-gradient-to-br from-[#C1E8FF]/60 via-white to-[#7DA0CA]/20 p-6 shadow-sm dark:from-[#052659] dark:via-background dark:to-[#5483B3]/30">
+            <div className="absolute -right-16 -top-24 size-64 rounded-full bg-[#7DA0CA]/30 blur-3xl" />
             <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-4">
                 <Avatar className="size-20 border-4 border-white shadow-md">
-                  <AvatarFallback className="bg-slate-900 text-xl font-semibold text-white">
+                  <AvatarFallback className="bg-[#052659] text-xl font-semibold text-white">
                     学生
                   </AvatarFallback>
                 </Avatar>
@@ -686,8 +686,8 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                   label="画像完整度"
                   value={`${completeness}%`}
                   hint={`${statusCounts.missing} 个维度仍待补充`}
-                  icon={<DatabaseIcon className="size-5 text-violet-600" />}
-                  tone="bg-violet-100/70"
+                  icon={<DatabaseIcon className="size-5 text-[#021024]" />}
+                  tone="bg-[#C1E8FF]/70"
                 />
                 <MetricCard
                   label="平均知识掌握度"
@@ -695,8 +695,8 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                     averageMastery === null ? '暂无' : `${averageMastery}%`
                   }
                   hint={`已追踪 ${nodes.length} 个知识点`}
-                  icon={<BookOpenIcon className="size-5 text-sky-600" />}
-                  tone="bg-sky-100/70"
+                  icon={<BookOpenIcon className="size-5 text-[#052659]" />}
+                  tone="bg-[#C1E8FF]/60"
                 />
                 <MetricCard
                   label="近 7 天正确率"
@@ -704,15 +704,15 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                     recentAccuracy === null ? '暂无' : `${recentAccuracy}%`
                   }
                   hint={`共完成 ${recentAttempts} 次练习`}
-                  icon={<ActivityIcon className="size-5 text-emerald-600" />}
-                  tone="bg-emerald-100/70"
+                  icon={<ActivityIcon className="size-5 text-[#5483B3]" />}
+                  tone="bg-[#C1E8FF]/50"
                 />
                 <MetricCard
                   label="薄弱知识点"
                   value={`${weakNodes.length}`}
                   hint="掌握度低于 60%"
-                  icon={<TargetIcon className="size-5 text-rose-600" />}
-                  tone="bg-rose-100/70"
+                  icon={<TargetIcon className="size-5 text-[#7DA0CA]" />}
+                  tone="bg-[#C1E8FF]/40"
                 />
               </div>
             ) : null}
@@ -821,7 +821,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                         按掌握度从低到高排列，优先处理高风险薄弱点。
                       </p>
                     </div>
-                    <TrendingDownIcon className="size-5 text-rose-500" />
+                    <TrendingDownIcon className="size-5 text-[#052659]" />
                   </div>
                   <MasteryBars nodes={nodes} />
                 </div>
@@ -852,7 +852,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                             </div>
                             <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
                               <div
-                                className="h-full rounded-full bg-gradient-to-r from-amber-400 to-rose-500"
+                                className="h-full rounded-full bg-gradient-to-r from-[#7DA0CA] to-[#052659]"
                                 style={{
                                   width: `${(item.count / errorTopics[0].count) * 100}%`,
                                 }}
@@ -881,7 +881,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                     <Donut
                       value={`${fields.length - statusCounts.missing}/${fields.length}`}
                       label="已具备画像"
-                      gradient={`conic-gradient(#10b981 0 ${confirmedEnd}%, #0ea5e9 ${confirmedEnd}% ${inferredEnd}%, #f59e0b ${inferredEnd}% 100%)`}
+                      gradient={`conic-gradient(#052659 0 ${confirmedEnd}%, #5483b3 ${confirmedEnd}% ${inferredEnd}%, #c1e8ff ${inferredEnd}% 100%)`}
                     />
                     <div className="space-y-3">
                       {Object.entries(statusCounts).map(([key, count]) => {
@@ -922,7 +922,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                           </div>
                           <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
                             <div
-                              className="h-full rounded-full bg-violet-500"
+                              className="h-full rounded-full bg-[#5483B3]"
                               style={{
                                 width: `${(item.count / maxEvidence) * 100}%`,
                               }}
@@ -987,7 +987,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
             </>
           ) : Result.isSuccess(profileResult) ? (
             <section className="rounded-[24px] border bg-background p-8 text-center shadow-sm">
-              <SparklesIcon className="mx-auto size-9 text-amber-500" />
+              <SparklesIcon className="mx-auto size-9 text-[#5483B3]" />
               <h2 className="mt-4 text-lg font-semibold">还没有学生画像</h2>
               <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
                 点击生成后，系统会从当前项目的课程、练习记录和知识状态中自动生成初版画像。

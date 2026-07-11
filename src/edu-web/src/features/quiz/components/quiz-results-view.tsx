@@ -44,12 +44,10 @@ type CompletionHeaderProps = {
 const CompletionHeader = ({ total }: CompletionHeaderProps) => (
   <div className="text-center space-y-2">
     <div className="flex items-center justify-center gap-2 mb-2">
-      <Trophy className="h-8 w-8 text-yellow-500" />
+      <Trophy className="h-8 w-8 text-[#5483B3]" />
       <h2 className="text-3xl font-bold">测验已完成！</h2>
     </div>
-    <p className="text-muted-foreground">
-      你已完成全部 {total} 道题
-    </p>
+    <p className="text-muted-foreground">你已完成全部 {total} 道题</p>
   </div>
 )
 

@@ -18,10 +18,10 @@ const trendIcon = {
 }
 
 const getMasteryStyle = (score: number, status: string) => {
-  if (status === 'not_started') return 'border-slate-300 bg-slate-50'
-  if (score < 40) return 'border-red-300 bg-red-50'
-  if (score < 80) return 'border-sky-300 bg-sky-50'
-  return 'border-emerald-300 bg-emerald-50'
+  if (status === 'not_started') return 'border-[#7DA0CA] bg-[#C1E8FF]/25'
+  if (score < 40) return 'border-[#5483B3] bg-[#C1E8FF]/40'
+  if (score < 80) return 'border-[#052659] bg-[#C1E8FF]/55'
+  return 'border-[#021024] bg-[#C1E8FF]/70'
 }
 
 export function KnowledgeNode({

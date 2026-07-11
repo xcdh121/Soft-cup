@@ -79,18 +79,20 @@ const clamp = (value: number, min: number, max: number) =>
 const parseMarkdownSections = (markdown?: string | null) => {
   if (!markdown) return []
 
-  return markdown.split('\n').reduce<Array<MarkdownSection>>((sections, line) => {
-    if (line.startsWith('## ')) {
-      sections.push({ title: line.replace(/^##\s+/, ''), body: [] })
-      return sections
-    }
+  return markdown
+    .split('\n')
+    .reduce<Array<MarkdownSection>>((sections, line) => {
+      if (line.startsWith('## ')) {
+        sections.push({ title: line.replace(/^##\s+/, ''), body: [] })
+        return sections
+      }
 
-    const current = sections.at(-1)
-    if (current && line.trim()) {
-      current.body.push(line.trim())
-    }
-    return sections
-  }, [])
+      const current = sections.at(-1)
+      if (current && line.trim()) {
+        current.body.push(line.trim())
+      }
+      return sections
+    }, [])
 }
 
 const renderMarkdownLine = (line: string) => {
@@ -162,7 +164,9 @@ const RowResizeHandle = ({
 )
 
 const ResourceList = ({ knowledgePointId }: { knowledgePointId: string }) => {
-  const resourcesResult = useAtomValue(knowledgePointResourcesAtom(knowledgePointId))
+  const resourcesResult = useAtomValue(
+    knowledgePointResourcesAtom(knowledgePointId),
+  )
 
   return Result.builder(resourcesResult)
     .onSuccess((resources) => (
@@ -351,7 +355,8 @@ const CourseBrowser = ({
   }, [points])
 
   const selectedChapter = selectedPoint?.chapter_id
-    ? chapters.find((chapter) => chapter.id === selectedPoint.chapter_id) ?? null
+    ? (chapters.find((chapter) => chapter.id === selectedPoint.chapter_id) ??
+      null)
     : null
 
   const startDetailResize = useCallback(
@@ -436,7 +441,9 @@ const CourseBrowser = ({
                       </p>
                     ) : null}
                   </div>
-                  <Badge variant="outline">{chapterPoints.length} 个知识点</Badge>
+                  <Badge variant="outline">
+                    {chapterPoints.length} 个知识点
+                  </Badge>
                 </div>
 
                 <div className="space-y-2">
@@ -500,7 +507,10 @@ const CourseBrowser = ({
             {markdownSections.length > 0 ? (
               <div className="space-y-5">
                 {markdownSections.map((section) => (
-                  <section key={section.title} className="rounded-2xl bg-muted/30 p-4">
+                  <section
+                    key={section.title}
+                    className="rounded-2xl bg-muted/30 p-4"
+                  >
                     <h3 className="mb-3 font-semibold">{section.title}</h3>
                     <div className="space-y-2 text-sm text-muted-foreground">
                       {section.body.map(renderMarkdownLine)}
@@ -510,8 +520,8 @@ const CourseBrowser = ({
               </div>
             ) : (
               <div className="rounded-2xl bg-muted/40 p-5 text-sm text-muted-foreground">
-                当前知识点还没有正文。初始化脚本会写入包含 5 个区块的
-                Markdown 正文。
+                当前知识点还没有正文。初始化脚本会写入包含 5 个区块的 Markdown
+                正文。
               </div>
             )}
           </CardContent>
@@ -546,7 +556,7 @@ const CourseBrowser = ({
 
               <section className="space-y-3">
                 <div className="text-sm font-medium">相关资料/题目</div>
-              <ResourceList knowledgePointId={selectedPoint.id} />
+                <ResourceList knowledgePointId={selectedPoint.id} />
               </section>
             </CardContent>
           </Card>
@@ -648,7 +658,7 @@ export const CourseLibraryPage = () => {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[1800px] flex-col gap-4 px-4 py-4">
-          <section className="rounded-[30px] border bg-gradient-to-br from-sky-50 via-white to-amber-50 p-6 shadow-sm">
+          <section className="rounded-[30px] border border-primary/15 bg-gradient-to-br from-[#C1E8FF]/60 via-white to-[#7DA0CA]/20 p-6 shadow-sm dark:from-[#052659] dark:via-background dark:to-[#5483B3]/30">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
@@ -660,7 +670,8 @@ export const CourseLibraryPage = () => {
                       课程资料库
                     </h1>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      从课程进入章节、知识点正文和相关资料，验证 A 部分知识库浏览链路。
+                      从课程进入章节、知识点正文和相关资料，验证 A
+                      部分知识库浏览链路。
                     </p>
                   </div>
                 </div>

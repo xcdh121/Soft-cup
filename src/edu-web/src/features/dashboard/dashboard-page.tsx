@@ -221,10 +221,16 @@ const formatStudyDuration = (minutes: number) => {
 
 const heatStyle = (count: number, maxCount: number) => {
   const intensity = maxCount === 0 ? 0 : count / maxCount
+  const palette = ['#eaf6ff', '#c1e8ff', '#7da0ca', '#5483b3', '#052659']
+  const paletteIndex = Math.min(
+    palette.length - 1,
+    Math.floor(intensity * palette.length),
+  )
+
   return {
-    backgroundColor: `hsl(0 84% ${96 - intensity * 43}%)`,
-    borderColor: `hsl(0 72% ${90 - intensity * 38}%)`,
-    color: intensity > 0.62 ? 'white' : `hsl(0 72% ${42 - intensity * 12}%)`,
+    backgroundColor: palette[paletteIndex],
+    borderColor: intensity > 0.5 ? '#5483b3' : '#c1e8ff',
+    color: intensity > 0.62 ? '#ffffff' : '#021024',
   }
 }
 
@@ -387,7 +393,7 @@ const CommunitySection = () => {
       <Card className="h-fit lg:sticky lg:top-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <TrophyIcon className="h-5 w-5 text-amber-500" />
+            <TrophyIcon className="h-5 w-5 text-[#5483B3]" />
             学习次数榜
           </CardTitle>
           <CardDescription>练习越多，榜单颜色越红。</CardDescription>

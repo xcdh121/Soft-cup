@@ -48,7 +48,11 @@ export function NavMain({ items }: { items: Array<NavItem> }) {
               >
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
-                    <SidebarMenuButton asChild tooltip={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      tooltip={item.title}
+                      isActive={active}
+                    >
                       {isExternal ? (
                         <a
                           href={item.url}
@@ -72,7 +76,10 @@ export function NavMain({ items }: { items: Array<NavItem> }) {
                     <SidebarMenuSub>
                       {item.items.map((subItem) => (
                         <SidebarMenuSubItem key={subItem.title}>
-                          <SidebarMenuSubButton asChild>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={location.pathname === subItem.url}
+                          >
                             <Link to={subItem.url}>
                               <span>{subItem.title}</span>
                             </Link>
@@ -89,7 +96,11 @@ export function NavMain({ items }: { items: Array<NavItem> }) {
               item.url.startsWith('http://') || item.url.startsWith('https://')
             return (
               <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton asChild tooltip={item.title}>
+                <SidebarMenuButton
+                  asChild
+                  tooltip={item.title}
+                  isActive={active}
+                >
                   {isExternal ? (
                     <a
                       href={item.url}

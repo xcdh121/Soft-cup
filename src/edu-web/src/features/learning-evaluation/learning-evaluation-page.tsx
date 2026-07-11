@@ -262,7 +262,7 @@ const ResourceList = ({
                         key={starIndex}
                         className={cn(
                           'size-3.5 text-muted-foreground/25',
-                          starIndex < stars && 'fill-amber-400 text-amber-500',
+                          starIndex < stars && 'fill-[#7DA0CA] text-[#5483B3]',
                         )}
                       />
                     ))}
@@ -281,7 +281,7 @@ const ResourceList = ({
                 <TableCell
                   className={cn(
                     'align-middle font-medium',
-                    stats.completed ? 'text-emerald-600' : 'text-amber-600',
+                    stats.completed ? 'text-[#052659]' : 'text-[#5483B3]',
                   )}
                 >
                   {stats.completed ? '已完成' : '未完成'}
@@ -385,15 +385,15 @@ export const LearningEvaluationPage = ({
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {(
               [
-                ['generated', Layers3, 'text-sky-600', 'bg-sky-50'],
-                ['incomplete', Clock3, 'text-amber-600', 'bg-amber-50'],
+                ['generated', Layers3, 'text-[#021024]', 'bg-[#C1E8FF]/70'],
+                ['incomplete', Clock3, 'text-[#052659]', 'bg-[#C1E8FF]/55'],
                 [
                   'completed',
                   CheckCircle2,
-                  'text-emerald-600',
-                  'bg-emerald-50',
+                  'text-[#5483B3]',
+                  'bg-[#C1E8FF]/40',
                 ],
-                ['wrong', CircleAlert, 'text-rose-600', 'bg-rose-50'],
+                ['wrong', CircleAlert, 'text-[#7DA0CA]', 'bg-[#C1E8FF]/25'],
               ] as const
             ).map(([key, Icon, color, background]) => (
               <button key={key} type="button" onClick={() => setView(key)}>
@@ -447,7 +447,7 @@ export const LearningEvaluationPage = ({
       <ProjectHeader projectId={projectId} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <main className="container mx-auto max-w-7xl space-y-6 px-4 py-6">
-          <Card className="rounded-[28px] border-0 bg-gradient-to-br from-cyan-50 via-white to-lime-50 shadow-sm">
+          <Card className="rounded-[28px] border border-primary/15 bg-gradient-to-br from-[#C1E8FF]/60 via-white to-[#7DA0CA]/20 shadow-sm dark:from-[#052659] dark:via-background dark:to-[#5483B3]/30">
             <CardHeader className="p-6">
               <CardTitle className="text-2xl">学习效果评估</CardTitle>
               <p className="text-sm text-muted-foreground">

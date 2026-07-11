@@ -254,8 +254,8 @@ export const ProgrammingPracticePage = ({
                   ) : null}
 
                   {question.hints.length ? (
-                    <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/20">
-                      <Lightbulb className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                    <div className="flex gap-2 rounded-xl border border-[#7DA0CA] bg-[#C1E8FF]/40 p-3 text-sm dark:border-[#5483B3] dark:bg-[#052659]/50">
+                      <Lightbulb className="mt-0.5 size-4 shrink-0 text-[#5483B3]" />
                       <span>{question.hints[0]}</span>
                     </div>
                   ) : null}

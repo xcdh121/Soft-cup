@@ -37,9 +37,15 @@ const getCurrentProjectId = (pathname: string) => {
 }
 
 const ChatItem = ({ chat }: { chat: ChatDto }) => {
+  const { location } = useRouterState()
+
   return (
     <SidebarMenuSubItem>
-      <SidebarMenuSubButton asChild size="md">
+      <SidebarMenuSubButton
+        asChild
+        size="md"
+        isActive={location.pathname.endsWith(`/c/${chat.id}`)}
+      >
         <Link
           to="/dashboard/p/$projectId/c/$chatId"
           params={{

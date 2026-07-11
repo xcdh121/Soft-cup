@@ -65,10 +65,10 @@ const difficultyLabel: Partial<Record<string, string>> = {
 }
 
 function getMasteryColor(node: KnowledgeGraphNode) {
-  if (node.status === 'not_started') return '#94a3b8'
-  if (node.mastery_score < 40) return '#fb7185'
-  if (node.mastery_score < 80) return '#38bdf8'
-  return '#45f0c0'
+  if (node.status === 'not_started') return '#5483b3'
+  if (node.mastery_score < 40) return '#7da0ca'
+  if (node.mastery_score < 80) return '#c1e8ff'
+  return '#052659'
 }
 
 function getNodeSize(node: KnowledgeGraphNode) {
@@ -174,9 +174,7 @@ function buildViewBox(positions: Map<string, Point>) {
 }
 
 function parseViewBox(viewBox: string) {
-  const [x, y, width, height] = viewBox
-    .split(' ')
-    .map((value) => Number(value))
+  const [x, y, width, height] = viewBox.split(' ').map((value) => Number(value))
   return { x, y, width, height }
 }
 
@@ -362,8 +360,10 @@ export function KnowledgeGraphCanvas({
     }
     const previousPoint = positions.get(dragState.nodeId)
     const moved = previousPoint
-      ? Math.hypot(nextPoint.x - previousPoint.x, nextPoint.y - previousPoint.y) >
-        1.5
+      ? Math.hypot(
+          nextPoint.x - previousPoint.x,
+          nextPoint.y - previousPoint.y,
+        ) > 1.5
       : false
     dragStateRef.current = { ...dragState, moved: dragState.moved || moved }
     setPositions((current) => {
@@ -390,11 +390,11 @@ export function KnowledgeGraphCanvas({
   }
 
   return (
-    <div className="relative h-full min-h-[620px] overflow-hidden bg-[#05090a]">
+    <div className="relative h-full min-h-[620px] overflow-hidden bg-[#021024]">
       <div
         className={cn(
           'pointer-events-none absolute inset-0 opacity-80',
-          'bg-[radial-gradient(circle_at_20%_20%,rgba(72,217,199,0.14),transparent_25%),radial-gradient(circle_at_78%_28%,rgba(56,189,248,0.08),transparent_28%),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[length:auto,auto,56px_56px,56px_56px]',
+          'bg-[radial-gradient(circle_at_20%_20%,rgba(84,131,179,0.25),transparent_25%),radial-gradient(circle_at_78%_28%,rgba(125,160,202,0.16),transparent_28%),linear-gradient(90deg,rgba(193,232,255,0.035)_1px,transparent_1px),linear-gradient(rgba(193,232,255,0.035)_1px,transparent_1px)] bg-[length:auto,auto,56px_56px,56px_56px]',
         )}
       />
 
@@ -424,7 +424,7 @@ export function KnowledgeGraphCanvas({
             refX="7"
             refY="4"
           >
-            <path d="M0,0 L8,4 L0,8 Z" fill="#4b5963" />
+            <path d="M0,0 L8,4 L0,8 Z" fill="#5483b3" />
           </marker>
           <marker
             id="graphArrowActive"
@@ -434,7 +434,7 @@ export function KnowledgeGraphCanvas({
             refX="7"
             refY="4"
           >
-            <path d="M0,0 L8,4 L0,8 Z" fill="#48d9c7" />
+            <path d="M0,0 L8,4 L0,8 Z" fill="#c1e8ff" />
           </marker>
         </defs>
 
@@ -463,7 +463,7 @@ export function KnowledgeGraphCanvas({
                 key={edge.id}
                 markerEnd={`url(#${isRelated ? 'graphArrowActive' : 'graphArrow'})`}
                 opacity={isDimmed ? 0.08 : isRelated ? 0.78 : 0.36}
-                stroke={isRelated ? '#48d9c7' : '#4b5963'}
+                stroke={isRelated ? '#c1e8ff' : '#5483b3'}
                 strokeLinecap="round"
                 strokeWidth={Math.max(0.8, edge.strength * 1.8)}
                 x1={source.x}
@@ -495,7 +495,7 @@ export function KnowledgeGraphCanvas({
                   fill={color}
                   height={radius * 1.55}
                   rx="2"
-                  stroke={isSelected ? '#eafffb' : '#d9fff7'}
+                  stroke={isSelected ? '#ffffff' : '#c1e8ff'}
                   strokeOpacity={isSelected ? 1 : 0.55}
                   strokeWidth={isSelected ? 2.5 : 1.1}
                   width={radius * 1.55}
@@ -510,7 +510,7 @@ export function KnowledgeGraphCanvas({
                 />
                 <text
                   dominantBaseline="middle"
-                  fill={isSelected || isRelated ? '#eafffb' : '#b6c3cb'}
+                  fill={isSelected || isRelated ? '#ffffff' : '#c1e8ff'}
                   fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
                   fontSize="13"
                   fontWeight={isSelected ? 700 : 600}
@@ -532,13 +532,13 @@ export function KnowledgeGraphCanvas({
             x={selectedPoint.x * viewport.zoom + viewport.pan.x + 24}
             y={selectedPoint.y * viewport.zoom + viewport.pan.y - 18}
           >
-            <div className="pointer-events-auto w-[292px] rounded-md border border-teal-300/25 bg-black/85 p-4 font-sans text-xs text-slate-200 shadow-2xl shadow-teal-950/30 backdrop-blur">
+            <div className="pointer-events-auto w-[292px] rounded-md border border-[#7DA0CA]/40 bg-[#052659]/95 p-4 font-sans text-xs text-[#C1E8FF] shadow-2xl shadow-[#021024]/50 backdrop-blur">
               <div className="mb-2 flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-teal-100">
+                  <div className="text-sm font-semibold text-white">
                     {selectedNode.label}
                   </div>
-                  <div className="mt-1 text-[11px] text-slate-400">
+                  <div className="mt-1 text-[11px] text-[#7DA0CA]">
                     {difficultyLabel[selectedNode.difficulty_level] ??
                       selectedNode.difficulty_level}{' '}
                     / {statusLabel[selectedNode.status] ?? selectedNode.status}
@@ -546,7 +546,7 @@ export function KnowledgeGraphCanvas({
                 </div>
                 <button
                   type="button"
-                  className="rounded border border-white/10 px-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
+                  className="rounded border border-[#7DA0CA]/40 px-1.5 text-[#C1E8FF] transition-colors hover:bg-[#021024] hover:text-white"
                   onClick={() => onSelect(null)}
                 >
                   x
@@ -554,13 +554,13 @@ export function KnowledgeGraphCanvas({
               </div>
 
               <div className="mb-2">
-                <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                <div className="mb-1 flex justify-between text-[11px] text-[#7DA0CA]">
                   <span>掌握度</span>
                   <span>{Math.round(selectedNode.mastery_score)}%</span>
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
                   <div
-                    className="h-full rounded-full bg-teal-300"
+                    className="h-full rounded-full bg-[#C1E8FF]"
                     style={{
                       width: `${clamp(selectedNode.mastery_score, 0, 100)}%`,
                     }}
@@ -575,7 +575,9 @@ export function KnowledgeGraphCanvas({
                 </div>
                 <div className="rounded border border-white/10 bg-white/[0.04] p-2">
                   <div className="text-slate-500">趋势</div>
-                  <div>{trendLabel[selectedNode.trend] ?? selectedNode.trend}</div>
+                  <div>
+                    {trendLabel[selectedNode.trend] ?? selectedNode.trend}
+                  </div>
                 </div>
                 <div className="rounded border border-white/10 bg-white/[0.04] p-2">
                   <div className="text-slate-500">关系</div>
@@ -584,11 +586,13 @@ export function KnowledgeGraphCanvas({
               </div>
 
               <div className="mt-3 space-y-1.5 text-[11px]">
-                <div className="truncate text-slate-400">
-                  前置：{predecessors.map((node) => node.label).join('、') || '无'}
+                <div className="truncate text-[#7DA0CA]">
+                  前置：
+                  {predecessors.map((node) => node.label).join('、') || '无'}
                 </div>
-                <div className="truncate text-slate-400">
-                  后续：{successors.map((node) => node.label).join('、') || '无'}
+                <div className="truncate text-[#7DA0CA]">
+                  后续：
+                  {successors.map((node) => node.label).join('、') || '无'}
                 </div>
               </div>
             </div>
@@ -596,17 +600,17 @@ export function KnowledgeGraphCanvas({
         )}
       </svg>
 
-      <div className="absolute left-4 top-4 flex flex-wrap gap-2 text-[11px] font-medium text-slate-300">
-        <span className="rounded-full border border-slate-500/40 bg-black/30 px-2.5 py-1 backdrop-blur">
+      <div className="absolute left-4 top-4 flex flex-wrap gap-2 text-[11px] font-medium text-[#C1E8FF]">
+        <span className="rounded-full border border-[#5483B3]/50 bg-[#052659]/60 px-2.5 py-1 backdrop-blur">
           未开始
         </span>
-        <span className="rounded-full border border-rose-300/35 bg-rose-400/10 px-2.5 py-1 text-rose-200 backdrop-blur">
+        <span className="rounded-full border border-[#7DA0CA]/50 bg-[#7DA0CA]/15 px-2.5 py-1 text-[#C1E8FF] backdrop-blur">
           薄弱
         </span>
-        <span className="rounded-full border border-sky-300/35 bg-sky-400/10 px-2.5 py-1 text-sky-200 backdrop-blur">
+        <span className="rounded-full border border-[#C1E8FF]/50 bg-[#5483B3]/20 px-2.5 py-1 text-[#C1E8FF] backdrop-blur">
           学习中
         </span>
-        <span className="rounded-full border border-teal-300/35 bg-teal-400/10 px-2.5 py-1 text-teal-200 backdrop-blur">
+        <span className="rounded-full border border-white/40 bg-[#C1E8FF]/20 px-2.5 py-1 text-white backdrop-blur">
           已掌握
         </span>
       </div>
@@ -616,7 +620,7 @@ export function KnowledgeGraphCanvas({
           type="button"
           size="icon"
           variant="secondary"
-          className="border border-white/10 bg-black/45 text-slate-100 hover:bg-black/65"
+          className="border border-[#7DA0CA]/40 bg-[#052659]/80 text-white hover:bg-[#021024]"
           title="重新模拟布局"
           onClick={() => {
             onSelect(null)
@@ -629,7 +633,7 @@ export function KnowledgeGraphCanvas({
           type="button"
           size="icon"
           variant="secondary"
-          className="border border-white/10 bg-black/45 text-slate-100 hover:bg-black/65"
+          className="border border-[#7DA0CA]/40 bg-[#052659]/80 text-white hover:bg-[#021024]"
           title="恢复视图"
           onClick={resetView}
         >
@@ -637,7 +641,7 @@ export function KnowledgeGraphCanvas({
         </Button>
       </div>
 
-      <div className="absolute bottom-4 left-4 rounded-full border border-white/10 bg-black/35 px-3 py-1 text-xs text-slate-300 backdrop-blur">
+      <div className="absolute bottom-4 left-4 rounded-full border border-[#7DA0CA]/40 bg-[#052659]/70 px-3 py-1 text-xs text-[#C1E8FF] backdrop-blur">
         D3 force / 滚轮缩放 / 拖动画布与节点 / {graph.nodes.length} 个知识点 /{' '}
         {graph.edges.length} 条关系
       </div>

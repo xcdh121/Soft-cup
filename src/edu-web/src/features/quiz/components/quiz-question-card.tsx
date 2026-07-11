@@ -31,7 +31,10 @@ type QuizQuestionCardProps = {
   projectId: string
 }
 
-export const QuizQuestionCard = ({ quizId, projectId }: QuizQuestionCardProps) => {
+export const QuizQuestionCard = ({
+  quizId,
+  projectId,
+}: QuizQuestionCardProps) => {
   const [aiOpen, setAiOpen] = useState(false)
   const [messages, setMessages] = useState<Array<AiExplanationMessage>>([])
   const [question, setQuestion] = useState('')
@@ -44,7 +47,9 @@ export const QuizQuestionCard = ({ quizId, projectId }: QuizQuestionCardProps) =
   const currentQuestionResult = useAtomValue(
     currentQuestionAtom(`${projectId}:${quizId}`),
   )
-  const setSelectedAnswer = useAtomSet(setSelectedAnswerAtom, { mode: 'promise' })
+  const setSelectedAnswer = useAtomSet(setSelectedAnswerAtom, {
+    mode: 'promise',
+  })
   const streamExplanation = useAtomSet(streamQuizAiExplanationAtom, {
     mode: 'promise',
   })
@@ -96,7 +101,11 @@ export const QuizQuestionCard = ({ quizId, projectId }: QuizQuestionCardProps) =
     requestInFlight.current = true
     const history = messages.filter((message) => message.content.trim())
     const nextMessages: Array<AiExplanationMessage> = userQuestion
-      ? [...history, { role: 'user', content: userQuestion }, { role: 'assistant', content: '' }]
+      ? [
+          ...history,
+          { role: 'user', content: userQuestion },
+          { role: 'assistant', content: '' },
+        ]
       : [...history, { role: 'assistant', content: '' }]
 
     setMessages(nextMessages)
@@ -161,12 +170,16 @@ export const QuizQuestionCard = ({ quizId, projectId }: QuizQuestionCardProps) =
                   {selected === currentQuestion.correct_option ? (
                     <>
                       <CheckCircle className="size-5 shrink-0 text-green-600" />
-                      <span className="text-sm font-medium text-green-600">正确</span>
+                      <span className="text-sm font-medium text-green-600">
+                        正确
+                      </span>
                     </>
                   ) : (
                     <>
                       <XCircle className="size-5 shrink-0 text-red-600" />
-                      <span className="text-sm font-medium text-red-600">错误</span>
+                      <span className="text-sm font-medium text-red-600">
+                        错误
+                      </span>
                     </>
                   )}
                 </div>
@@ -187,7 +200,9 @@ export const QuizQuestionCard = ({ quizId, projectId }: QuizQuestionCardProps) =
                   )}
                 >
                   <div className="flex gap-3">
-                    <span className="shrink-0 font-semibold">{option.key}.</span>
+                    <span className="shrink-0 font-semibold">
+                      {option.key}.
+                    </span>
                     <span className="leading-relaxed">{option.label}</span>
                   </div>
                 </button>
@@ -199,7 +214,11 @@ export const QuizQuestionCard = ({ quizId, projectId }: QuizQuestionCardProps) =
                 <span className="text-muted-foreground">正确答案：</span>
                 <span className="font-semibold text-green-700">
                   {currentQuestion.correct_option}.{' '}
-                  {options.find((item) => item.key === currentQuestion.correct_option)?.label}
+                  {
+                    options.find(
+                      (item) => item.key === currentQuestion.correct_option,
+                    )?.label
+                  }
                 </span>
                 {currentQuestion.explanation && (
                   <div className="leading-relaxed text-muted-foreground">
@@ -219,7 +238,7 @@ export const QuizQuestionCard = ({ quizId, projectId }: QuizQuestionCardProps) =
           onClick={openAi}
           disabled={isGenerating}
         >
-          <Sparkles className="size-5 text-violet-600" />
+          <Sparkles className="size-5 text-[#5483B3]" />
           AI 解析
         </Button>
       </div>
@@ -228,7 +247,7 @@ export const QuizQuestionCard = ({ quizId, projectId }: QuizQuestionCardProps) =
         <SheetContent className="flex w-full flex-col p-0 sm:max-w-xl">
           <SheetHeader className="border-b p-5">
             <SheetTitle className="flex items-center gap-2">
-              <Sparkles className="size-5 text-violet-600" />
+              <Sparkles className="size-5 text-[#5483B3]" />
               AI 本题解析
             </SheetTitle>
             <SheetDescription>
