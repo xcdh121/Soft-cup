@@ -1139,6 +1139,7 @@ class ChatService:
                             # Create or update tool call entry for non-RAG tools
                             if tc_id not in tool_calls:
                                 tool_calls[tc_id] = ToolCallPartDto(
+                                    id=str(uuid4()),
                                     tool_call_id=tc_id,
                                     tool_name=tc_name,
                                     tool_input=tc_args,
