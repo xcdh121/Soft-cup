@@ -21,8 +21,9 @@ export const ResourcePackageFloatingButton = () => {
 
   const match = location.pathname.match(projectRoutePattern)
   const projectId = match?.[1]
+  const isDocumentReviewRoute = location.pathname.includes('/d/')
 
-  if (!projectId) return null
+  if (!projectId || isDocumentReviewRoute) return null
 
   return (
     <div className="pointer-events-none fixed right-6 bottom-6 z-40">

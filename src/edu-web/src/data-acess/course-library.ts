@@ -152,6 +152,12 @@ export const courseKnowledgePointsAtom = Atom.family((courseId: string) =>
     .pipe(Atom.keepAlive),
 )
 
+export const courseResourcesAtom = Atom.family((courseId: string) =>
+  runtime
+    .atom(getJson<Array<CourseResource>>(`/api/v1/courses/${courseId}/resources`))
+    .pipe(Atom.keepAlive),
+)
+
 export const knowledgePointResourcesAtom = Atom.family(
   (knowledgePointId: string) =>
     runtime

@@ -218,18 +218,23 @@ class ChatService:
         }
         media_type = media_type_map.get(file_type.lower(), "application/pdf")
 
+        provider_metadata = {
+            "document_id": source.get("document_id"),
+            "segment_id": source.get("segment_id") or source.get("id"),
+            "page_number": source.get("page_number"),
+            "score": source.get("score"),
+        }
+        provider_metadata = {
+            key: value for key, value in provider_metadata.items() if value is not None
+        }
+
         return SourceDocumentPartDto(
             id=str(uuid4()),
             source_id=source_id,
             media_type=media_type,
             title=source.get("title", document.file_name if document else "Document"),
             filename=document.file_name if document else None,
-            provider_metadata={
-                "document_id": source.get("document_id"),
-                "score": source.get("score"),
-            }
-            if source.get("score")
-            else None,
+            provider_metadata=provider_metadata or None,
             order=order,
         )
 

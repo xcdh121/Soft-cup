@@ -6,6 +6,12 @@
 
 @source "../node_modules/streamdown/dist/index.js";
 
+html,
+body,
+#app {
+  height: 100%;
+}
+
 body {
   @apply m-0;
   font-family:

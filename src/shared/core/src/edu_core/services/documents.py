@@ -4,11 +4,17 @@ from contextlib import contextmanager
 from datetime import datetime
 from uuid import uuid4
 
-from edu_db.models import Document
+from edu_db.models import CourseResource, Document, DocumentSegment, Project
 from edu_db.session import get_session_factory
 
 from edu_core.exceptions import NotFoundError
-from edu_core.schemas.documents import DocumentDto, DocumentStatus
+from edu_core.schemas.documents import (
+    CourseBookDto,
+    DocumentDto,
+    DocumentPageContextDto,
+    DocumentPageSegmentDto,
+    DocumentStatus,
+)
 
 
 class DocumentService:
@@ -71,7 +77,9 @@ class DocumentService:
                 db.rollback()
                 raise
 
-    def get_document(self, document_id: str, owner_id: str) -> DocumentDto:
+    def get_document(
+        self, document_id: str, owner_id: str, project_id: str | None = None
+    ) -> DocumentDto:
         """Get a document by ID.
 
         Args:
@@ -88,7 +96,15 @@ class DocumentService:
             try:
                 document = (
                     db.query(Document)
-                    .filter(Document.id == document_id, Document.owner_id == owner_id)
+                    .filter(
+                        Document.id == document_id,
+                        Document.owner_id == owner_id,
+                        *(
+                            [Document.project_id == project_id]
+                            if project_id is not None
+                            else []
+                        ),
+                    )
                     .first()
                 )
                 if not document:
@@ -99,6 +115,108 @@ class DocumentService:
                 raise
             except Exception:
                 raise
+
+    def get_page_context(
+        self,
+        *,
+        document_id: str,
+        owner_id: str,
+        project_id: str,
+        page_number: int,
+    ) -> DocumentPageContextDto:
+        with self._get_db_session() as db:
+            document = self._get_owned_document(db, document_id, owner_id, project_id)
+            segments = (
+                db.query(DocumentSegment)
+                .filter(
+                    DocumentSegment.document_id == document.id,
+                    DocumentSegment.page_number == page_number,
+                )
+                .order_by(DocumentSegment.chunk_index, DocumentSegment.created_at)
+                .all()
+            )
+            segment_dtos = [
+                DocumentPageSegmentDto(
+                    id=segment.id,
+                    page_number=segment.page_number,
+                    chunk_index=segment.chunk_index,
+                    content=segment.content,
+                )
+                for segment in segments
+            ]
+            return DocumentPageContextDto(
+                document_id=document.id,
+                project_id=project_id,
+                page_number=page_number,
+                content="\n\n".join(segment.content for segment in segments),
+                segments=segment_dtos,
+            )
+
+    def list_course_books(self, owner_id: str, project_id: str) -> list[CourseBookDto]:
+        with self._get_db_session() as db:
+            project = (
+                db.query(Project)
+                .filter(Project.id == project_id, Project.owner_id == owner_id)
+                .first()
+            )
+            if not project:
+                raise NotFoundError(f"Project {project_id} not found")
+            if not project.course_id:
+                return []
+
+            resources = (
+                db.query(CourseResource)
+                .join(Document, CourseResource.document_id == Document.id)
+                .filter(
+                    CourseResource.course_id == project.course_id,
+                    CourseResource.document_id.isnot(None),
+                    Document.owner_id == owner_id,
+                    Document.project_id == project_id,
+                )
+                .order_by(CourseResource.chapter_id, CourseResource.created_at)
+                .all()
+            )
+
+            books: list[CourseBookDto] = []
+            for resource in resources:
+                if not resource.document:
+                    continue
+                document = resource.document
+                document_metadata = document.extra_metadata or {}
+                resource_metadata = resource.extra_metadata or {}
+                title = (
+                    resource.title
+                    or document_metadata.get("display_title")
+                    or document.file_name
+                )
+                books.append(
+                    CourseBookDto(
+                        resource_id=resource.id,
+                        document_id=document.id,
+                        chapter_id=resource.chapter_id,
+                        title=title,
+                        author=document_metadata.get("author"),
+                        cover_url=document_metadata.get("cover_url")
+                        or document_metadata.get("cover_image_path"),
+                        file_url=(
+                            f"/api/v1/projects/{project_id}/documents/"
+                            f"{document.id}/file"
+                        ),
+                        status=DocumentStatus(document.status),
+                        license=resource.license_info
+                        or document_metadata.get("license")
+                        or document_metadata.get("license_info"),
+                        source_url=resource.source_url
+                        or document_metadata.get("source_url"),
+                        start_page=self._coerce_int(resource_metadata.get("start_page")),
+                        end_page=self._coerce_int(resource_metadata.get("end_page")),
+                        metadata={
+                            **document_metadata,
+                            **resource_metadata,
+                        },
+                    )
+                )
+            return books
 
     def list_documents(
         self, owner_id: str, project_id: str | None = None
@@ -221,9 +339,33 @@ class DocumentService:
             file_size=document.file_size,
             status=DocumentStatus(document.status),
             summary=document.summary,
+            metadata=document.extra_metadata or {},
             uploaded_at=document.uploaded_at,
             processed_at=document.processed_at,
         )
+
+    @staticmethod
+    def _get_owned_document(
+        db, document_id: str, owner_id: str, project_id: str | None = None
+    ) -> Document:
+        query = db.query(Document).filter(
+            Document.id == document_id,
+            Document.owner_id == owner_id,
+        )
+        if project_id is not None:
+            query = query.filter(Document.project_id == project_id)
+        document = query.first()
+        if not document:
+            raise NotFoundError(f"Document {document_id} not found")
+        return document
+
+    @staticmethod
+    def _coerce_int(value) -> int | None:
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return None
 
     @contextmanager
     def _get_db_session(self):

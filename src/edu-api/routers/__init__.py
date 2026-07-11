@@ -4,7 +4,7 @@ from .courses import knowledge_points_router
 from .courses import router as courses_router
 from .dashboard import router as dashboard_router
 from .diagnosis import router as diagnosis_router
-from .documents import router as documents_router
+from .documents import course_books_router, router as documents_router
 from .flashcard_groups import router as flashcard_groups_router
 from .knowledge_states import knowledge_graph_router
 from .knowledge_states import router as knowledge_states_router
@@ -28,6 +28,7 @@ from .users import router as users_router
 __all__ = [
     "auth_router",
     "chats_router",
+    "course_books_router",
     "courses_router",
     "dashboard_router",
     "diagnosis_router",

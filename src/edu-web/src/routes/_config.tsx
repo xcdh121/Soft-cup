@@ -37,6 +37,11 @@ const DocumentDetailRoute = lazy(() =>
     default: m.DocumentDetailRoute,
   })),
 )
+const CustomDocumentLearningRoute = lazy(() =>
+  import('./custom-document-learning-route').then((m) => ({
+    default: m.CustomDocumentLearningRoute,
+  })),
+)
 const QuizDetailRoute = lazy(() =>
   import('./quiz-detail-route').then((m) => ({ default: m.QuizDetailRoute })),
 )
@@ -233,6 +238,16 @@ export const documentDetailRoute = createRoute({
   ),
 })
 
+export const customDocumentLearningRoute = createRoute({
+  path: '/p/$projectId/custom-documents',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <CustomDocumentLearningRoute />
+    </Suspense>
+  ),
+})
+
 export const flashcardDetailRoute = createRoute({
   path: '/p/$projectId/f/$flashcardGroupId',
   getParentRoute: () => dashboardRoute,
@@ -378,6 +393,7 @@ export const routeTree = rootRoute.addChildren([
     dashboardIndexRoute,
     projectDetailRoute,
     chatDetailRoute,
+    customDocumentLearningRoute,
     documentDetailRoute,
     flashcardDetailRoute,
     flashcardEditRoute,

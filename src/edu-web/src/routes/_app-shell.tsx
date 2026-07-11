@@ -12,20 +12,33 @@ export const AppShell = () => {
 
   // Only show sidebar on dashboard routes
   const isDashboardRoute = location.pathname.startsWith('/dashboard')
+  const isDocumentDetailRoute = /^\/dashboard\/p\/[^/]+\/d\/[^/]+/.test(
+    location.pathname,
+  )
 
   if (!isAuthenticated || !isDashboardRoute) {
     return <Outlet />
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider
+      className={isDocumentDetailRoute ? 'h-svh overflow-hidden' : undefined}
+    >
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset
+        className={isDocumentDetailRoute ? 'h-svh min-w-0 overflow-hidden' : ''}
+      >
         {/* <div className="flex h-12 items-center gap-2 border-b px-2">
           <SidebarTrigger />
           <div className="text-sm font-semibold">EduAgent</div>
         </div> */}
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div
+          className={
+            isDocumentDetailRoute
+              ? 'min-h-0 flex-1 overflow-hidden'
+              : 'min-h-0 flex-1 overflow-auto'
+          }
+        >
           <Outlet />
         </div>
         <ResourcePackageFloatingButton />

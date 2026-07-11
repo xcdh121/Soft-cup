@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import html
 import re
 import zipfile
@@ -5,38 +6,67 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 
+@dataclass(frozen=True)
+class ParsedPage:
+    page_number: int
+    text: str
+
+
+@dataclass(frozen=True)
+class ParsedDocument:
+    pages: list[ParsedPage]
+    full_text: str
+    summary: str
+
+
 class LocalDocumentParser:
-    def parse(self, filename: str, content: bytes) -> tuple[str, str]:
+    def parse(self, filename: str, content: bytes) -> ParsedDocument:
         suffix = Path(filename).suffix.lower()
 
         if suffix == ".pdf":
-            text = self._parse_pdf(content)
+            pages = self._parse_pdf(content)
+            full_text = "\n\n<!-- PageBreak -->\n\n".join(
+                page.text for page in pages if page.text.strip()
+            )
         elif suffix == ".docx":
             text = self._parse_docx(content)
+            full_text = self._normalize_text(text)
+            pages = self._single_text_page(full_text)
         elif suffix in {".txt", ".md"}:
             text = content.decode("utf-8", errors="ignore")
+            full_text = self._normalize_text(text)
+            pages = self._single_text_page(full_text)
         elif suffix in {".html", ".htm", ".xml"}:
             text = self._strip_markup(content.decode("utf-8", errors="ignore"))
+            full_text = self._normalize_text(text)
+            pages = self._single_text_page(full_text)
         elif suffix == ".rtf":
             text = self._strip_rtf(content.decode("utf-8", errors="ignore"))
+            full_text = self._normalize_text(text)
+            pages = self._single_text_page(full_text)
         else:
             text = content.decode("utf-8", errors="ignore")
+            full_text = self._normalize_text(text)
+            pages = self._single_text_page(full_text)
 
-        normalized = self._normalize_text(text)
-        return normalized, self._summarize(normalized)
+        return ParsedDocument(
+            pages=pages,
+            full_text=full_text,
+            summary=self._summarize(full_text),
+        )
 
-    def _parse_pdf(self, content: bytes) -> str:
+    def _parse_pdf(self, content: bytes) -> list[ParsedPage]:
         from io import BytesIO
 
         from pypdf import PdfReader
 
         reader = PdfReader(BytesIO(content))
         pages = []
-        for page in reader.pages:
-            page_text = page.extract_text() or ""
+        for index, page in enumerate(reader.pages):
+            page_text = self._normalize_text(page.extract_text() or "")
             if page_text.strip():
-                pages.append(page_text.strip())
-        return "\n\n<!-- PageBreak -->\n\n".join(pages)
+                pages.append(ParsedPage(page_number=index + 1, text=page_text))
+        return pages
 
     def _parse_docx(self, content: bytes) -> str:
         from io import BytesIO
@@ -65,6 +95,11 @@ class LocalDocumentParser:
     def _normalize_text(self, text: str) -> str:
         lines = [line.strip() for line in text.splitlines()]
         return "\n".join(line for line in lines if line).strip()
+
+    def _single_text_page(self, text: str) -> list[ParsedPage]:
+        if not text.strip():
+            return []
+        return [ParsedPage(page_number=1, text=text)]
 
     def _summarize(self, text: str) -> str:
         if not text:

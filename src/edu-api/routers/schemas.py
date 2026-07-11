@@ -184,6 +184,18 @@ class DocumentUpdate(BaseModel):
     )
 
 
+class DocumentQuestionRequest(BaseModel):
+    question: str = Field(..., min_length=1, description="User question")
+    selected_text: str | None = Field(
+        None, description="Text selected by the user in the PDF reader"
+    )
+    page_number: int | None = Field(
+        None, ge=1, description="Current PDF page number"
+    )
+    chapter_id: str | None = Field(None, description="Optional course chapter ID")
+    top_k: int = Field(default=5, ge=1, le=10, description="RAG result count")
+
+
 class ChatCreate(BaseModel):
     title: str | None = Field(None, description="Title of the chat")
 

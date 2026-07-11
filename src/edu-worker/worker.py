@@ -35,9 +35,14 @@ async def run_task(ctx, message: QueueTaskMessage) -> None:
 
     search_service = SearchService(
         database_url=settings.database_url,
+        embedding_provider=settings.embedding_provider,
         embedding_model=settings.embedding_model,
         embedding_api_key=settings.embedding_api_key,
+        embedding_api_secret=settings.embedding_api_secret,
+        embedding_app_id=settings.embedding_app_id,
         embedding_base_url=settings.embedding_base_url,
+        embedding_domain=settings.embedding_domain,
+        embedding_dimensions=settings.embedding_dimensions,
     )
     runner = TaskRunnerService(
         storage_root=settings.storage_root,

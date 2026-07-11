@@ -1,3 +1,18 @@
+import { Result, useAtomValue } from '@effect-atom/atom-react'
+import { Link, useRouterState } from '@tanstack/react-router'
+import { Cause } from 'effect'
+import {
+  BarChart3Icon,
+  BookOpenTextIcon,
+  ChevronRightIcon,
+  FileStackIcon,
+  FolderKanbanIcon,
+  MessageSquareIcon,
+  NetworkIcon,
+  SparklesIcon,
+  UserRoundIcon,
+} from 'lucide-react'
+import type { ChatDto } from '@/integrations/api/client'
 import {
   Collapsible,
   CollapsibleContent,
@@ -15,20 +30,6 @@ import {
 } from '@/components/ui/sidebar'
 import { chatsAtom } from '@/data-acess/chat'
 import { projectsAtom } from '@/data-acess/project'
-import type { ChatDto } from '@/integrations/api/client'
-import { Result, useAtomValue } from '@effect-atom/atom-react'
-import { Link, useRouterState } from '@tanstack/react-router'
-import { Cause } from 'effect'
-import {
-  BarChart3Icon,
-  BookOpenTextIcon,
-  ChevronRightIcon,
-  FolderKanbanIcon,
-  MessageSquareIcon,
-  NetworkIcon,
-  SparklesIcon,
-  UserRoundIcon,
-} from 'lucide-react'
 
 const getCurrentProjectId = (pathname: string) => {
   const match = pathname.match(/^\/dashboard\/p\/([^/]+)/)
@@ -109,7 +110,9 @@ export function CurrentProjectNav() {
       <SidebarGroup className="group-data-[collapsible=icon]:hidden">
         <SidebarGroupLabel asChild>
           <CollapsibleTrigger className="flex w-full items-center gap-2 text-left">
-            <span className="truncate">{currentProject?.name ?? '当前项目'}</span>
+            <span className="truncate">
+              {currentProject?.name ?? '当前项目'}
+            </span>
             <ChevronRightIcon className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/current-project:rotate-90" />
           </CollapsibleTrigger>
         </SidebarGroupLabel>
@@ -118,7 +121,9 @@ export function CurrentProjectNav() {
             <SidebarMenuItem>
               <SidebarMenuButton
                 asChild
-                isActive={location.pathname === `/dashboard/p/${currentProjectId}`}
+                isActive={
+                  location.pathname === `/dashboard/p/${currentProjectId}`
+                }
               >
                 <Link
                   to="/dashboard/p/$projectId"
@@ -134,7 +139,26 @@ export function CurrentProjectNav() {
               <SidebarMenuButton
                 asChild
                 isActive={
-                  location.pathname === `/dashboard/p/${currentProjectId}/study-plan`
+                  location.pathname ===
+                  `/dashboard/p/${currentProjectId}/custom-documents`
+                }
+              >
+                <Link
+                  to="/dashboard/p/$projectId/custom-documents"
+                  params={{ projectId: currentProjectId }}
+                >
+                  <FileStackIcon className="size-4 opacity-70" />
+                  <span>自定义文档学习</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={
+                  location.pathname ===
+                  `/dashboard/p/${currentProjectId}/study-plan`
                 }
               >
                 <Link

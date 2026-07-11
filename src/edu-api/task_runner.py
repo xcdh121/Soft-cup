@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import contextmanager
+import logging
 from threading import Thread
 from typing import Any
 from uuid import uuid4
@@ -9,7 +10,7 @@ from edu_ai.agents.mind_map_agent import MindMapAgent
 from edu_ai.agents.note_agent import NoteAgent
 from edu_ai.agents.quiz_agent import QuizAgent
 from edu_ai.agents.topic_graph_agent import TopicGraphAgent
-from edu_core.document_parser import LocalDocumentParser
+from edu_core.document_parser import LocalDocumentParser, ParsedPage
 from edu_core.model_providers import (
     EmbeddingProviderConfig,
     LlmProviderConfig,
@@ -22,6 +23,8 @@ from edu_db.models import Document, DocumentSegment
 from edu_db.session import get_session_factory
 from edu_queue.schemas import QueueTaskMessage, TaskType
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
+
+logger = logging.getLogger(__name__)
 
 
 class TaskRunnerService:
@@ -45,6 +48,11 @@ class TaskRunnerService:
         self.storage = LocalStorageService(storage_root)
         self.parser = LocalDocumentParser()
         self.search_service = search_service
+        self.embedding_provider = embedding_provider
+        self.embedding_api_key = embedding_api_key
+        self.embedding_base_url = embedding_base_url
+        self.embedding_app_id = embedding_app_id
+        self.embedding_api_secret = embedding_api_secret
         self.llm_config = LlmProviderConfig(
             model=llm_model,
             api_key=llm_api_key,
@@ -201,48 +209,97 @@ class TaskRunnerService:
     async def _process_document(self, payload: dict[str, Any]) -> None:
         document_id = payload["document_id"]
         project_id = payload["project_id"]
+        segment_payloads: list[tuple[str, str]] = []
 
-        with self._get_db_session() as db:
-            document = db.query(Document).filter(Document.id == document_id).first()
-            if not document or not document.original_blob_name:
-                raise ValueError(f"Document {document_id} not found")
+        try:
+            with self._get_db_session() as db:
+                document = db.query(Document).filter(Document.id == document_id).first()
+                if not document or not document.original_blob_name:
+                    raise ValueError(f"Document {document_id} not found")
 
-            file_content = self.storage.read_bytes(document.original_blob_name)
-            content, summary = await asyncio.to_thread(
-                self.parser.parse, document.file_name, file_content
+                file_content = self.storage.read_bytes(document.original_blob_name)
+                parsed = await asyncio.to_thread(
+                    self.parser.parse, document.file_name, file_content
+                )
+                content = parsed.full_text
+
+                processed_path = self.storage.build_processed_text_path(
+                    project_id, document_id
+                )
+                self.storage.write_text(processed_path, content)
+
+                document.processed_text_blob_name = processed_path
+                document.summary = parsed.summary
+                document.extra_metadata = {
+                    **(document.extra_metadata or {}),
+                    "page_count": len(parsed.pages),
+                }
+                document.status = DocumentStatus.PROCESSED.value
+
+                db.query(DocumentSegment).filter(
+                    DocumentSegment.document_id == document_id
+                ).delete()
+
+                chunks = self.split_parsed_pages(parsed.pages)
+                segments = []
+                for page_number, chunk_index, chunk in chunks:
+                    segment_id = str(uuid4())
+                    segment = DocumentSegment(
+                        id=segment_id,
+                        document_id=document_id,
+                        content=chunk,
+                        content_type="text",
+                        page_number=page_number,
+                        chunk_index=chunk_index,
+                    )
+                    segments.append(segment)
+                    segment_payloads.append((segment_id, chunk))
+                db.add_all(segments)
+                db.commit()
+        except Exception:
+            logger.exception("Document processing failed: %s", document_id)
+            self._mark_document_failed(document_id)
+            return
+
+        if not segment_payloads or not self._embedding_is_configured():
+            return
+
+        try:
+            embeddings = await self.embeddings.aembed_documents(
+                [content for _, content in segment_payloads]
+            )
+            segment_embeddings = {
+                segment_id: embedding
+                for (segment_id, _), embedding in zip(
+                    segment_payloads, embeddings, strict=False
+                )
+            }
+            with self._get_db_session() as db:
+                stored_segments = (
+                    db.query(DocumentSegment)
+                    .filter(DocumentSegment.id.in_(segment_embeddings))
+                    .all()
+                )
+                for segment in stored_segments:
+                    segment.embedding_vector = segment_embeddings[segment.id]
+                document = db.query(Document).filter(Document.id == document_id).first()
+                if document and document.status != DocumentStatus.FAILED.value:
+                    document.status = DocumentStatus.INDEXED.value
+                db.commit()
+        except Exception:
+            logger.exception(
+                "Document %s parsed, but embedding generation failed",
+                document_id,
             )
 
-            processed_path = self.storage.build_processed_text_path(project_id, document_id)
-            self.storage.write_text(processed_path, content)
-
-            document.processed_text_blob_name = processed_path
-            document.summary = summary
-            document.status = DocumentStatus.PROCESSED.value
-
-            db.query(DocumentSegment).filter(
-                DocumentSegment.document_id == document_id
-            ).delete()
-
-            chunks = self.split_markdown_with_headers(content)
-            segments = []
-            for chunk in chunks:
-                segment = DocumentSegment(
-                    id=str(uuid4()),
-                    document_id=document_id,
-                    content=chunk,
-                    content_type="text",
-                )
-                segments.append(segment)
-            db.add_all(segments)
-            db.flush()
-
-            if segments:
-                embeddings = await self.embeddings.aembed_documents([s.content for s in segments])
-                for segment, embedding in zip(segments, embeddings, strict=False):
-                    segment.embedding_vector = embedding
-
-            document.status = DocumentStatus.INDEXED.value
-            db.commit()
+    @classmethod
+    def split_parsed_pages(cls, pages: list[ParsedPage]) -> list[tuple[int, int, str]]:
+        segments: list[tuple[int, int, str]] = []
+        for page in pages:
+            chunks = cls.split_markdown_with_headers(page.text)
+            for chunk_index, chunk in enumerate(chunks):
+                segments.append((page.page_number, chunk_index, chunk))
+        return segments
 
     @staticmethod
     def split_markdown_with_headers(
@@ -270,6 +327,28 @@ class TaskRunnerService:
                 for sec in sections:
                     chunks.extend(chunker.split_text(sec.page_content))
         return chunks
+
+    def _embedding_is_configured(self) -> bool:
+        provider = self.embedding_provider.lower()
+        if provider == "xfyun":
+            return all(
+                [
+                    self.embedding_app_id,
+                    self.embedding_api_key,
+                    self.embedding_api_secret,
+                ]
+            )
+        return bool(self.embedding_api_key or self.embedding_base_url)
+
+    def _mark_document_failed(self, document_id: str) -> None:
+        try:
+            with self._get_db_session() as db:
+                document = db.query(Document).filter(Document.id == document_id).first()
+                if document:
+                    document.status = DocumentStatus.FAILED.value
+                    db.commit()
+        except Exception:
+            logger.exception("Failed to mark document as failed: %s", document_id)
 
     @contextmanager
     def _get_db_session(self):
