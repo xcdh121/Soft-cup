@@ -1,12 +1,13 @@
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { FileTextIcon, Loader2Icon, PlusIcon, RotateCwIcon } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { documentsAtom, refreshDocumentsAtom } from '@/data-acess/document'
 import { currentProjectIdAtom } from '@/data-acess/project'
 import { useUploadDocumentDialog } from '@/features/document/components/upload-document-dialog'
-import { DocumentListItem } from '@/features/project/components/document-list-item'
+import { DocumentBookCard } from '@/features/document/components/document-book-card'
 import { useDocumentPolling } from '@/hooks/use-document-polling'
+import { supabase } from '@/lib/supabase'
 
 type CustomDocumentLearningPageProps = {
   projectId: string
@@ -19,15 +20,28 @@ export const CustomDocumentLearningPage = ({
   const setCurrentProject = useAtomSet(currentProjectIdAtom)
   const refreshDocuments = useAtomSet(refreshDocumentsAtom, { mode: 'promise' })
   const openUploadDialog = useUploadDocumentDialog((state) => state.open)
+  const [accessToken, setAccessToken] = useState<string | null | undefined>()
 
   useEffect(() => {
     setCurrentProject(projectId)
   }, [projectId, setCurrentProject])
 
+  useEffect(() => {
+    let cancelled = false
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) setAccessToken(data.session?.access_token ?? null)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   useDocumentPolling(projectId)
 
   return (
-    <main className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-6 p-6 lg:p-8">
+    <main className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 p-6 lg:p-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
@@ -54,7 +68,7 @@ export const CustomDocumentLearningPage = ({
         </div>
       </header>
 
-      <section className="min-h-0 flex-1 rounded-xl border bg-card p-4 shadow-sm">
+      <section className="min-h-0 flex-1 rounded-xl border bg-card p-5 shadow-sm sm:p-6">
         {Result.builder(documentsResult)
           .onInitialOrWaiting(() => (
             <div className="flex min-h-56 items-center justify-center gap-2 text-muted-foreground">
@@ -85,9 +99,13 @@ export const CustomDocumentLearningPage = ({
                 </Button>
               </div>
             ) : (
-              <ul className="divide-y">
+              <ul className="grid grid-cols-2 gap-x-5 gap-y-8 sm:grid-cols-3 sm:gap-x-7 lg:grid-cols-4 xl:grid-cols-5">
                 {documents.map((document) => (
-                  <DocumentListItem key={document.id} document={document} />
+                  <DocumentBookCard
+                    key={document.id}
+                    accessToken={accessToken}
+                    document={document}
+                  />
                 ))}
               </ul>
             ),
