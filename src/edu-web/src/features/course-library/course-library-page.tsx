@@ -1,19 +1,10 @@
 import { Result, useAtomValue } from '@effect-atom/atom-react'
 import { Link } from '@tanstack/react-router'
-import {
-  type CSSProperties,
-  type PointerEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   BookOpenIcon,
   ExternalLinkIcon,
   FileTextIcon,
-  GripHorizontalIcon,
-  GripVerticalIcon,
   LibraryBigIcon,
   Loader2Icon,
 } from 'lucide-react'
@@ -41,6 +32,13 @@ import {
 } from '@/components/ui/card'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 type MarkdownSection = {
   title: string
@@ -61,20 +59,6 @@ const resourceTypeLabel: Partial<Record<string, string>> = {
   problem: '题目',
   visualization: '可视化',
 }
-
-const DEFAULT_COURSE_PANEL_WIDTH = 280
-const DEFAULT_OUTLINE_PANEL_WIDTH = 420
-const MIN_COURSE_PANEL_WIDTH = 220
-const MAX_COURSE_PANEL_WIDTH = 420
-const MIN_OUTLINE_PANEL_WIDTH = 300
-const MAX_OUTLINE_PANEL_WIDTH = 620
-const MIN_DETAIL_SECTION_HEIGHT = 220
-const MAX_DETAIL_SECTION_HEIGHT = 620
-const DEFAULT_DETAIL_SECTION_HEIGHT = 360
-const RESIZE_HANDLE_SIZE = 6
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(Math.max(value, min), max)
 
 const parseMarkdownSections = (markdown?: string | null) => {
   if (!markdown) return []
@@ -127,40 +111,6 @@ const LoadingCard = ({ text }: { text: string }) => (
       {text}
     </CardContent>
   </Card>
-)
-
-const ColumnResizeHandle = ({
-  label,
-  onPointerDown,
-}: {
-  label: string
-  onPointerDown: (event: PointerEvent<HTMLDivElement>) => void
-}) => (
-  <div
-    role="separator"
-    aria-label={label}
-    className="group hidden h-full cursor-col-resize touch-none items-center justify-center border-x bg-border/40 transition-colors hover:bg-primary/20 lg:flex"
-    onPointerDown={onPointerDown}
-  >
-    <GripVerticalIcon className="size-3.5 text-muted-foreground opacity-60 group-hover:text-primary group-hover:opacity-100" />
-  </div>
-)
-
-const RowResizeHandle = ({
-  label,
-  onPointerDown,
-}: {
-  label: string
-  onPointerDown: (event: PointerEvent<HTMLDivElement>) => void
-}) => (
-  <div
-    role="separator"
-    aria-label={label}
-    className="group flex w-full cursor-row-resize touch-none items-center justify-center border-y bg-border/40 transition-colors hover:bg-primary/20"
-    onPointerDown={onPointerDown}
-  >
-    <GripHorizontalIcon className="size-3.5 text-muted-foreground opacity-60 group-hover:text-primary group-hover:opacity-100" />
-  </div>
 )
 
 const ResourceList = ({ knowledgePointId }: { knowledgePointId: string }) => {
@@ -316,21 +266,20 @@ const ChapterPdfList = ({
 }
 
 const CourseBrowser = ({
+  courses,
   course,
   selectedPointId,
-  onOutlineResize,
+  onSelectCourse,
   onSelectPoint,
 }: {
+  courses: Array<Course>
   course: Course
   selectedPointId: string | null
-  onOutlineResize: (event: PointerEvent<HTMLDivElement>) => void
+  onSelectCourse: (courseId: string) => void
   onSelectPoint: (pointId: string) => void
 }) => {
   const chaptersResult = useAtomValue(courseChaptersAtom(course.id))
   const pointsResult = useAtomValue(courseKnowledgePointsAtom(course.id))
-  const [detailSectionHeight, setDetailSectionHeight] = useState(
-    DEFAULT_DETAIL_SECTION_HEIGHT,
-  )
 
   const chapters = Result.isSuccess(chaptersResult) ? chaptersResult.value : []
   const points = Result.isSuccess(pointsResult) ? pointsResult.value : []
@@ -359,39 +308,6 @@ const CourseBrowser = ({
       null)
     : null
 
-  const startDetailResize = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
-      event.preventDefault()
-      event.currentTarget.setPointerCapture(event.pointerId)
-
-      const startY = event.clientY
-      const startHeight = detailSectionHeight
-
-      const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
-        setDetailSectionHeight(
-          clamp(
-            startHeight + moveEvent.clientY - startY,
-            MIN_DETAIL_SECTION_HEIGHT,
-            MAX_DETAIL_SECTION_HEIGHT,
-          ),
-        )
-      }
-
-      const handlePointerUp = () => {
-        window.removeEventListener('pointermove', handlePointerMove)
-        window.removeEventListener('pointerup', handlePointerUp)
-        window.document.body.style.cursor = ''
-        window.document.body.style.userSelect = ''
-      }
-
-      window.document.body.style.cursor = 'row-resize'
-      window.document.body.style.userSelect = 'none'
-      window.addEventListener('pointermove', handlePointerMove)
-      window.addEventListener('pointerup', handlePointerUp, { once: true })
-    },
-    [detailSectionHeight],
-  )
-
   if (!Result.isSuccess(chaptersResult) || !Result.isSuccess(pointsResult)) {
     if (Result.isFailure(chaptersResult) || Result.isFailure(pointsResult)) {
       return (
@@ -415,7 +331,26 @@ const CourseBrowser = ({
   return (
     <>
       <Card className="flex h-full min-h-0 flex-col overflow-hidden">
-        <CardHeader className="shrink-0">
+        <CardHeader className="shrink-0 space-y-4">
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">
+              选择课程
+            </div>
+            <Select value={course.id} onValueChange={onSelectCourse}>
+              <SelectTrigger className="w-full bg-background">
+                <SelectValue placeholder="请选择课程" />
+              </SelectTrigger>
+              <SelectContent align="start">
+                {courses.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name}
+                    {item.code ? ` · ${item.code}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Separator />
           <CardTitle className="flex items-center gap-2">
             <BookOpenIcon className="size-5" />
             章节与知识点
@@ -474,73 +409,56 @@ const CourseBrowser = ({
         </CardContent>
       </Card>
 
-      <ColumnResizeHandle
-        label="调整章节知识点区域宽度"
-        onPointerDown={onOutlineResize}
-      />
-
-      <div className="flex h-full min-h-0 flex-col overflow-hidden">
-        <Card
-          className="flex min-h-0 flex-col overflow-hidden"
-          style={{ height: detailSectionHeight }}
-        >
-          <CardHeader className="shrink-0">
-            <CardTitle className="flex items-center gap-2">
-              <FileTextIcon className="size-5" />
-              {selectedPoint?.name ?? '请选择知识点'}
-            </CardTitle>
-            {selectedPoint ? (
-              <CardDescription className="flex flex-wrap gap-2 pt-2">
-                <Badge>
-                  {difficultyLabel[selectedPoint.difficulty_level] ??
-                    selectedPoint.difficulty_level}
+      <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+        <CardHeader className="shrink-0">
+          <CardTitle className="flex items-center gap-2">
+            <FileTextIcon className="size-5" />
+            {selectedPoint?.name ?? '请选择知识点'}
+          </CardTitle>
+          {selectedPoint ? (
+            <CardDescription className="flex flex-wrap gap-2 pt-2">
+              <Badge>
+                {difficultyLabel[selectedPoint.difficulty_level] ??
+                  selectedPoint.difficulty_level}
+              </Badge>
+              {selectedPoint.tags.map((tag) => (
+                <Badge key={tag} variant="secondary">
+                  {tag}
                 </Badge>
-                {selectedPoint.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary">
-                    {tag}
-                  </Badge>
-                ))}
-              </CardDescription>
-            ) : null}
-          </CardHeader>
-          <CardContent className="min-h-0 flex-1 overflow-y-auto">
-            {markdownSections.length > 0 ? (
-              <div className="space-y-5">
-                {markdownSections.map((section) => (
-                  <section
-                    key={section.title}
-                    className="rounded-2xl bg-muted/30 p-4"
-                  >
-                    <h3 className="mb-3 font-semibold">{section.title}</h3>
-                    <div className="space-y-2 text-sm text-muted-foreground">
-                      {section.body.map(renderMarkdownLine)}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl bg-muted/40 p-5 text-sm text-muted-foreground">
-                当前知识点还没有正文。初始化脚本会写入包含 5 个区块的 Markdown
-                正文。
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              ))}
+            </CardDescription>
+          ) : null}
+        </CardHeader>
+        <CardContent className="min-h-0 flex-1 space-y-8 overflow-y-auto">
+          {markdownSections.length > 0 ? (
+            <div className="space-y-5">
+              {markdownSections.map((section) => (
+                <section
+                  key={section.title}
+                  className="rounded-2xl bg-muted/30 p-4"
+                >
+                  <h3 className="mb-3 font-semibold">{section.title}</h3>
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    {section.body.map(renderMarkdownLine)}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-muted/40 p-5 text-sm text-muted-foreground">
+              当前知识点还没有正文。初始化脚本会写入包含 5 个区块的 Markdown
+              正文。
+            </div>
+          )}
 
-        <RowResizeHandle
-          label="调整知识点介绍和相关资料高度"
-          onPointerDown={startDetailResize}
-        />
-
-        {selectedPoint ? (
-          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <CardHeader className="shrink-0">
-              <CardTitle>相关资料/题目</CardTitle>
-              <CardDescription>
-                资料链接来自队长提供的数据库内容建议文档。
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="min-h-0 flex-1 space-y-5 overflow-y-auto">
+          {selectedPoint ? (
+            <section className="space-y-5 border-t pt-6">
+              <div>
+                <h2 className="font-semibold">相关资料/题目</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  资料链接来自队长提供的数据库内容建议文档。
+                </p>
+              </div>
               <section className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm font-medium">章节 PDF</div>
@@ -558,10 +476,10 @@ const CourseBrowser = ({
                 <div className="text-sm font-medium">相关资料/题目</div>
                 <ResourceList knowledgePointId={selectedPoint.id} />
               </section>
-            </CardContent>
-          </Card>
-        ) : null}
-      </div>
+            </section>
+          ) : null}
+        </CardContent>
+      </Card>
     </>
   )
 }
@@ -570,12 +488,6 @@ export const CourseLibraryPage = () => {
   const coursesResult = useAtomValue(coursesAtom)
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
-  const [coursePanelWidth, setCoursePanelWidth] = useState(
-    DEFAULT_COURSE_PANEL_WIDTH,
-  )
-  const [outlinePanelWidth, setOutlinePanelWidth] = useState(
-    DEFAULT_OUTLINE_PANEL_WIDTH,
-  )
 
   const courses = Result.isSuccess(coursesResult) ? coursesResult.value : []
   const selectedCourse =
@@ -594,55 +506,6 @@ export const CourseLibraryPage = () => {
     setSelectedPointId(null)
   }
 
-  const startColumnResize = useCallback(
-    (
-      event: PointerEvent<HTMLDivElement>,
-      side: 'course-panel' | 'outline-panel',
-    ) => {
-      event.preventDefault()
-      event.currentTarget.setPointerCapture(event.pointerId)
-
-      const startX = event.clientX
-      const startCourseWidth = coursePanelWidth
-      const startOutlineWidth = outlinePanelWidth
-
-      const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
-        const deltaX = moveEvent.clientX - startX
-        if (side === 'course-panel') {
-          setCoursePanelWidth(
-            clamp(
-              startCourseWidth + deltaX,
-              MIN_COURSE_PANEL_WIDTH,
-              MAX_COURSE_PANEL_WIDTH,
-            ),
-          )
-          return
-        }
-
-        setOutlinePanelWidth(
-          clamp(
-            startOutlineWidth + deltaX,
-            MIN_OUTLINE_PANEL_WIDTH,
-            MAX_OUTLINE_PANEL_WIDTH,
-          ),
-        )
-      }
-
-      const handlePointerUp = () => {
-        window.removeEventListener('pointermove', handlePointerMove)
-        window.removeEventListener('pointerup', handlePointerUp)
-        window.document.body.style.cursor = ''
-        window.document.body.style.userSelect = ''
-      }
-
-      window.document.body.style.cursor = 'col-resize'
-      window.document.body.style.userSelect = 'none'
-      window.addEventListener('pointermove', handlePointerMove)
-      window.addEventListener('pointerup', handlePointerUp, { once: true })
-    },
-    [coursePanelWidth, outlinePanelWidth],
-  )
-
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-2">
@@ -657,37 +520,16 @@ export const CourseLibraryPage = () => {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-[1800px] flex-col gap-4 px-4 py-4">
-          <section className="rounded-[30px] border border-primary/15 bg-gradient-to-br from-[#C1E8FF]/60 via-white to-[#7DA0CA]/20 p-6 shadow-sm dark:from-[#052659] dark:via-background dark:to-[#5483B3]/30">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-                    <LibraryBigIcon className="size-6" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl font-semibold tracking-tight">
-                      课程资料库
-                    </h1>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      从课程进入章节、知识点正文和相关资料，验证 A
-                      部分知识库浏览链路。
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary">课程 → 章节 → 知识点</Badge>
-                  <Badge variant="secondary">Markdown 正文</Badge>
-                  <Badge variant="secondary">外部资料/题目链接</Badge>
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-white/80 px-4 py-3 text-sm text-muted-foreground shadow-sm ring-1 ring-black/5">
-                当前课程
-                <div className="mt-1 text-lg font-semibold text-foreground">
-                  {selectedCourse?.name ?? '等待初始化数据'}
-                </div>
-              </div>
+        <div className="flex min-h-full flex-col gap-4 px-4 py-4">
+          <section className="flex items-center gap-3 px-1 py-2">
+            <LibraryBigIcon className="size-5 text-muted-foreground" />
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">
+                课程资料库
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                浏览课程章节、知识点正文与相关资料
+              </p>
             </div>
           </section>
 
@@ -703,56 +545,13 @@ export const CourseLibraryPage = () => {
                 </CardContent>
               </Card>
             ) : (
-              <div
-                className="sticky top-0 grid h-[calc(100svh-5.5rem)] min-h-0 gap-0 overflow-hidden lg:grid-cols-[var(--course-panel-width)_var(--resize-handle-size)_var(--outline-panel-width)_var(--resize-handle-size)_minmax(0,1fr)]"
-                style={
-                  {
-                    '--course-panel-width': `${coursePanelWidth}px`,
-                    '--outline-panel-width': `${outlinePanelWidth}px`,
-                    '--resize-handle-size': `${RESIZE_HANDLE_SIZE}px`,
-                  } as CSSProperties
-                }
-              >
-                <Card className="flex min-h-0 flex-col overflow-hidden">
-                  <CardHeader className="shrink-0">
-                    <CardTitle>课程</CardTitle>
-                    <CardDescription>选择要浏览的课程资料库。</CardDescription>
-                  </CardHeader>
-                  <CardContent className="min-h-0 flex-1 space-y-2 overflow-y-auto">
-                    {courses.map((course) => (
-                      <button
-                        key={course.id}
-                        type="button"
-                        onClick={() => handleSelectCourse(course.id)}
-                        className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                          selectedCourse?.id === course.id
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'bg-background hover:bg-muted/60'
-                        }`}
-                      >
-                        <div className="font-medium">{course.name}</div>
-                        <div className="mt-1 text-xs opacity-80">
-                          {course.code ?? course.status}
-                        </div>
-                      </button>
-                    ))}
-                  </CardContent>
-                </Card>
-
-                <ColumnResizeHandle
-                  label="调整课程区域宽度"
-                  onPointerDown={(event) =>
-                    startColumnResize(event, 'course-panel')
-                  }
-                />
-
+              <div className="sticky top-0 grid h-[calc(100svh-10rem)] min-h-[560px] grid-cols-1 grid-rows-[minmax(220px,1fr)_minmax(320px,2fr)] gap-4 overflow-hidden lg:grid-cols-[minmax(280px,1fr)_minmax(0,2fr)] lg:grid-rows-1">
                 {selectedCourse ? (
                   <CourseBrowser
+                    courses={courses}
                     course={selectedCourse}
                     selectedPointId={selectedPointId}
-                    onOutlineResize={(event) =>
-                      startColumnResize(event, 'outline-panel')
-                    }
+                    onSelectCourse={handleSelectCourse}
                     onSelectPoint={setSelectedPointId}
                   />
                 ) : null}

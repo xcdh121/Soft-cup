@@ -19,6 +19,10 @@ import { HttpBody } from '@effect/platform'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Array as Arr, Data, Effect, Layer, Schema, Stream } from 'effect'
 import { UsageLimitExceededError, usageAtom } from './usage'
+import {
+  learnerProfileAtom,
+  learnerProfileRevisionsAtom,
+} from './learner-profile'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -442,7 +446,11 @@ export const streamMessageAtom = runtime
         Stream.runCollect,
       )
 
-      // Refresh usage only
+      // The backend may have extracted stable profile facts from this chat.
+      // Invalidate both views so navigating to the profile does not show a
+      // permanently cached pre-chat snapshot.
+      registry.refresh(learnerProfileAtom(input.projectId))
+      registry.refresh(learnerProfileRevisionsAtom(input.projectId))
       get.refresh(usageAtom)
     }),
   )

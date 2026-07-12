@@ -37,6 +37,17 @@ PROFILE_FIELDS = (
     "current_learning_state",
 )
 
+CHAT_PROFILE_FIELDS = frozenset(
+    {
+        "major_background",
+        "education_level",
+        "learning_goal",
+        "resource_preference",
+        "cognitive_style",
+        "available_study_time",
+    }
+)
+
 
 class LearnerProfileService:
     """Read and update one profile per user and project."""
@@ -138,6 +149,129 @@ class LearnerProfileService:
             db.refresh(profile)
             return LearnerProfileDto.model_validate(profile)
 
+    def apply_chat_inferences(
+        self,
+        project_id: str,
+        user_id: str,
+        message_id: str,
+        message_text: str,
+        inferred_fields: dict,
+    ) -> LearnerProfileDto | None:
+        """Merge profile facts extracted from one user chat message.
+
+        Chat is intentionally limited to background, goal, and preference fields.
+        Knowledge mastery and learning-state fields remain owned by practice/KT.
+        """
+        with self._get_db_session() as db:
+            self._get_owned_project(db, project_id, user_id)
+            profile = (
+                db.query(LearnerProfile)
+                .filter(
+                    LearnerProfile.project_id == project_id,
+                    LearnerProfile.user_id == user_id,
+                )
+                .first()
+            )
+
+            old_data = dict(profile.profile_data or {}) if profile else {}
+            new_data = dict(old_data)
+            changed = False
+            now = datetime.now(timezone.utc).isoformat()
+
+            for field_key, candidate in inferred_fields.items():
+                if field_key not in CHAT_PROFILE_FIELDS or not isinstance(candidate, dict):
+                    continue
+                value = candidate.get("value")
+                if value in (None, "", [], {}):
+                    continue
+                try:
+                    confidence = min(1.0, max(0.0, float(candidate.get("confidence", 0))))
+                except (TypeError, ValueError):
+                    continue
+                if confidence < 0.55:
+                    continue
+
+                candidate_status = (
+                    "confirmed"
+                    if candidate.get("status") == "confirmed"
+                    else "inferred"
+                )
+                existing = old_data.get(field_key)
+                existing_field = existing if isinstance(existing, dict) else {}
+                existing_value = (
+                    existing_field.get("value")
+                    if "value" in existing_field
+                    else existing
+                )
+                # Values written manually before field metadata was introduced are
+                # treated as confirmed so an LLM inference cannot silently replace them.
+                existing_status = existing_field.get(
+                    "status", "confirmed" if existing is not None else "missing"
+                )
+                try:
+                    existing_confidence = float(existing_field.get("confidence", 0.5))
+                except (TypeError, ValueError):
+                    existing_confidence = 0.5
+
+                if existing_status == "confirmed" and candidate_status != "confirmed":
+                    continue
+                if (
+                    existing_value != value
+                    and candidate_status != "confirmed"
+                    and existing_confidence > confidence
+                ):
+                    continue
+
+                evidence = list(existing_field.get("evidence") or [])
+                if any(item.get("source_id") == message_id for item in evidence):
+                    continue
+                evidence.append(
+                    {
+                        "source_type": "chat_message",
+                        "source_id": message_id,
+                        "excerpt": message_text.strip()[:240],
+                    }
+                )
+                merged = {
+                    "value": value,
+                    "confidence": max(existing_confidence, confidence)
+                    if existing_value == value
+                    else confidence,
+                    "status": "confirmed"
+                    if "confirmed" in (existing_status, candidate_status)
+                    else "inferred",
+                    "evidence": evidence[-20:],
+                    "updated_at": now,
+                }
+                if self._revision_value(existing) != self._revision_value(merged):
+                    new_data[field_key] = merged
+                    changed = True
+
+            if not changed:
+                return LearnerProfileDto.model_validate(profile) if profile else None
+
+            if profile is None:
+                profile = LearnerProfile(
+                    id=str(uuid4()),
+                    project_id=project_id,
+                    user_id=user_id,
+                )
+                db.add(profile)
+            profile.profile_data = new_data
+            profile.last_refreshed_at = datetime.now(timezone.utc)
+            self._record_revisions(
+                db,
+                profile,
+                old_data,
+                new_data,
+                source_type="chat_message",
+                source_id=message_id,
+            )
+            self._update_completeness(profile)
+            db.commit()
+            db.refresh(profile)
+            return LearnerProfileDto.model_validate(profile)
+
     def list_revisions(
         self, project_id: str, user_id: str
     ) -> list[LearnerProfileRevisionDto]:
@@ -167,7 +301,9 @@ class LearnerProfileService:
         for field_key in sorted(set(old_data) | set(new_data)):
             old_value = old_data.get(field_key)
             new_value = new_data.get(field_key)
-            if old_value == new_value:
+            if LearnerProfileService._revision_value(
+                old_value
+            ) == LearnerProfileService._revision_value(new_value):
                 continue
             confidence = (
                 new_value.get("confidence")
@@ -186,6 +322,13 @@ class LearnerProfileService:
                     source_id=source_id,
                 )
             )
+
+    @staticmethod
+    def _revision_value(value):
+        """Ignore refresh timestamps when deciding whether a field really changed."""
+        if not isinstance(value, dict):
+            return value
+        return {key: item for key, item in value.items() if key != "updated_at"}
 
     @staticmethod
     def _field(value, confidence: float, evidence: list[dict]):

@@ -220,6 +220,77 @@ class ASectionServiceTests(unittest.TestCase):
         with self.session_factory() as db:
             self.assertEqual(db.query(LearnerProfileRevision).count(), 3)
 
+    def test_chat_inferences_update_only_conversational_profile_fields(self):
+        service = LearnerProfileService()
+        profile = service.apply_chat_inferences(
+            "project-1",
+            "user-1",
+            "message-1",
+            "I study computer science and prefer diagrams.",
+            {
+                "major_background": {
+                    "value": "Computer science",
+                    "confidence": 0.96,
+                    "status": "confirmed",
+                },
+                "resource_preference": {
+                    "value": ["diagrams"],
+                    "confidence": 0.91,
+                    "status": "confirmed",
+                },
+                "knowledge_background": {
+                    "value": "expert",
+                    "confidence": 0.99,
+                    "status": "confirmed",
+                },
+            },
+        )
+
+        self.assertIsNotNone(profile)
+        self.assertIn("major_background", profile.profile_data)
+        self.assertIn("resource_preference", profile.profile_data)
+        self.assertNotIn("knowledge_background", profile.profile_data)
+        preference = profile.profile_data["resource_preference"]
+        self.assertEqual(preference["evidence"][0]["source_type"], "chat_message")
+        self.assertEqual(preference["evidence"][0]["source_id"], "message-1")
+        revisions = service.list_revisions("project-1", "user-1")
+        self.assertEqual(len(revisions), 2)
+        self.assertTrue(all(item.source_type == "chat_message" for item in revisions))
+
+    def test_chat_inferences_are_idempotent_and_protect_confirmed_values(self):
+        service = LearnerProfileService()
+        service.replace_profile(
+            "project-1",
+            "user-1",
+            {
+                "learning_goal": {
+                    "value": "Pass the database exam",
+                    "confidence": 0.9,
+                    "status": "confirmed",
+                }
+            },
+        )
+        inferred = {
+            "learning_goal": {
+                "value": "Become a database administrator",
+                "confidence": 0.8,
+                "status": "inferred",
+            }
+        }
+        service.apply_chat_inferences(
+            "project-1", "user-1", "message-2", "Databases seem useful.", inferred
+        )
+        service.apply_chat_inferences(
+            "project-1", "user-1", "message-2", "Databases seem useful.", inferred
+        )
+
+        profile = service.get_profile("project-1", "user-1")
+        self.assertEqual(
+            profile.profile_data["learning_goal"]["value"],
+            "Pass the database exam",
+        )
+        self.assertEqual(len(service.list_revisions("project-1", "user-1")), 1)
+
     def test_practice_refresh_is_automatic_and_idempotent(self):
         practice_service = PracticeService()
         state_service = KnowledgeStateService()

@@ -18,11 +18,13 @@ from edu_core.model_providers import (
     create_embeddings,
 )
 from edu_core.schemas.documents import DocumentStatus
+from edu_core.services.learner_profiles import LearnerProfileService
 from edu_core.services.resource_packages import ResourcePackageService
 from edu_core.storage import LocalStorageService
 from edu_db.models import Document, DocumentSegment
 from edu_db.session import get_session_factory
 from edu_queue.schemas import QueueTaskMessage, TaskType
+from langchain_core.output_parsers import JsonOutputParser
 from langchain_text_splitters import (
     MarkdownHeaderTextSplitter,
     RecursiveCharacterTextSplitter,
@@ -114,8 +116,57 @@ class TaskRunnerService:
             await self._run_mind_map(payload)
         elif task_type == TaskType.CHAT_TITLE_GENERATION:
             return
+        elif task_type == TaskType.LEARNER_PROFILE_EXTRACTION:
+            await self._extract_learner_profile(payload)
         else:
             raise ValueError(f"Unsupported task type: {task_type}")
+
+    async def _extract_learner_profile(self, payload: dict[str, Any]) -> None:
+        """Extract stable learner facts from a user-authored chat message."""
+        message_text = str(payload.get("message_text") or "").strip()
+        if not message_text:
+            return
+
+        prompt = f"""You extract learner profile facts from a single message written by a student.
+
+Return JSON only, with this exact top-level shape:
+{{"fields": {{"field_key": {{"value": ..., "confidence": 0.0, "status": "confirmed|inferred"}}}}}}
+
+Allowed field keys:
+- major_background: academic discipline or professional background
+- education_level: education stage or year
+- learning_goal: an explicit learning objective
+- resource_preference: preferred learning resource formats or methods
+- cognitive_style: stable learning/cognitive style only when explicitly stated or strongly evidenced
+- available_study_time: stated schedule or available study duration
+
+Rules:
+- Extract only facts supported by the student's own words.
+- Use status "confirmed" only for an explicit first-person statement.
+- Use status "inferred" only for a strong implication and lower confidence.
+- Do not infer knowledge mastery, learning progress, practical ability, errors, grades, or learning state.
+- Do not invent missing details. If there are no supported facts, return {{"fields": {{}}}}.
+- Preserve the student's language in values.
+
+Student message:
+{message_text}
+"""
+        model = create_chat_model(self.llm_config, streaming=False, temperature=0.1)
+        response = await model.ainvoke(prompt)
+        content = response.content
+        if not isinstance(content, str):
+            content = str(content)
+        parsed = JsonOutputParser().parse(content)
+        fields = parsed.get("fields", {}) if isinstance(parsed, dict) else {}
+        if not isinstance(fields, dict):
+            return
+        LearnerProfileService().apply_chat_inferences(
+            project_id=str(payload["project_id"]),
+            user_id=str(payload["user_id"]),
+            message_id=str(payload["message_id"]),
+            message_text=message_text,
+            inferred_fields=fields,
+        )
 
     def _make_topic_graph_agent(self):
         llm = create_chat_model(self.llm_config, streaming=False)

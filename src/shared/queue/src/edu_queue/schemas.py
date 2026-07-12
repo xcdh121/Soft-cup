@@ -13,6 +13,7 @@ class TaskType(str, Enum):
     MIND_MAP_GENERATION = "mind_map_generation"
     DOCUMENT_PROCESSING = "document_processing"
     CHAT_TITLE_GENERATION = "chat_title_generation"
+    LEARNER_PROFILE_EXTRACTION = "learner_profile_extraction"
 
 
 class FlashcardGenerationData(TypedDict):
@@ -79,6 +80,15 @@ class ChatTitleGenerationData(TypedDict):
     ai_response: str
 
 
+class LearnerProfileExtractionData(TypedDict):
+    """Data required to extract profile facts from one user message."""
+
+    project_id: str
+    user_id: str
+    message_id: str
+    message_text: str
+
+
 TaskData = Union[
     FlashcardGenerationData,
     QuizGenerationData,
@@ -86,6 +96,7 @@ TaskData = Union[
     MindMapGenerationData,
     DocumentProcessingData,
     ChatTitleGenerationData,
+    LearnerProfileExtractionData,
 ]
 
 

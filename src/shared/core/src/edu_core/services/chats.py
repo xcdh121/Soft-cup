@@ -1,6 +1,7 @@
 """CRUD service for managing chats."""
 
 import json
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import contextmanager, suppress
 from datetime import datetime
@@ -38,6 +39,9 @@ from edu_core.schemas.chats import (
     StreamEventDto,
 )
 from edu_core.storage import LocalStorageService
+
+
+logger = logging.getLogger(__name__)
 
 
 # Constants for part types and tool names
@@ -892,17 +896,16 @@ class ChatService:
                                 db_part.provider_metadata = part_dto.provider_metadata
                             db.add(db_part)
 
+                        user_message_text = " ".join(
+                            [
+                                part.text_content
+                                for part in user_parts_dto
+                                if isinstance(part, TextPartDto)
+                            ]
+                        )
+
                         # Queue title generation for first message
                         if is_first_message:
-                            # Extract text content from user message parts
-                            user_message_text = " ".join(
-                                [
-                                    p.text_content
-                                    for p in user_parts_dto
-                                    if isinstance(p, TextPartDto)
-                                ]
-                            )
-
                             # Extract AI response text
                             ai_response_text = "".join(
                                 [
@@ -947,6 +950,36 @@ class ChatService:
                         db.commit()
 
                     yield stream_chunk
+
+                    # Queue profile extraction after the final SSE event has been
+                    # yielded, so local synchronous queues do not delay the answer.
+                    if stream_chunk.done and user_message_text.strip():
+                        queue_service = getattr(self, "_queue_service", None)
+                        if queue_service:
+                            try:
+                                from edu_queue.schemas import (
+                                    LearnerProfileExtractionData,
+                                    QueueTaskMessage,
+                                    TaskType,
+                                )
+
+                                profile_task_data: LearnerProfileExtractionData = {
+                                    "project_id": chat.project_id,
+                                    "user_id": user_id,
+                                    "message_id": user_message_db.id,
+                                    "message_text": user_message_text,
+                                }
+                                profile_task: QueueTaskMessage = {
+                                    "type": TaskType.LEARNER_PROFILE_EXTRACTION,
+                                    "data": profile_task_data,
+                                }
+                                queue_service.send_message(profile_task)
+                            except Exception:
+                                # Profile enrichment is best effort and must never
+                                # turn a successful chat response into an error.
+                                logger.exception(
+                                    "Failed to queue learner-profile extraction"
+                                )
 
             except Exception as e:
                 # Use the pre-generated assistant_message_id for error messages

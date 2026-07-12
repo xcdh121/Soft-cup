@@ -50,45 +50,37 @@ const failUnexpectedStatus = (status: number, path: string) =>
   Effect.fail(new Error(`Request ${path} failed with status ${status}`))
 
 export const learnerProfileAtom = Atom.family((projectId: string) =>
-  runtime
-    .atom(
-      Effect.gen(function* () {
-        const { httpClient } = yield* ApiClientService
-        const path = `/api/v1/projects/${projectId}/learner-profile`
-        const response = yield* httpClient.get(
-          path,
-        )
-        if (response.status === 404) {
-          return null as LearnerProfile | null
-        }
-        if (!isSuccessStatus(response.status)) {
-          return yield* failUnexpectedStatus(response.status, path)
-        }
-        return (yield* response.json) as LearnerProfile
-      }),
-    )
-    .pipe(Atom.keepAlive),
+  runtime.atom(
+    Effect.gen(function* () {
+      const { httpClient } = yield* ApiClientService
+      const path = `/api/v1/projects/${projectId}/learner-profile`
+      const response = yield* httpClient.get(path)
+      if (response.status === 404) {
+        return null as LearnerProfile | null
+      }
+      if (!isSuccessStatus(response.status)) {
+        return yield* failUnexpectedStatus(response.status, path)
+      }
+      return (yield* response.json) as LearnerProfile
+    }),
+  ),
 )
 
 export const learnerProfileRevisionsAtom = Atom.family((projectId: string) =>
-  runtime
-    .atom(
-      Effect.gen(function* () {
-        const { httpClient } = yield* ApiClientService
-        const path = `/api/v1/projects/${projectId}/learner-profile/revisions`
-        const response = yield* httpClient.get(
-          path,
-        )
-        if (response.status === 404) {
-          return [] as Array<LearnerProfileRevision>
-        }
-        if (!isSuccessStatus(response.status)) {
-          return yield* failUnexpectedStatus(response.status, path)
-        }
-        return (yield* response.json) as Array<LearnerProfileRevision>
-      }),
-    )
-    .pipe(Atom.keepAlive),
+  runtime.atom(
+    Effect.gen(function* () {
+      const { httpClient } = yield* ApiClientService
+      const path = `/api/v1/projects/${projectId}/learner-profile/revisions`
+      const response = yield* httpClient.get(path)
+      if (response.status === 404) {
+        return [] as Array<LearnerProfileRevision>
+      }
+      if (!isSuccessStatus(response.status)) {
+        return yield* failUnexpectedStatus(response.status, path)
+      }
+      return (yield* response.json) as Array<LearnerProfileRevision>
+    }),
+  ),
 )
 
 export const refreshLearnerProfileAtom = runtime.fn(
