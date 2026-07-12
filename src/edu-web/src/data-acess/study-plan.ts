@@ -1,5 +1,6 @@
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
+import { withToast } from '@/lib/with-toast'
 import { Atom, Registry } from '@effect-atom/atom-react'
 import { HttpBody } from '@effect/platform'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
@@ -98,7 +99,9 @@ const buildFocusAreas = (path: LearningPathContent) => {
     .slice(0, 5)
 }
 
-const inferActionType = (stepType: string | undefined): 'quiz' | 'flashcard' => {
+const inferActionType = (
+  stepType: string | undefined,
+): 'quiz' | 'flashcard' => {
   if (stepType === 'quiz') {
     return 'quiz'
   }
@@ -135,7 +138,8 @@ const getPlannerModeFromEvents = (
     .reverse()
     .find(
       (event) =>
-        event.event_type === 'agent_step' && event.agent_name === 'PlannerAgent',
+        event.event_type === 'agent_step' &&
+        event.agent_name === 'PlannerAgent',
     )
 
   const reasonCodes = Array.isArray(plannerStep?.payload?.reason_codes)
@@ -260,41 +264,34 @@ export class StudyResource extends Schema.Class<StudyResource>('StudyResource')(
 ) {}
 
 export const generateStudyPlanAtom = runtime.fn(
-  Effect.fn(function* (projectId: string) {
-    const registry = yield* Registry.AtomRegistry
-    const { httpClient } = yield* ApiClientService
+  Effect.fn(
+    function* (projectId: string) {
+      const registry = yield* Registry.AtomRegistry
+      const { httpClient } = yield* ApiClientService
 
-    const diagnosisBody = HttpBody.unsafeJson({
-      trigger: {
-        type: 'manual',
-        id: 'study_plan_page',
-      },
-    })
-
-    const diagnosisResponse = yield* httpClient.post(
-      `/api/v1/projects/${projectId}/diagnosis`,
-      { body: diagnosisBody },
-    )
-
-    const diagnosis = (yield* diagnosisResponse.json) as {
-      learning_path?: LearningPathContent | null
-      diagnosis_id: string
-    }
-
-    if (diagnosis.learning_path) {
-      const learningPathBody = HttpBody.unsafeJson({
-        diagnosis_id: diagnosis.diagnosis_id,
+      const body = HttpBody.unsafeJson({
+        trigger: {
+          type: 'manual',
+          id: 'study_plan_page',
+        },
       })
 
-      yield* httpClient.post(
+      const response = yield* httpClient.post(
         `/api/v1/projects/${projectId}/learning-paths/generate`,
-        { body: learningPathBody },
+        { body },
       )
-    }
 
-    registry.refresh(latestStudyPlanRemoteAtom(projectId))
-    registry.refresh(studyPlansHistoryRemoteAtom(projectId))
+      const learningPath = (yield* response.json) as LearningPathResponse
 
-    return diagnosis
-  }),
+      registry.refresh(latestStudyPlanRemoteAtom(projectId))
+      registry.refresh(studyPlansHistoryRemoteAtom(projectId))
+
+      return learningPath
+    },
+    withToast({
+      onWaiting: '正在生成个性化学习计划...',
+      onSuccess: '学习计划生成成功。',
+      onFailure: '学习计划生成失败，请稍后重试。',
+    }),
+  ),
 )

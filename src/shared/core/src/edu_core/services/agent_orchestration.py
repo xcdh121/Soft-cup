@@ -36,7 +36,6 @@ from edu_db.models import (
 from edu_db.session import get_session_factory
 from pydantic import BaseModel
 
-
 ARTIFACT_AGENT_NAMES = {
     "profile": "ProfileAgent",
     "knowledge_state": "KTAgent",
@@ -546,20 +545,48 @@ class AgentOrchestrationService:
         diagnosis_id: str | None = None,
         trigger: AgentTrigger | None = None,
     ) -> LearningPathResponse:
+        diagnosis = None
         if diagnosis_id:
             diagnosis = self.get_diagnosis(diagnosis_id)
             self._ensure_diagnosis_access(diagnosis, user_id, project_id)
-        else:
-            diagnosis = await self.generate_diagnosis(user_id, project_id, trigger)
+
+        result = await self._run_supervisor(
+            user_id=user_id,
+            project_id=project_id,
+            goal="learning_path",
+            trigger=trigger,
+        )
+        self.store.save_run_events(result)
+
+        learning_path = result.final_result.get("learning_path")
+        if result.status != RunStatus.COMPLETED or not learning_path:
+            error = result.final_result.get("error", "Planner returned no learning path")
+            raise RuntimeError(f"Learning path generation failed: {error}")
+
+        if diagnosis is None:
+            diagnosis = DiagnosisResponse(
+                diagnosis_id=f"diag_{uuid4().hex}",
+                run_id=result.run_id,
+                project_id=project_id,
+                student_id=user_id,
+                status=result.status,
+                diagnosis=result.final_result.get("diagnosis", {}),
+                recommendations=result.final_result.get("recommendations", []),
+                learning_path=learning_path,
+                next_actions=[],
+                created_at=self._now(),
+            )
+            self.store.save_diagnosis(diagnosis)
 
         recommendation_ids = [
             recommendation["id"] for recommendation in diagnosis.recommendations
+            if recommendation.get("id")
         ]
         response = LearningPathResponse(
             path_id=f"path_{uuid4().hex}",
-            run_id=diagnosis.run_id,
+            run_id=result.run_id,
             project_id=project_id,
-            learning_path=diagnosis.learning_path or {},
+            learning_path=learning_path,
             based_on_diagnosis_id=diagnosis.diagnosis_id,
             based_on_recommendation_ids=recommendation_ids,
             created_at=self._now(),

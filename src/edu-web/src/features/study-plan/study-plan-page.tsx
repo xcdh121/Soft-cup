@@ -73,6 +73,8 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
     setIsGenerating(true)
     try {
       await generatePlan(projectId)
+    } catch {
+      // The generation atom displays the failure toast.
     } finally {
       setIsGenerating(false)
     }
