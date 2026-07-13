@@ -10,6 +10,7 @@ from .knowledge_states import knowledge_graph_router
 from .knowledge_states import router as knowledge_states_router
 from .learner_profiles import router as learner_profiles_router
 from .learning_paths import router as learning_paths_router
+from .agent_runs import router as agent_runs_router
 from .mind_maps import router as mind_maps_router
 from .notes import router as notes_router
 from .practice_records import router as practice_records_router
@@ -40,6 +41,7 @@ __all__ = [
     "knowledge_states_router",
     "learner_profiles_router",
     "learning_paths_router",
+    "agent_runs_router",
     "mind_maps_router",
     "notes_router",
     "practice_records_router",

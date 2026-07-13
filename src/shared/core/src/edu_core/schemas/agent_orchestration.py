@@ -49,6 +49,13 @@ class AgentEventType(StrEnum):
     FALLBACK_APPLIED = "fallback_applied"
     RUN_COMPLETED = "run_completed"
     RUN_FAILED = "run_failed"
+    SKILL_STARTED = "skill_started"
+    SKILL_COMPLETED = "skill_completed"
+    SKILL_FAILED = "skill_failed"
+    TOOL_CALL_STARTED = "tool_call_started"
+    TOOL_CALL_COMPLETED = "tool_call_completed"
+    TOOL_CALL_FAILED = "tool_call_failed"
+    TOOL_APPROVAL_REQUIRED = "tool_approval_required"
 
 
 class AgentTrigger(BaseModel):
@@ -101,6 +108,11 @@ class AgentResult(BaseModel):
     field_status: FieldStatus = FieldStatus.INFERRED
     fallback_used: bool = False
     fallback_reason: str | None = None
+    skill_executions: list[Any] = Field(default_factory=list)
+    tool_call_ids: list[str] = Field(default_factory=list)
+    input_artifact_keys: list[str] = Field(default_factory=list)
+    output_artifact_keys: list[str] = Field(default_factory=list)
+    tool_call_audits: list[Any] = Field(default_factory=list, exclude=True)
 
 
 class SupervisorPreflight(BaseModel):
@@ -108,6 +120,7 @@ class SupervisorPreflight(BaseModel):
     input_readiness: dict[str, InputReadinessStatus]
     degrade_mode: list[str] = Field(default_factory=list)
     route_plan: list[AgentName] = Field(default_factory=list)
+    selected_skills: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class AgentEvent(BaseModel):
@@ -180,4 +193,15 @@ class LearningPathResponse(BaseModel):
     learning_path: dict[str, Any]
     based_on_diagnosis_id: str | None = None
     based_on_recommendation_ids: list[str] = Field(default_factory=list)
+    created_at: datetime
+
+
+class AgentRunDetail(BaseModel):
+    run_id: str
+    project_id: str
+    goal: str
+    status: str
+    final_result: dict[str, Any] = Field(default_factory=dict)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     created_at: datetime

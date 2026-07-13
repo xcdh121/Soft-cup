@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
 from routers import (
+    agent_runs_router,
     auth_router,
     chats_router,
     course_books_router,
@@ -108,6 +109,7 @@ class Api:
 
         # Register all routers
         self.app.include_router(projects_router)
+        self.app.include_router(agent_runs_router)
         self.app.include_router(courses_router)
         self.app.include_router(course_books_router)
         self.app.include_router(learner_profiles_router)

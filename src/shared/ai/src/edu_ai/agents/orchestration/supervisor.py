@@ -150,6 +150,78 @@ class SupervisorAgent:
                     await event_sink(started_event)
                 result = await agent.run(context)
                 agent_results.append(result)
+                for skill in result.skill_executions:
+                    skill_started = self._event(
+                        AgentEventType.SKILL_STARTED,
+                        run_id,
+                        RunStatus.RUNNING,
+                        f"{skill.display_name} started.",
+                        result.agent_name,
+                        {
+                            "skill_id": skill.skill_id,
+                            "skill_display_name": skill.display_name,
+                            "phase": "started",
+                            "ui_visibility": "details",
+                        },
+                    )
+                    events.append(skill_started)
+                    if event_sink:
+                        await event_sink(skill_started)
+                    for tool_call in skill.tool_calls:
+                        tool_status = (
+                            RunStatus.COMPLETED
+                            if tool_call.status == "completed"
+                            else RunStatus.FAILED
+                        )
+                        tool_event = self._event(
+                            AgentEventType.TOOL_CALL_COMPLETED
+                            if tool_call.status == "completed"
+                            else AgentEventType.TOOL_CALL_FAILED,
+                            run_id,
+                            tool_status,
+                            tool_call.result_summary,
+                            result.agent_name,
+                            {
+                                "skill_id": skill.skill_id,
+                                "skill_display_name": skill.display_name,
+                                "tool_call_id": tool_call.id,
+                                "tool_name": tool_call.tool_name,
+                                "tool_display_name": tool_call.display_name,
+                                "phase": tool_call.status,
+                                "result_summary": tool_call.result_summary,
+                                "evidence_count": tool_call.evidence_count,
+                                "duration_ms": tool_call.duration_ms,
+                                "ui_visibility": tool_call.ui_visibility,
+                            },
+                        )
+                        events.append(tool_event)
+                        if event_sink:
+                            await event_sink(tool_event)
+                    skill_status = (
+                        RunStatus.COMPLETED if skill.status == "completed" else RunStatus.FAILED
+                    )
+                    skill_event = self._event(
+                        AgentEventType.SKILL_COMPLETED
+                        if skill.status == "completed"
+                        else AgentEventType.SKILL_FAILED,
+                        run_id,
+                        skill_status,
+                        skill.summary,
+                        result.agent_name,
+                        {
+                            "skill_id": skill.skill_id,
+                            "skill_display_name": skill.display_name,
+                            "phase": skill.status,
+                            "result_summary": skill.summary,
+                            "confidence": skill.confidence,
+                            "fallback_used": skill.fallback_used,
+                            "duration_ms": skill.duration_ms,
+                            "ui_visibility": "details",
+                        },
+                    )
+                    events.append(skill_event)
+                    if event_sink:
+                        await event_sink(skill_event)
                 context.artifacts[agent.artifact_key] = result.result
                 events.append(
                     self._event(
@@ -292,6 +364,12 @@ class SupervisorAgent:
             goal=context.goal,
             input_readiness=readiness,
             degrade_mode=degrade_mode,
+            selected_skills={
+                "ProfileAgent": ["learner_evidence_collection"],
+                "KTAgent": ["learner_evidence_collection"],
+                "DiagnosisAgent": ["root_cause_diagnosis"],
+                "PlannerAgent": ["learning_path_design"],
+            },
         )
 
     def _decide_route(self, preflight: SupervisorPreflight) -> list[AgentName]:

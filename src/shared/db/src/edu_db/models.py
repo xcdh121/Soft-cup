@@ -659,6 +659,73 @@ class AgentRun(Base):
     artifacts = relationship(
         "AgentArtifact", back_populates="run", cascade="all, delete-orphan"
     )
+    skill_executions = relationship(
+        "SkillExecution", back_populates="run", cascade="all, delete-orphan"
+    )
+    tool_calls = relationship(
+        "AgentToolCall", back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class SkillExecution(Base):
+    __tablename__ = "skill_executions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    agent_name: Mapped[str] = mapped_column(String, index=True)
+    skill_id: Mapped[str] = mapped_column(String, index=True)
+    skill_version: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, index=True)
+    input_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    output_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    output_artifact_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fallback_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    fallback_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    run = relationship("AgentRun", back_populates="skill_executions")
+    tool_calls = relationship("AgentToolCall", back_populates="skill_execution")
+
+
+class AgentToolCall(Base):
+    __tablename__ = "agent_tool_calls"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_agent_tool_calls_idempotency_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    skill_execution_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("skill_executions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    agent_name: Mapped[str] = mapped_column(String, index=True)
+    skill_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    tool_name: Mapped[str] = mapped_column(String, index=True)
+    tool_version: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, index=True)
+    risk_level: Mapped[str] = mapped_column(String)
+    approval_status: Mapped[str] = mapped_column(String)
+    arguments: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    evidence_refs: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    idempotency_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    run = relationship("AgentRun", back_populates="tool_calls")
+    skill_execution = relationship("SkillExecution", back_populates="tool_calls")
 
 
 class AgentEvent(Base):

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { CheckCircle2Icon, Loader2Icon, SparklesIcon } from 'lucide-react'
+import { Loader2Icon, SparklesIcon } from 'lucide-react'
 import type {
   AgentProgressStep,
   DifficultyLevel,
@@ -32,6 +32,7 @@ import {
 import { ProjectHeader } from '@/features/project/components/project-header'
 import { ResourceResultPreview } from '@/features/resource-package/components/resource-result-preview'
 import { cn } from '@/lib/utils'
+import { AgentCollaborationPanel } from '@/components/agent-collaboration-panel'
 
 const RESOURCE_TYPE_OPTIONS: Array<{
   value: ResourceType
@@ -133,48 +134,8 @@ const statusToneMap: Record<
   pending: 'outline',
 }
 
-const agentLabelMap: Record<string, string> = {
-  SupervisorAgent: '总控编排',
-  ProfileAgent: '学习者画像',
-  KTAgent: '知识状态评估',
-  CollectiveInsightAgent: '群体学习洞察',
-  DiagnosisAgent: '学习诊断',
-  ResourceAgent: '资源规划与投递',
-  PlannerAgent: '学习路径规划',
-}
-
 const AgentProgressPanel = ({ steps }: { steps: Array<AgentProgressStep> }) => {
-  if (steps.length === 0) return null
-  return (
-    <div className="rounded-2xl border bg-background p-5">
-      <div className="font-medium">多智能体生成过程</div>
-      <div className="mt-1 text-sm text-muted-foreground">
-        资源包正在依次完成画像、知识状态、诊断、资源规划与学习路径编排。
-      </div>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {steps.map((step, index) => (
-          <div
-            key={`${step.agentName}-${index}`}
-            className="flex items-start gap-2 rounded-lg border p-3"
-          >
-            {step.status === 'running' ? (
-              <Loader2Icon className="mt-0.5 size-4 shrink-0 animate-spin text-primary" />
-            ) : (
-              <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-emerald-600" />
-            )}
-            <div className="min-w-0">
-              <div className="text-sm font-medium">
-                {agentLabelMap[step.agentName] ?? step.agentName}
-              </div>
-              <div className="line-clamp-2 text-xs text-muted-foreground">
-                {step.summary}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+  return <AgentCollaborationPanel steps={steps} demoMode />
 }
 
 const ResourcePackageSelector = ({
