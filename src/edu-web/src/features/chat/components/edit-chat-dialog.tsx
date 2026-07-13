@@ -45,7 +45,7 @@ export const useEditChatDialog = create<EditChatDialogStore>((set) => ({
 }))
 
 const editChatSchema = z.object({
-  title: z.string().min(1, '请输入标题').max(100, '标题过长'),
+  title: z.string().trim().min(1, '请输入标题').max(100, '标题过长'),
 })
 
 type EditChatForm = z.infer<typeof editChatSchema>
@@ -66,7 +66,7 @@ export function EditChatDialog() {
 
   // Update form when dialog opens with new data
   React.useEffect(() => {
-    if (isOpen && currentTitle !== null) {
+    if (isOpen) {
       form.reset({ title: currentTitle || '' })
     }
   }, [isOpen, currentTitle, form])

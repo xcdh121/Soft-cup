@@ -5,11 +5,15 @@ import {
   HistoryIcon,
   Loader2Icon,
   MessageSquarePlusIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  Trash2Icon,
 } from 'lucide-react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
+import { useEditChatDialog } from './edit-chat-dialog'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -18,9 +22,15 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
 } from '@/components/ui/breadcrumb'
-import { chatAtom, chatsAtom, createChatAtom } from '@/data-acess/chat'
+import {
+  chatAtom,
+  chatsAtom,
+  createChatAtom,
+  deleteChatAtom,
+} from '@/data-acess/chat'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
+import { useConfirmationDialog } from '@/components/confirmation-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -165,6 +175,78 @@ const ChatHistoryMenu = (props: { projectId: string; chatId: string }) => {
   )
 }
 
+const CurrentChatActions = (props: { projectId: string; chatId: string }) => {
+  const { projectId, chatId } = props
+  const chatKey = useMemo(() => `${projectId}:${chatId}`, [projectId, chatId])
+  const chatResult = useAtomValue(chatAtom(chatKey))
+  const chatsResult = useAtomValue(chatsAtom(projectId))
+  const deleteChat = useAtomSet(deleteChatAtom, { mode: 'promise' })
+  const editChatDialog = useEditChatDialog()
+  const confirmationDialog = useConfirmationDialog()
+  const navigate = useNavigate()
+
+  if (!Result.isSuccess(chatResult)) return null
+
+  const chat = chatResult.value
+
+  const handleDelete = async () => {
+    const confirmed = await confirmationDialog.open({
+      title: '删除聊天',
+      description: `确定要删除“${chat.title ?? '未命名聊天'}”吗？此操作无法撤销。`,
+      confirmLabel: '删除',
+      cancelLabel: '取消',
+      variant: 'destructive',
+    })
+    if (!confirmed) return
+
+    const nextChat = Result.isSuccess(chatsResult)
+      ? chatsResult.value.find((item) => item.id !== chatId)
+      : undefined
+
+    await deleteChat({ projectId, chatId })
+    if (nextChat) {
+      await navigate({
+        to: '/dashboard/p/$projectId/c/$chatId',
+        params: { projectId, chatId: nextChat.id },
+      })
+    } else {
+      await navigate({
+        to: '/dashboard/p/$projectId',
+        params: { projectId },
+      })
+    }
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="size-8">
+          <MoreHorizontalIcon className="size-4" />
+          <span className="sr-only">聊天操作</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onSelect={() =>
+            editChatDialog.open(projectId, chatId, chat.title ?? null)
+          }
+        >
+          <PencilIcon className="size-4" />
+          重命名
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          onSelect={() => void handleDelete()}
+        >
+          <Trash2Icon className="size-4" />
+          删除聊天
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 type ChatHeaderProps = {
   chatId: string
   projectId: string
@@ -189,8 +271,9 @@ export const ChatHeader = (props: ChatHeaderProps) => {
         />
         <ChatHeaderContent projectId={projectId} chatId={chatId} />
       </div>
-      <div className="shrink-0 px-3">
+      <div className="flex shrink-0 items-center gap-1 px-3">
         <ChatHistoryMenu projectId={projectId} chatId={chatId} />
+        <CurrentChatActions projectId={projectId} chatId={chatId} />
       </div>
     </header>
   )

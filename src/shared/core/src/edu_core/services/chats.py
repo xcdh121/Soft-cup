@@ -33,13 +33,12 @@ from edu_core.schemas.chats import (
     ChatMessageDto,
     FilePartDto,
     SourceDocumentPartDto,
+    StreamEventDto,
     StreamingChatMessage,
     TextPartDto,
     ToolCallPartDto,
-    StreamEventDto,
 )
 from edu_core.storage import LocalStorageService
-
 
 logger = logging.getLogger(__name__)
 
@@ -606,6 +605,21 @@ class ChatService:
                     self._db_message_to_dto(db_msg) for db_msg in db_messages
                 ]
 
+                if not (chat.title and chat.title.strip()):
+                    first_user_message = next(
+                        (message for message in db_messages if message.role == "user"),
+                        None,
+                    )
+                    if first_user_message:
+                        first_message_text = " ".join(
+                            part.text_content
+                            for part in first_user_message.parts
+                            if part.part_type == PartType.TEXT and part.text_content
+                        )
+                        if first_message_text.strip():
+                            chat.title = self._fallback_chat_title(first_message_text)
+                            db.commit()
+
                 # Create ChatDetailDto with messages
                 chat_dto = self._model_to_dto(chat)
                 return ChatDetailDto(
@@ -642,6 +656,7 @@ class ChatService:
                 )
 
                 result = []
+                titles_backfilled = False
                 for chat in chats:
                     # Fetch last message for each chat
                     last_message = (
@@ -651,10 +666,40 @@ class ChatService:
                         .order_by(DBChatMessage.created_at.desc())
                         .first()
                     )
+
+                    # Repair chats created while automatic title generation was
+                    # unavailable by extracting a title from the first user message.
+                    if not (chat.title and chat.title.strip()):
+                        first_user_message = (
+                            db.query(DBChatMessage)
+                            .filter(
+                                DBChatMessage.chat_id == chat.id,
+                                DBChatMessage.role == "user",
+                            )
+                            .options(joinedload(DBChatMessage.parts))
+                            .order_by(DBChatMessage.created_at.asc())
+                            .first()
+                        )
+                        if first_user_message:
+                            first_message_text = " ".join(
+                                part.text_content
+                                for part in first_user_message.parts
+                                if part.part_type == PartType.TEXT
+                                and part.text_content
+                            )
+                            if first_message_text.strip():
+                                chat.title = self._fallback_chat_title(
+                                    first_message_text
+                                )
+                                titles_backfilled = True
+
                     result.append(self._model_to_dto(chat, last_message))
 
+                if titles_backfilled:
+                    db.commit()
+
                 # Sort by last_message_at
-                result.sort(key=lambda x: x.last_message_at or x.updated_at, reverse=True)                
+                result.sort(key=lambda x: x.last_message_at or x.updated_at, reverse=True)
 
                 return result
             except Exception:
@@ -808,7 +853,7 @@ class ChatService:
                     self._db_message_to_dto(db_msg) for db_msg in db_messages
                 ]
 
-                is_first_message = len(chat_history_for_llm) == 0
+                should_generate_title = not (chat.title and chat.title.strip())
 
                 # Save user message to DB
                 user_message_db = DBChatMessage(
@@ -904,8 +949,8 @@ class ChatService:
                             ]
                         )
 
-                        # Queue title generation for first message
-                        if is_first_message:
+                        # Generate titles for new chats and repair older unnamed chats.
+                        if should_generate_title:
                             # Extract AI response text
                             ai_response_text = "".join(
                                 [
@@ -1310,7 +1355,8 @@ class ChatService:
             Generated chat title
         """
         try:
-            prompt = f"""Generate a concise, descriptive title (max 5 words) for a chat based on this conversation:
+            prompt = f"""Generate a concise, descriptive title (max 5 words) for a chat based on this conversation.
+Use the same language as the user's message.
 
 User: "{user_message}"
 Assistant: "{ai_response}"
@@ -1329,7 +1375,20 @@ Only respond with the title, nothing else. Do not use quotes."""
 
             return title
         except Exception:
-            return "New Chat"
+            return self._fallback_chat_title(user_message)
+
+    @staticmethod
+    def _fallback_chat_title(user_message: str) -> str:
+        """Extract a compact title from the first user message."""
+        compact = " ".join(user_message.strip().split())
+        compact = compact.strip('"\'“”\u2018\u2019').rstrip(
+            "。.!\uFF01?\uFF1F"
+        )
+        if not compact:
+            return "新聊天"
+        if len(compact) <= 30:
+            return compact
+        return compact[:29].rstrip() + "…"
 
     def upload_chat_file(
         self, file_content: bytes, filename: str, project_id: str, chat_id: str
@@ -1403,7 +1462,7 @@ Only respond with the title, nothing else. Do not use quotes."""
                         if isinstance(streaming_msg.created_at, datetime)
                         else streaming_msg.created_at
                     )
-                    
+
                     event_data = {
                         "message_id": streaming_msg.id,
                         "chat_id": streaming_msg.chat_id,

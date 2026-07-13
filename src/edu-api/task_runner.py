@@ -21,7 +21,7 @@ from edu_core.schemas.documents import DocumentStatus
 from edu_core.services.learner_profiles import LearnerProfileService
 from edu_core.services.resource_packages import ResourcePackageService
 from edu_core.storage import LocalStorageService
-from edu_db.models import Document, DocumentSegment
+from edu_db.models import Chat, Document, DocumentSegment
 from edu_db.session import get_session_factory
 from edu_queue.schemas import QueueTaskMessage, TaskType
 from langchain_core.output_parsers import JsonOutputParser
@@ -115,11 +115,82 @@ class TaskRunnerService:
         elif task_type == TaskType.MIND_MAP_GENERATION:
             await self._run_mind_map(payload)
         elif task_type == TaskType.CHAT_TITLE_GENERATION:
-            return
+            await self._generate_chat_title(payload)
         elif task_type == TaskType.LEARNER_PROFILE_EXTRACTION:
             await self._extract_learner_profile(payload)
         else:
             raise ValueError(f"Unsupported task type: {task_type}")
+
+    async def _generate_chat_title(self, payload: dict[str, Any]) -> None:
+        """Generate and persist a title for an unnamed chat's first exchange."""
+        user_message = str(payload.get("user_message") or "").strip()
+        ai_response = str(payload.get("ai_response") or "").strip()
+        fallback_title = self._fallback_chat_title(user_message)
+        generated_title = fallback_title
+
+        if user_message:
+            prompt = f"""Create a concise, descriptive title for this conversation.
+
+Requirements:
+- Use the same language as the user's message.
+- Summarize the main topic, not the user's intent to chat.
+- Use at most 5 words for space-separated languages, or 20 characters for Chinese.
+- Return only the title, without quotes, labels, or punctuation at the end.
+
+User: {user_message[:2000]}
+Assistant: {ai_response[:2000]}
+"""
+            try:
+                model = create_chat_model(
+                    self.llm_config, streaming=False, temperature=0.1
+                )
+                response = await model.ainvoke(prompt)
+                content = response.content
+                if not isinstance(content, str):
+                    content = str(content)
+                candidate = " ".join(content.strip().split())
+                candidate = candidate.removeprefix("Title:").removeprefix(
+                    "标题\uFF1A"
+                )
+                candidate = candidate.strip().strip(
+                    '"\'“”\u2018\u2019'
+                ).rstrip("。.!\uFF01?\uFF1F")
+                if candidate:
+                    generated_title = candidate[:60]
+            except Exception:
+                logger.exception(
+                    "Chat title generation failed; using a message-based fallback"
+                )
+
+        session_factory = get_session_factory()
+        with session_factory() as db:
+            chat = (
+                db.query(Chat)
+                .filter(
+                    Chat.id == str(payload["chat_id"]),
+                    Chat.project_id == str(payload["project_id"]),
+                    Chat.user_id == str(payload["user_id"]),
+                )
+                .first()
+            )
+            # Never overwrite a title supplied or edited by the user.
+            if chat is None or (chat.title and chat.title.strip()):
+                return
+            chat.title = generated_title
+            db.commit()
+
+    @staticmethod
+    def _fallback_chat_title(user_message: str) -> str:
+        """Derive a useful title even when the title model is unavailable."""
+        compact = " ".join(user_message.strip().split())
+        compact = compact.strip('"\'“”\u2018\u2019').rstrip(
+            "。.!\uFF01?\uFF1F"
+        )
+        if not compact:
+            return "新聊天"
+        if len(compact) <= 30:
+            return compact
+        return compact[:29].rstrip() + "…"
 
     async def _extract_learner_profile(self, payload: dict[str, Any]) -> None:
         """Extract stable learner facts from a user-authored chat message."""

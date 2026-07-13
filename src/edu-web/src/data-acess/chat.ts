@@ -41,6 +41,7 @@ const ChatsAction = Data.taggedEnum<ChatsAction>()
 type ChatMessagesAction = Data.TaggedEnum<{
   Append: { readonly chatId: string; readonly message: ChatMessageDto }
   RemoveTemporaryMessage: {}
+  UpdateMetadata: { readonly chat: ChatDto }
   UpdateParts: {
     readonly chatId: string
     readonly messageId: string
@@ -141,48 +142,66 @@ export const chatAtom = Atom.family((input: string) =>
 
         const messages = Array.from(result.value.messages ?? [])
 
-        const update: ReadonlyArray<ChatMessageDto> = ChatMessagesAction.$match(
+        const update = ChatMessagesAction.$match(
           action,
           {
             Append: ({ message }) => {
-              return [...messages, message] as ReadonlyArray<ChatMessageDto>
+              return { ...result.value, messages: [...messages, message] }
             },
             UpdateParts: ({ messageId, parts }) => {
-              return messages.map((msg: ChatMessageDto) =>
-                msg.id === messageId ? { ...msg, parts } : msg,
-              ) as ReadonlyArray<ChatMessageDto>
+              return {
+                ...result.value,
+                messages: messages.map((msg: ChatMessageDto) =>
+                  msg.id === messageId ? { ...msg, parts } : msg,
+                ),
+              }
             },
             UpdateStatus: ({ messageId, status }) => {
-              return messages.map((msg: ChatMessageDto) =>
-                msg.id === messageId
-                  ? {
-                      ...msg,
-                      parts: (msg.parts
-                        ? Array.from(msg.parts).map((part) =>
-                            // Update status of any tool call parts
-                            part.type === 'tool_call'
-                              ? { ...part, tool_state: status }
-                              : part,
-                          )
-                        : []) as ReadonlyArray<
-                        | TextPartDto
-                        | FilePartDto
-                        | ToolCallPartDto
-                        | SourceDocumentPartDto
-                      >,
-                    }
-                  : msg,
-              ) as ReadonlyArray<ChatMessageDto>
+              return {
+                ...result.value,
+                messages: messages.map((msg: ChatMessageDto) =>
+                  msg.id === messageId
+                    ? {
+                        ...msg,
+                        parts: (msg.parts
+                          ? Array.from(msg.parts).map((part) =>
+                              // Update status of any tool call parts
+                              part.type === 'tool_call'
+                                ? { ...part, tool_state: status }
+                                : part,
+                            )
+                          : []) as ReadonlyArray<
+                          | TextPartDto
+                          | FilePartDto
+                          | ToolCallPartDto
+                          | SourceDocumentPartDto
+                        >,
+                      }
+                    : msg,
+                ),
+              }
             },
             RemoveTemporaryMessage: () => {
-              return messages.filter(
-                (msg: ChatMessageDto) => msg.id !== 'temporary-message-id',
-              ) as ReadonlyArray<ChatMessageDto>
+              return {
+                ...result.value,
+                messages: messages.filter(
+                  (msg: ChatMessageDto) => msg.id !== 'temporary-message-id',
+                ),
+              }
+            },
+            UpdateMetadata: ({ chat }) => {
+              return {
+                ...result.value,
+                title: chat.title,
+                updated_at: chat.updated_at,
+                last_message_content: chat.last_message_content,
+                last_message_at: chat.last_message_at,
+              }
             },
           },
         )
 
-        ctx.setSelf(Result.success({ ...result.value, messages: update }))
+        ctx.setSelf(Result.success(update))
       },
     ),
     {
@@ -451,6 +470,8 @@ export const streamMessageAtom = runtime
       // permanently cached pre-chat snapshot.
       registry.refresh(learnerProfileAtom(input.projectId))
       registry.refresh(learnerProfileRevisionsAtom(input.projectId))
+      registry.refresh(chatRemoteAtom(chatKey))
+      registry.refresh(chatsRemoteAtom(input.projectId))
       get.refresh(usageAtom)
     }),
   )
@@ -487,6 +508,10 @@ export const updateChatAtom = runtime.fn(
       )
 
     registry.set(chatsAtom(res.project_id), ChatsAction.Upsert({ chat: res }))
+    registry.set(
+      chatAtom(`${input.projectId}:${input.chatId}`),
+      ChatMessagesAction.UpdateMetadata({ chat: res }),
+    )
     return res
   }),
 )
