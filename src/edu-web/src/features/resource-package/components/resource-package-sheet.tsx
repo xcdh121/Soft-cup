@@ -432,7 +432,10 @@ const ResourcePackageSheetBody = ({
         source_document_ids: Array.from(selectedDocumentIds),
         resource_types: selectedTypes,
         difficulty_level: difficulty,
-        generation_params: contextLabel ? { launch_context: contextLabel } : {},
+        generation_params: {
+          launch_context: contextLabel,
+          quiz_count: selectedTypes.includes('practice_set') ? 10 : undefined,
+        },
       }
       onClose()
       await navigate({

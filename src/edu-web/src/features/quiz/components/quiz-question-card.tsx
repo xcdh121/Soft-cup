@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { streamQuizAiExplanationAtom } from '@/data-acess/quiz-ai-explanation'
 import {
   currentQuestionAtom,
+  getQuizCorrectOption,
   quizDetailStateAtom,
   setSelectedAnswerAtom,
 } from '@/data-acess/quiz-detail-state'
@@ -70,7 +71,9 @@ export const QuizQuestionCard = ({
   if (!state || !currentQuestion) return null
 
   const selected = state.selectedByQuestionId[currentQuestion.id]
-  const showResults = state.showResults
+  const showResults =
+    state.showResults || state.submittedByQuestionId[currentQuestion.id]
+  const correctOption = getQuizCorrectOption(currentQuestion)
   const options = [
     { key: 'A' as const, label: currentQuestion.option_a },
     { key: 'B' as const, label: currentQuestion.option_b },
@@ -89,7 +92,7 @@ export const QuizQuestionCard = ({
         ? 'bg-primary/10 border-primary'
         : 'bg-card border-border'
     }
-    if (currentQuestion.correct_option === option) {
+    if (correctOption === option) {
       return 'bg-green-50 border-green-500 text-green-900'
     }
     if (selected === option) return 'bg-red-50 border-red-500 text-red-900'
@@ -167,7 +170,7 @@ export const QuizQuestionCard = ({
               </h3>
               {showResults && (
                 <div className="mb-4 flex items-center gap-2">
-                  {selected === currentQuestion.correct_option ? (
+                  {selected === correctOption ? (
                     <>
                       <CheckCircle className="size-5 shrink-0 text-green-600" />
                       <span className="text-sm font-medium text-green-600">
@@ -213,12 +216,8 @@ export const QuizQuestionCard = ({
               <div className="space-y-2 border-t pt-4 text-sm">
                 <span className="text-muted-foreground">正确答案：</span>
                 <span className="font-semibold text-green-700">
-                  {currentQuestion.correct_option}.{' '}
-                  {
-                    options.find(
-                      (item) => item.key === currentQuestion.correct_option,
-                    )?.label
-                  }
+                  {correctOption ?? currentQuestion.correct_option}.{' '}
+                  {options.find((item) => item.key === correctOption)?.label}
                 </span>
                 {currentQuestion.explanation && (
                   <div className="leading-relaxed text-muted-foreground">

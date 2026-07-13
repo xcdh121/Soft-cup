@@ -1,18 +1,3 @@
-import { Button } from '@/components/ui/button'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
-import { Separator } from '@/components/ui/separator'
-import { quizQuestionsAtom } from '@/data-acess/quiz'
-import {
-  quizDetailStateAtom,
-  quizStatsAtom,
-  resetQuizAtom,
-  submitPendingPracticeRecordsAtom,
-} from '@/data-acess/quiz-detail-state'
-import type { QuizQuestionDto } from '@/integrations/api/client'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { useNavigate } from '@tanstack/react-router'
 import { Option } from 'effect'
@@ -26,6 +11,22 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import type { QuizQuestionDto } from '@/integrations/api/client'
+import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import { Separator } from '@/components/ui/separator'
+import { quizQuestionsAtom } from '@/data-acess/quiz'
+import {
+  getQuizCorrectOption,
+  quizDetailStateAtom,
+  quizStatsAtom,
+  resetQuizAtom,
+  submitPendingPracticeRecordsAtom,
+} from '@/data-acess/quiz-detail-state'
 
 const getOptionText = (
   question: QuizQuestionDto,
@@ -117,53 +118,56 @@ const QuizQuestionListItem = ({
   index,
   userAnswer,
   isCorrect,
-}: QuizQuestionListItemProps) => (
-  <div className="border-b last:border-0 pb-3 last:pb-0 space-y-2">
-    <div className="flex items-start gap-2">
-      <span className="text-xs font-medium text-muted-foreground w-6 shrink-0">
-        {index + 1}
-      </span>
-      <div className="flex-1 space-y-1.5 min-w-0">
-        <p className="text-sm font-medium leading-relaxed">
-          {question.question_text}
-        </p>
-        <div className="flex flex-wrap items-center gap-3 text-xs">
-          <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground">你的答案：</span>
-            <span
-              className={`font-medium ${
-                isCorrect ? 'text-green-600' : 'text-red-600'
-              }`}
-            >
-              {userAnswer?.toUpperCase() || '未作答'}
-              {userAnswer && ` - ${getOptionText(question, userAnswer)}`}
-            </span>
+}: QuizQuestionListItemProps) => {
+  const correctOption = getQuizCorrectOption(question)
+
+  return (
+    <div className="border-b last:border-0 pb-3 last:pb-0 space-y-2">
+      <div className="flex items-start gap-2">
+        <span className="text-xs font-medium text-muted-foreground w-6 shrink-0">
+          {index + 1}
+        </span>
+        <div className="flex-1 space-y-1.5 min-w-0">
+          <p className="text-sm font-medium leading-relaxed">
+            {question.question_text}
+          </p>
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">你的答案：</span>
+              <span
+                className={`font-medium ${
+                  isCorrect ? 'text-green-600' : 'text-red-600'
+                }`}
+              >
+                {userAnswer?.toUpperCase() || '未作答'}
+                {userAnswer && ` - ${getOptionText(question, userAnswer)}`}
+              </span>
+            </div>
+            {!isCorrect && (
+              <>
+                <span className="text-muted-foreground">•</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">正确答案：</span>
+                  <span className="font-medium text-green-700">
+                    {(correctOption ?? question.correct_option).toUpperCase()}
+                    {correctOption
+                      ? ` - ${getOptionText(question, correctOption)}`
+                      : null}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
-          {!isCorrect && (
-            <>
-              <span className="text-muted-foreground">•</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground">正确答案：</span>
-                <span className="font-medium text-green-700">
-                  {question.correct_option.toUpperCase()} -{' '}
-                  {getOptionText(
-                    question,
-                    question.correct_option as 'A' | 'B' | 'C' | 'D',
-                  )}
-                </span>
-              </div>
-            </>
+          {question.explanation && (
+            <div className="text-xs text-muted-foreground italic leading-relaxed">
+              {question.explanation}
+            </div>
           )}
         </div>
-        {question.explanation && (
-          <div className="text-xs text-muted-foreground italic leading-relaxed">
-            {question.explanation}
-          </div>
-        )}
       </div>
     </div>
-  </div>
-)
+  )
+}
 
 type QuizReviewSectionProps = {
   title: string
@@ -204,7 +208,7 @@ const QuizReviewSection = ({
       <CollapsibleContent className="mt-2 space-y-2">
         <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
           {questions.map(({ question, index, userAnswer }) => {
-            const isCorrect = userAnswer === question.correct_option
+            const isCorrect = userAnswer === getQuizCorrectOption(question)
             return (
               <QuizQuestionListItem
                 key={question.id}
@@ -339,7 +343,7 @@ export const QuizResultsView = ({
 
     questions.forEach((q, idx) => {
       const userAnswer = state.selectedByQuestionId[q.id]
-      const isCorrect = userAnswer === q.correct_option
+      const isCorrect = userAnswer === getQuizCorrectOption(q)
 
       const item = {
         question: q,

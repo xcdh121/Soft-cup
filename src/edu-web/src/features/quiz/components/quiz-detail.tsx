@@ -1,16 +1,16 @@
-import { quizQuestionsAtom } from '@/data-acess/quiz'
+import { useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { Option } from 'effect'
+import React, { useEffect } from 'react'
+import { QuizContent } from './quiz-content'
 import {
   goToNextQuestionAtom,
   goToPreviousQuestionAtom,
   quizDetailStateAtom,
   resetQuizAtom,
   setSelectedAnswerAtom,
-  submitQuizAtom,
+  submitQuizQuestionAtom,
 } from '@/data-acess/quiz-detail-state'
-import { useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { Option } from 'effect'
-import React, { useEffect } from 'react'
-import { QuizContent } from './quiz-content'
+import { quizQuestionsAtom } from '@/data-acess/quiz'
 
 type Props = React.ComponentProps<'div'> & {
   quizId: string
@@ -29,7 +29,7 @@ export const QuizDetail = ({ quizId, projectId, ...props }: Props) => {
   })
   const goToNext = useAtomSet(goToNextQuestionAtom, { mode: 'promise' })
   const goToPrevious = useAtomSet(goToPreviousQuestionAtom, { mode: 'promise' })
-  const submitQuiz = useAtomSet(submitQuizAtom, { mode: 'promise' })
+  const submitQuestion = useAtomSet(submitQuizQuestionAtom, { mode: 'promise' })
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -51,7 +51,9 @@ export const QuizDetail = ({ quizId, projectId, ...props }: Props) => {
       if (!questions) return
 
       const currentQuestion = questions[state.currentQuestionIndex]
-      if (!currentQuestion) return
+      const isCurrentSubmitted = Boolean(
+        state.submittedByQuestionId[currentQuestion.id],
+      )
 
       // Arrow keys for navigation
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
@@ -66,6 +68,7 @@ export const QuizDetail = ({ quizId, projectId, ...props }: Props) => {
 
       // Number keys for selecting answers (1-4 for A-D)
       if (event.key >= '1' && event.key <= '4') {
+        if (isCurrentSubmitted) return
         event.preventDefault()
         const option = ['A', 'B', 'C', 'D'][parseInt(event.key) - 1] as
           | 'A'
@@ -80,15 +83,14 @@ export const QuizDetail = ({ quizId, projectId, ...props }: Props) => {
         return
       }
 
-      // Enter to submit if on last question and all answered
+      // Enter submits and grades the current question.
       if (event.key === 'Enter') {
-        const allAnswered =
-          Object.keys(state.selectedByQuestionId).length === questions.length
-        const isLastQuestion =
-          state.currentQuestionIndex === questions.length - 1
-        if (allAnswered && isLastQuestion) {
+        if (
+          !isCurrentSubmitted &&
+          state.selectedByQuestionId[currentQuestion.id]
+        ) {
           event.preventDefault()
-          submitQuiz({ quizId, projectId })
+          submitQuestion({ quizId, projectId, questionId: currentQuestion.id })
         }
       }
     }
@@ -102,7 +104,7 @@ export const QuizDetail = ({ quizId, projectId, ...props }: Props) => {
     setSelectedAnswer,
     goToNext,
     goToPrevious,
-    submitQuiz,
+    submitQuestion,
   ])
 
   useEffect(() => {

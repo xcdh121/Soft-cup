@@ -125,7 +125,7 @@ export function GenerationDialog() {
         custom_instructions: instructions,
         generation_params: {
           launch_context: 'project overview ai content',
-          quiz_count: selectedType === 'quiz' ? 30 : undefined,
+          quiz_count: selectedType === 'quiz' ? 10 : undefined,
           flashcard_count: selectedType === 'flashcard' ? 30 : undefined,
           preferred_length: selectedType === 'flashcard' ? length : undefined,
         },

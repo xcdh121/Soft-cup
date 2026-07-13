@@ -54,6 +54,7 @@ const StudyPlanProgressUpdate = Schema.Struct({
   summary: Schema.NullishOr(Schema.String),
   agent_name: Schema.NullishOr(Schema.String),
   event_type: Schema.NullishOr(Schema.String),
+  payload: Schema.NullishOr(Schema.Unknown),
   result: Schema.NullishOr(Schema.Unknown),
   error: Schema.NullishOr(Schema.String),
 })
@@ -64,7 +65,20 @@ type StudyPlanProgress = {
   message: string
   agentName?: string
   eventType?: string
+  partialPlan?: LearningPathContent
   error?: string
+}
+
+const partialLearningPathFromPayload = (
+  payload: unknown,
+): LearningPathContent | undefined => {
+  if (!payload || typeof payload !== 'object') return undefined
+  const value = payload as Record<string, unknown>
+  if (value.partial !== true) return undefined
+  if (!value.learning_path || typeof value.learning_path !== 'object') {
+    return undefined
+  }
+  return value.learning_path as LearningPathContent
 }
 
 const progressMessage = (
@@ -341,6 +355,7 @@ export const generateStudyPlanAtom = runtime.fn(
 
       let learningPath: LearningPathResponse | undefined
       let streamError: string | undefined
+      let streamedLearningPath: LearningPathContent | undefined
       const decoder = new TextDecoder()
       let buffer = ''
       const responseStream = response.stream.pipe(
@@ -370,7 +385,11 @@ export const generateStudyPlanAtom = runtime.fn(
           Effect.sync(() => {
             if (progress.result) {
               learningPath = progress.result as LearningPathResponse
+              streamedLearningPath = learningPath.learning_path
             }
+            streamedLearningPath =
+              partialLearningPathFromPayload(progress.payload) ??
+              streamedLearningPath
             if (progress.error) {
               streamError = progress.error
             }
@@ -380,6 +399,7 @@ export const generateStudyPlanAtom = runtime.fn(
               message: progressMessage(progress),
               agentName: progress.agent_name ?? undefined,
               eventType: progress.event_type ?? undefined,
+              partialPlan: streamedLearningPath,
               error: progress.error ?? undefined,
             })
           }),

@@ -149,7 +149,28 @@ class SupervisorAgent:
                 events.append(started_event)
                 if event_sink:
                     await event_sink(started_event)
-                result = await agent.run(context)
+                if event_sink and isinstance(agent, PlannerAgent):
+                    async def emit_partial_learning_path(
+                        payload: dict,
+                        agent_name=agent.agent_name,
+                        artifact_key=agent.artifact_key,
+                    ) -> None:
+                        await event_sink(
+                            self._event(
+                                AgentEventType.ARTIFACT_UPDATED,
+                                run_id,
+                                RunStatus.RUNNING,
+                                "Learning path content updated.",
+                                agent_name,
+                                {"artifact_key": artifact_key, **payload},
+                            )
+                        )
+
+                    result = await agent.run(
+                        context, partial_sink=emit_partial_learning_path
+                    )
+                else:
+                    result = await agent.run(context)
                 agent_results.append(result)
                 for skill in result.skill_executions:
                     skill_started = self._event(

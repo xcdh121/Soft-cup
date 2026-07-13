@@ -54,6 +54,9 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
   const displayedPlan = selectedPlanId
     ? historyPlans.find((p) => p.id === selectedPlanId)
     : latestPlan
+  const streamingPath = isGenerating
+    ? generationProgress?.partialPlan
+    : undefined
 
   const plannerModeLabel =
     displayedPlan?.planner_mode === 'llm'
@@ -155,6 +158,58 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
               <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
               <span>{generationProgress.message}</span>
             </div>
+          )}
+
+          {streamingPath && (
+            <Card className="border-primary/30 shadow-sm">
+              <CardHeader className="border-b">
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <Sparkles className="h-5 w-5 animate-pulse text-primary" />
+                  {streamingPath.title || '正在生成个性化学习路径…'}
+                </CardTitle>
+                {streamingPath.estimated_minutes ? (
+                  <CardDescription>
+                    预计学习时长：{streamingPath.estimated_minutes} 分钟
+                  </CardDescription>
+                ) : null}
+              </CardHeader>
+              <CardContent className="space-y-4 pt-6">
+                {(streamingPath.path_steps ?? []).length > 0 && (
+                  <div className="space-y-3">
+                    {(streamingPath.path_steps ?? []).map((step, index) => (
+                      <div
+                        key={step.step_no ?? step.target_id ?? index}
+                        className="rounded-md border bg-muted/30 p-3"
+                      >
+                        <div className="font-medium">
+                          {step.step_no ?? index + 1}.{' '}
+                          {step.title || '正在生成步骤内容…'}
+                        </div>
+                        {step.reason && (
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {step.reason}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(streamingPath.based_on_knowledge_points ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {(streamingPath.based_on_knowledge_points ?? []).map(
+                      (point) => (
+                        <span
+                          key={point}
+                          className="rounded-full bg-primary/10 px-3 py-1 text-xs text-primary"
+                        >
+                          {point}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           <div className="grid gap-6">

@@ -463,7 +463,10 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
         knowledge_point_ids: knowledgePointIds,
         resource_types: selectedTypes,
         difficulty_level: difficulty,
-        generation_params: { launch_context: 'resource package page' },
+        generation_params: {
+          launch_context: 'resource package page',
+          quiz_count: selectedTypes.includes('practice_set') ? 10 : undefined,
+        },
       })
 
       setSelectedPackage(resourcePackage)

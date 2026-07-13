@@ -28,6 +28,10 @@ class _StreamingLearningPathService:
                 status=RunStatus.RUNNING,
                 summary="PlannerAgent started.",
                 timestamp=datetime.now(UTC),
+                payload={
+                    "partial": True,
+                    "learning_path": {"title": "正在生成的路径"},
+                },
             )
         )
         return LearningPathResponse(
@@ -56,6 +60,9 @@ class LearningPathStreamTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(events[0]["event"], "progress")
         self.assertEqual(events[0]["agent_name"], "PlannerAgent")
+        self.assertEqual(
+            events[0]["payload"]["learning_path"]["title"], "正在生成的路径"
+        )
         self.assertEqual(events[-1]["event"], "completed")
         self.assertEqual(events[-1]["result"]["path_id"], "path_1")
 

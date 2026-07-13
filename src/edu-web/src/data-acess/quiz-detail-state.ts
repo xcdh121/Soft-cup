@@ -1,18 +1,70 @@
-import type { PracticeRecordCreate } from '@/integrations/api'
-import { makeAtomRuntime } from '@/lib/make-atom-runtime'
 import { Atom, Registry, Result } from '@effect-atom/atom-react'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
-import { Data, Effect, Option } from 'effect'
-import { submitPracticeRecordsBatchAtom } from './practice'
+import { Data, Effect, Layer, Option } from 'effect'
+import {
+  practiceRecordsRemoteAtom,
+  submitPracticeRecordsBatchAtom,
+} from './practice'
 import { quizQuestionsAtom } from './quiz'
+import type { PracticeRecordCreate, QuizQuestionDto } from '@/integrations/api'
+import { ApiClientService } from '@/integrations/api/http'
+import { makeAtomRuntime } from '@/lib/make-atom-runtime'
 
-const runtime = makeAtomRuntime(BrowserKeyValueStore.layerLocalStorage)
+const runtime = makeAtomRuntime(
+  Layer.mergeAll(
+    BrowserKeyValueStore.layerLocalStorage,
+    ApiClientService.Default,
+  ),
+)
+
+export type QuizOption = 'A' | 'B' | 'C' | 'D'
+
+const quizOptions: ReadonlyArray<QuizOption> = ['A', 'B', 'C', 'D']
+
+/**
+ * Generated questions are not fully consistent: correct_option can be `a`,
+ * `A. answer text`, or the answer text itself. Always reduce it to the option
+ * key so grading never depends on wording differences.
+ */
+export const getQuizCorrectOption = (
+  question: Pick<
+    QuizQuestionDto,
+    'correct_option' | 'option_a' | 'option_b' | 'option_c' | 'option_d'
+  >,
+): QuizOption | null => {
+  const rawAnswer = question.correct_option.trim()
+  const explicitOption = rawAnswer.match(
+    /^(?:选项\s*)?([A-D])(?:\s*[.、:：)）\]-]|$)/i,
+  )?.[1]
+  if (explicitOption) return explicitOption.toUpperCase() as QuizOption
+
+  const normalizedAnswer = rawAnswer.replace(/\s+/g, ' ').trim().toLowerCase()
+  const optionText: Record<QuizOption, string> = {
+    A: question.option_a,
+    B: question.option_b,
+    C: question.option_c,
+    D: question.option_d,
+  }
+
+  const optionFromDescription = quizOptions.find(
+    (option) =>
+      optionText[option].replace(/\s+/g, ' ').trim().toLowerCase() ===
+      normalizedAnswer,
+  )
+  if (optionFromDescription) return optionFromDescription
+
+  const looselyPrefixedOption = rawAnswer.match(/^([A-D])\s+.+$/i)?.[1]
+  return looselyPrefixedOption
+    ? (looselyPrefixedOption.toUpperCase() as QuizOption)
+    : null
+}
 
 export type QuizDetailState = {
   readonly currentQuestionIndex: number
   readonly showResults: boolean
   readonly pendingPracticeRecords: Record<string, PracticeRecordCreate>
-  readonly selectedByQuestionId: Record<string, 'A' | 'B' | 'C' | 'D'>
+  readonly selectedByQuestionId: Partial<Record<string, QuizOption>>
+  readonly submittedByQuestionId: Partial<Record<string, boolean>>
 }
 
 type QuizDetailAction = Data.TaggedEnum<{
@@ -20,8 +72,9 @@ type QuizDetailAction = Data.TaggedEnum<{
   SetShowResults: { readonly show: boolean }
   SetSelectedAnswer: {
     readonly questionId: string
-    readonly option: 'A' | 'B' | 'C' | 'D'
+    readonly option: QuizOption
   }
+  MarkQuestionSubmitted: { readonly questionId: string }
   SetPendingPracticeRecords: {
     readonly practiceRecords: Record<string, PracticeRecordCreate>
   }
@@ -36,6 +89,7 @@ const initialState: QuizDetailState = {
   showResults: false,
   pendingPracticeRecords: {},
   selectedByQuestionId: {},
+  submittedByQuestionId: {},
 }
 
 export const quizDetailStateAtom = Atom.family((quizId: string) =>
@@ -44,7 +98,13 @@ export const quizDetailStateAtom = Atom.family((quizId: string) =>
       (get: Atom.Context) => {
         const result = get.self<QuizDetailState>()
         if (Option.isNone(result)) return Option.some(initialState)
-        return result
+        const stored = result.value as Partial<QuizDetailState>
+        return Option.some({
+          ...initialState,
+          ...stored,
+          selectedByQuestionId: stored.selectedByQuestionId ?? {},
+          submittedByQuestionId: stored.submittedByQuestionId ?? {},
+        })
       },
       (ctx, action: QuizDetailAction) => {
         const result = ctx.get(quizDetailStateAtom(quizId))
@@ -58,6 +118,9 @@ export const quizDetailStateAtom = Atom.family((quizId: string) =>
             return { ...result.value, showResults: show }
           },
           SetSelectedAnswer: ({ questionId, option }) => {
+            if (result.value.submittedByQuestionId[questionId]) {
+              return result.value
+            }
             return {
               ...result.value,
               selectedByQuestionId: {
@@ -66,6 +129,13 @@ export const quizDetailStateAtom = Atom.family((quizId: string) =>
               },
             }
           },
+          MarkQuestionSubmitted: ({ questionId }) => ({
+            ...result.value,
+            submittedByQuestionId: {
+              ...result.value.submittedByQuestionId,
+              [questionId]: true,
+            },
+          }),
           SetPendingPracticeRecords: ({ practiceRecords }) => {
             return { ...result.value, pendingPracticeRecords: practiceRecords }
           },
@@ -89,6 +159,8 @@ export const quizDetailStateAtom = Atom.family((quizId: string) =>
 export const quizStatsAtom = Atom.family((input: string) => {
   const [projectId, quizId] = input.split(':')
   return Atom.make(
+    // Effect.fn supplies the atom getter to this synchronous selector.
+    // eslint-disable-next-line require-yield
     Effect.fn(function* (get) {
       const state = get(quizDetailStateAtom(quizId))
       if (Option.isNone(state))
@@ -107,8 +179,7 @@ export const quizStatsAtom = Atom.family((input: string) => {
       const total = quizQuestions.length
       const correct = quizQuestions.reduce((acc, q) => {
         return (
-          acc +
-          (selectedByQuestionId[q.id] === (q.correct_option as any) ? 1 : 0)
+          acc + (selectedByQuestionId[q.id] === getQuizCorrectOption(q) ? 1 : 0)
         )
       }, 0)
       const incorrect = total - correct
@@ -122,6 +193,8 @@ export const quizStatsAtom = Atom.family((input: string) => {
 export const currentQuestionAtom = Atom.family((input: string) => {
   const [projectId, quizId] = input.split(':')
   return Atom.make(
+    // Effect.fn supplies the atom getter to this synchronous selector.
+    // eslint-disable-next-line require-yield
     Effect.fn(function* (get) {
       const state = get(quizDetailStateAtom(quizId))
       if (Option.isNone(state)) return null
@@ -140,6 +213,8 @@ export const currentQuestionAtom = Atom.family((input: string) => {
 export const canSubmitQuizAtom = Atom.family((input: string) => {
   const [projectId, quizId] = input.split(':')
   return Atom.make(
+    // Effect.fn supplies the atom getter to this synchronous selector.
+    // eslint-disable-next-line require-yield
     Effect.fn(function* (get) {
       const state = get(quizDetailStateAtom(quizId))
       if (Option.isNone(state)) return false
@@ -148,9 +223,11 @@ export const canSubmitQuizAtom = Atom.family((input: string) => {
       if (!Result.isSuccess(questionsResult)) return false
 
       const quizQuestions = questionsResult.value
-      const { selectedByQuestionId } = state.value
+      const { submittedByQuestionId } = state.value
 
-      return Object.keys(selectedByQuestionId).length === quizQuestions.length
+      return quizQuestions.every(
+        (question) => submittedByQuestionId[question.id],
+      )
     }),
   )
 })
@@ -179,7 +256,7 @@ export const setSelectedAnswerAtom = runtime.fn(
   Effect.fn(function* (input: {
     quizId: string
     questionId: string
-    option: 'A' | 'B' | 'C' | 'D'
+    option: QuizOption
   }) {
     const registry = yield* Registry.AtomRegistry
     registry.set(
@@ -189,6 +266,56 @@ export const setSelectedAnswerAtom = runtime.fn(
         option: input.option,
       }),
     )
+  }),
+)
+
+export const submitQuizQuestionAtom = runtime.fn(
+  Effect.fn(function* (input: {
+    projectId: string
+    quizId: string
+    questionId: string
+  }) {
+    const registry = yield* Registry.AtomRegistry
+    const { apiClient } = yield* ApiClientService
+    const stateResult = registry.get(quizDetailStateAtom(input.quizId))
+    if (Option.isNone(stateResult)) return false
+
+    const state = stateResult.value
+    if (state.submittedByQuestionId[input.questionId]) return true
+
+    const userAnswer = state.selectedByQuestionId[input.questionId]
+    if (!userAnswer) return false
+
+    const questionsResult = registry.get(
+      quizQuestionsAtom(`${input.projectId}:${input.quizId}`),
+    )
+    if (!Result.isSuccess(questionsResult)) return false
+
+    const question = questionsResult.value.find(
+      (candidate) => candidate.id === input.questionId,
+    )
+    if (!question) return false
+
+    const correctOption = getQuizCorrectOption(question)
+    const correctAnswer = correctOption ?? question.correct_option.trim()
+    yield* apiClient.createPracticeRecordApiV1ProjectsProjectIdPracticeRecordsPost(
+      input.projectId,
+      {
+        item_type: 'quiz',
+        item_id: question.id,
+        topic: extractTopic(question.question_text),
+        user_answer: userAnswer,
+        correct_answer: correctAnswer,
+        was_correct: correctOption === userAnswer,
+      },
+    )
+
+    registry.set(
+      quizDetailStateAtom(input.quizId),
+      QuizDetailAction.MarkQuestionSubmitted({ questionId: question.id }),
+    )
+    registry.refresh(practiceRecordsRemoteAtom(input.projectId))
+    return true
   }),
 )
 
@@ -250,7 +377,7 @@ export const submitQuizAtom = runtime.fn(
 
     for (const q of quizQuestions) {
       const userAnswer = selectedByQuestionId[q.id]
-      const correctOption = q.correct_option
+      const correctOption = getQuizCorrectOption(q)
 
       // Track all practice records, not just mistakes
       if (userAnswer) {
@@ -260,7 +387,7 @@ export const submitQuizAtom = runtime.fn(
           item_id: q.id,
           topic: extractTopic(q.question_text),
           user_answer: userAnswer,
-          correct_answer: correctOption,
+          correct_answer: correctOption ?? q.correct_option.trim(),
           was_correct: wasCorrect,
         }
       }
@@ -286,7 +413,7 @@ export const submitPendingPracticeRecordsAtom = runtime.fn(
 
     const currentState = currentStateResult.value
     const pendingPracticeRecords = Object.values(
-      currentState.pendingPracticeRecords ?? {},
+      currentState.pendingPracticeRecords,
     )
     if (pendingPracticeRecords.length === 0) return
 
@@ -321,6 +448,11 @@ export const goToNextQuestionAtom = runtime.fn(
     if (!Result.isSuccess(questionsResult)) return
 
     const quizQuestions = questionsResult.value
+    if (currentQuestionIndex >= quizQuestions.length) return
+    const currentQuestion = quizQuestions[currentQuestionIndex]
+    if (!currentState.submittedByQuestionId[currentQuestion.id]) {
+      return
+    }
     const isLastQuestion = currentQuestionIndex === quizQuestions.length - 1
 
     if (isLastQuestion) return

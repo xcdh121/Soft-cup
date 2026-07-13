@@ -1,3 +1,6 @@
+import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { Option } from 'effect'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { quizQuestionsAtom } from '@/data-acess/quiz'
 import {
@@ -5,11 +8,9 @@ import {
   goToNextQuestionAtom,
   goToPreviousQuestionAtom,
   quizDetailStateAtom,
-  submitQuizAtom,
+  setShowResultsAtom,
+  submitQuizQuestionAtom,
 } from '@/data-acess/quiz-detail-state'
-import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { Option } from 'effect'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 type QuizControlsProps = {
   quizId: string
@@ -27,7 +28,8 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
 
   const goToNext = useAtomSet(goToNextQuestionAtom, { mode: 'promise' })
   const goToPrevious = useAtomSet(goToPreviousQuestionAtom, { mode: 'promise' })
-  const submitQuiz = useAtomSet(submitQuizAtom, { mode: 'promise' })
+  const submitQuestion = useAtomSet(submitQuizQuestionAtom, { mode: 'promise' })
+  const setShowResults = useAtomSet(setShowResultsAtom, { mode: 'promise' })
 
   const state = Option.isSome(stateResult) ? stateResult.value : null
   if (!state) return null
@@ -51,8 +53,17 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
     await goToPrevious({ quizId })
   }
 
-  const handleSubmit = async () => {
-    await submitQuiz({ quizId, projectId })
+  const currentQuestion = questions[currentIndex]
+  const isCurrentSubmitted = Boolean(
+    state.submittedByQuestionId[currentQuestion.id],
+  )
+
+  const handleSubmitQuestion = async () => {
+    await submitQuestion({ quizId, projectId, questionId: currentQuestion.id })
+  }
+
+  const handleShowResults = async () => {
+    await setShowResults({ quizId, show: true })
   }
 
   if (showResults) return null
@@ -70,19 +81,28 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
           上一题
         </Button>
 
-        {currentIndex === totalQuestions - 1 ? (
+        {!isCurrentSubmitted ? (
           <Button
-            onClick={handleSubmit}
+            onClick={handleSubmitQuestion}
+            disabled={!state.selectedByQuestionId[currentQuestion.id]}
+            size="lg"
+            className="px-8"
+          >
+            提交本题
+          </Button>
+        ) : currentIndex === totalQuestions - 1 ? (
+          <Button
+            onClick={handleShowResults}
             disabled={!canSubmit}
             size="lg"
             className="px-8"
           >
-            提交测验
+            查看结果
           </Button>
         ) : (
           <Button
             onClick={handleNext}
-            disabled={!state.selectedByQuestionId[questions[currentIndex]?.id]}
+            disabled={!isCurrentSubmitted}
             variant="default"
             className="flex items-center gap-2"
           >

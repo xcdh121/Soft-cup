@@ -1,5 +1,7 @@
 import json
 import logging
+from collections.abc import Awaitable, Callable
+from time import monotonic
 
 from edu_core.model_providers import LlmProviderConfig, create_chat_model
 from edu_core.schemas.agent_orchestration import (
@@ -13,7 +15,7 @@ from edu_core.schemas.learning_path_generation import LearningPathContent
 from edu_core.schemas.internal_tools import ToolExecutionContext
 
 from edu_ai.agents.orchestration.base import BaseOrchestrationAgent
-from edu_ai.agents.utils import generate
+from edu_ai.agents.utils import generate_stream
 from edu_ai.internal_tools import ToolRunner, build_context_tool_registry
 from edu_ai.skills import SkillRunner, build_skill_registry
 
@@ -26,12 +28,16 @@ class PlannerAgent(BaseOrchestrationAgent):
 
     def __init__(self, llm_config: LlmProviderConfig | None = None) -> None:
         self.llm = (
-            create_chat_model(llm_config, streaming=False, temperature=0.3)
+            create_chat_model(llm_config, streaming=True, temperature=0.3)
             if llm_config and llm_config.model
             else None
         )
 
-    async def run(self, context: AgentRunContext) -> AgentResult:
+    async def run(
+        self,
+        context: AgentRunContext,
+        partial_sink: Callable[[dict], Awaitable[None]] | None = None,
+    ) -> AgentResult:
         tool_runner = ToolRunner(
             build_context_tool_registry(context.context),
             permission_checker=lambda tool_context: (
@@ -64,7 +70,9 @@ class PlannerAgent(BaseOrchestrationAgent):
 
         if self.llm:
             try:
-                learning_path = await self._build_llm_learning_path(context)
+                learning_path = await self._build_llm_learning_path(
+                    context, partial_sink=partial_sink
+                )
                 generation_mode = "llm"
             except Exception:
                 logger.exception(
@@ -77,6 +85,14 @@ class PlannerAgent(BaseOrchestrationAgent):
             learning_path, context.context.knowledge_points
         )
         learning_path = self._apply_quality_gates(learning_path)
+        if partial_sink:
+            await partial_sink(
+                {
+                    "partial": True,
+                    "is_final": True,
+                    "learning_path": learning_path,
+                }
+            )
         skill_execution.confidence = 0.8 if generation_mode == "llm" else 0.6
         skill_execution.fallback_used = (
             skill_execution.status == "failed"
@@ -212,7 +228,11 @@ class PlannerAgent(BaseOrchestrationAgent):
             ],
         }
 
-    async def _build_llm_learning_path(self, context: AgentRunContext) -> dict:
+    async def _build_llm_learning_path(
+        self,
+        context: AgentRunContext,
+        partial_sink: Callable[[dict], Awaitable[None]] | None = None,
+    ) -> dict:
         diagnosis = context.artifacts.get("diagnosis", {}).get("diagnosis", {})
         recommendations = context.artifacts.get("recommendations", {}).get(
             "recommendations", []
@@ -240,7 +260,10 @@ class PlannerAgent(BaseOrchestrationAgent):
             indent=2,
         )
 
-        plan_data = await generate(
+        latest_partial: dict = {}
+        last_emitted: dict | None = None
+        last_emitted_at = 0.0
+        async for partial in generate_stream(
             llm=self.llm,
             search_service=None,
             output_model=LearningPathContent,
@@ -253,5 +276,34 @@ class PlannerAgent(BaseOrchestrationAgent):
                 "then include a verification step. Reuse recommendation ids and titles when possible."
             ),
             document_content=document_content,
-        )
-        return plan_data.model_dump()
+        ):
+            latest_partial = partial
+            now = monotonic()
+            if partial_sink and (
+                last_emitted is None or now - last_emitted_at >= 0.08
+            ):
+                snapshot = self._resolve_knowledge_point_labels(
+                    partial, context.context.knowledge_points
+                )
+                await partial_sink(
+                    {
+                        "partial": True,
+                        "is_final": False,
+                        "learning_path": snapshot,
+                    }
+                )
+                last_emitted = snapshot
+                last_emitted_at = now
+
+        final_path = LearningPathContent.model_validate(latest_partial).model_dump()
+        if partial_sink and final_path != last_emitted:
+            await partial_sink(
+                {
+                    "partial": True,
+                    "is_final": False,
+                    "learning_path": self._resolve_knowledge_point_labels(
+                        final_path, context.context.knowledge_points
+                    ),
+                }
+            )
+        return final_path
