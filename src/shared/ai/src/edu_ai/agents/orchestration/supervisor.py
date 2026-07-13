@@ -55,6 +55,7 @@ class SupervisorAgent:
             goal=request.goal,
             trigger=request.trigger,
             context=request.context,
+            artifacts=dict(request.artifacts),
             meta={
                 "requested_at": self._now().isoformat(),
                 **request.meta,
@@ -73,7 +74,7 @@ class SupervisorAgent:
         if event_sink:
             await event_sink(events[-1])
         preflight = self._preflight(context)
-        route_plan = self._decide_route(preflight)
+        route_plan = self._decide_route(preflight, context)
         preflight.route_plan = route_plan
         context.meta["preflight"] = preflight.model_dump(mode="json")
         events.append(
@@ -372,7 +373,11 @@ class SupervisorAgent:
             },
         )
 
-    def _decide_route(self, preflight: SupervisorPreflight) -> list[AgentName]:
+    def _decide_route(
+        self,
+        preflight: SupervisorPreflight,
+        context: AgentRunContext,
+    ) -> list[AgentName]:
         route: list[AgentName]
         if preflight.goal == "diagnosis":
             route = [
@@ -382,12 +387,16 @@ class SupervisorAgent:
                 AgentName.DIAGNOSIS,
             ]
         elif preflight.goal == "recommendations":
-            route = [
-                AgentName.PROFILE,
-                AgentName.KT,
-                AgentName.DIAGNOSIS,
-                AgentName.RESOURCE,
-            ]
+            route = (
+                [AgentName.RESOURCE]
+                if context.artifacts.get("diagnosis")
+                else [
+                    AgentName.PROFILE,
+                    AgentName.KT,
+                    AgentName.DIAGNOSIS,
+                    AgentName.RESOURCE,
+                ]
+            )
         else:
             route = [
                 AgentName.PROFILE,

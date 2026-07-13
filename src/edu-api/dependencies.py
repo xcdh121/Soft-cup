@@ -150,6 +150,7 @@ def get_agent_orchestration_service(
 
 def get_resource_package_service(
     settings: Settings = Depends(get_settings_dep),
+    task_runner: TaskRunnerService = Depends(get_task_runner),
     queue_service: QueueService | ArqQueueService = Depends(get_queue_service),
     agent_orchestration_service: AgentOrchestrationService = Depends(
         get_agent_orchestration_service
@@ -199,6 +200,7 @@ def get_resource_package_service(
             base_url=settings.llm_base_url,
             temperature=0.3,
         ),
+        note_streamer=task_runner.stream_note,
     )
 
 

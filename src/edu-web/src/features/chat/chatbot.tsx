@@ -190,10 +190,10 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
         .join('\n\n')
         .trim()
 
-      if (text) return { messageId: message.id, text }
+      if (text) return text
     }
 
-    return { messageId: null, text: '' }
+    return ''
   }, [messages])
 
   const blobToDataUrl = useCallback(
@@ -533,8 +533,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
       </div>
 
       <DigitalAvatarPanel
-        assistantMessageId={latestAssistantResponse.messageId}
-        assistantText={latestAssistantResponse.text}
+        assistantText={latestAssistantResponse}
         isStreaming={isStreaming}
       />
     </div>

@@ -217,7 +217,9 @@ const ResourcePreview = ({
   const resourcesResult = useAtomValue(
     generatedResourcesAtom(`${projectId}:${resourcePackage.id}`),
   )
-  const resources = Result.isSuccess(resourcesResult) ? resourcesResult.value : []
+  const resources = Result.isSuccess(resourcesResult)
+    ? resourcesResult.value
+    : []
 
   if (resourcesResult.waiting) {
     return (
@@ -293,32 +295,51 @@ const ResourcePreviewPanel = ({
   streamingResources: Array<GeneratedResource>
   streamingStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>>
 }) => {
-  if (!resourcePackage) {
-    if (Object.keys(streamingStatuses).length > 0) {
-      return (
-        <div className="space-y-3">
-          {Object.entries(streamingStatuses)
-            .filter(([type]) => !streamingResources.some((item) => item.resource_type === type))
-            .map(([type, status]) => (
-              <div key={type} className="flex items-center justify-between rounded-xl border p-4">
-                <div className="font-medium">{resourceTypeLabelMap.get(type as ResourceType) ?? type}</div>
-                <Badge variant={statusToneMap[status]}>{status}</Badge>
+  const hasStreamingResources = Object.values(streamingStatuses).some(
+    (status) => status === 'pending' || status === 'generating',
+  )
+  if (
+    hasStreamingResources ||
+    (!resourcePackage && Object.keys(streamingStatuses).length > 0)
+  ) {
+    return (
+      <div className="space-y-3">
+        {Object.entries(streamingStatuses)
+          .filter(
+            ([type]) =>
+              !streamingResources.some((item) => item.resource_type === type),
+          )
+          .map(([type, status]) => (
+            <div
+              key={type}
+              className="flex items-center justify-between rounded-xl border p-4"
+            >
+              <div className="font-medium">
+                {resourceTypeLabelMap.get(type as ResourceType) ?? type}
               </div>
-            ))}
-          {streamingResources.map((resource) => (
-            <div key={resource.id} className="rounded-xl border p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="font-medium">{resource.title}</div>
-                <Badge variant={statusToneMap[resource.status]}>{resource.status}</Badge>
-              </div>
-              <div className="mt-3 rounded-lg bg-muted/40 p-3">
-                <ResourceResultPreview projectId={projectId} resource={resource} />
-              </div>
+              <Badge variant={statusToneMap[status]}>{status}</Badge>
             </div>
           ))}
-        </div>
-      )
-    }
+        {streamingResources.map((resource) => (
+          <div key={resource.id} className="rounded-xl border p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-medium">{resource.title}</div>
+              <Badge variant={statusToneMap[resource.status]}>
+                {resource.status}
+              </Badge>
+            </div>
+            <div className="mt-3 rounded-lg bg-muted/40 p-3">
+              <ResourceResultPreview
+                projectId={projectId}
+                resource={resource}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (!resourcePackage) {
     return (
       <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
         Select a package to preview its generated resources.
@@ -351,8 +372,7 @@ const ResourcePackageSheetBody = ({
   const [topic, setTopic] = useState('')
   const [goal, setGoal] = useState('')
   const [instructions, setInstructions] = useState('')
-  const [difficulty, setDifficulty] =
-    useState<DifficultyLevel>('intermediate')
+  const [difficulty, setDifficulty] = useState<DifficultyLevel>('intermediate')
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(
     new Set(),
   )
@@ -365,9 +385,8 @@ const ResourcePackageSheetBody = ({
     'pptx',
     'video_recommendations',
   ])
-  const [selectedPackage, setSelectedPackage] = useState<ResourcePackage | null>(
-    null,
-  )
+  const [selectedPackage, setSelectedPackage] =
+    useState<ResourcePackage | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const indexedDocuments =
@@ -377,7 +396,8 @@ const ResourcePackageSheetBody = ({
     !topic.trim() || selectedTypes.length === 0 || isSubmitting
 
   const helperText = useMemo(() => {
-    if (!contextLabel) return 'Create a package of resources for the current project.'
+    if (!contextLabel)
+      return 'Create a package of resources for the current project.'
     return `Opened from ${contextLabel}. You can turn the current learning moment into a targeted resource package.`
   }, [contextLabel])
 
@@ -403,7 +423,7 @@ const ResourcePackageSheetBody = ({
 
     setIsSubmitting(true)
     try {
-      const generation = generateResourcePackage({
+      const generationInput = {
         projectId,
         title: title.trim() || undefined,
         target_topic: topic.trim(),
@@ -413,13 +433,13 @@ const ResourcePackageSheetBody = ({
         resource_types: selectedTypes,
         difficulty_level: difficulty,
         generation_params: contextLabel ? { launch_context: contextLabel } : {},
-      })
+      }
       onClose()
       await navigate({
         to: '/dashboard/p/$projectId/resource-packages',
         params: { projectId },
       })
-      void generation.catch(() => {
+      void generateResourcePackage(generationInput).catch(() => {
         // The shared generation atom exposes the error on the destination page.
       })
     } finally {
@@ -477,7 +497,9 @@ const ResourcePackageSheetBody = ({
               <Label htmlFor="resource-package-difficulty">Difficulty</Label>
               <Select
                 value={difficulty}
-                onValueChange={(value) => setDifficulty(value as DifficultyLevel)}
+                onValueChange={(value) =>
+                  setDifficulty(value as DifficultyLevel)
+                }
               >
                 <SelectTrigger id="resource-package-difficulty">
                   <SelectValue />

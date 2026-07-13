@@ -21,6 +21,7 @@ class StubLearningPathService(AgentOrchestrationService):
         super().__init__(store=store)
         self.result = result
         self.requested_goals = []
+        self.event_sink = None
 
     async def _run_supervisor(
         self,
@@ -32,6 +33,7 @@ class StubLearningPathService(AgentOrchestrationService):
         event_sink=None,
     ):
         self.requested_goals.append(goal)
+        self.event_sink = event_sink
         return self.result
 
 
@@ -75,13 +77,17 @@ class LearningPathServiceTest(unittest.IsolatedAsyncioTestCase):
         )
         store = InMemoryOrchestrationStore()
         service = StubLearningPathService(result, store)
+        streamed_events = []
+        event_sink = streamed_events.append
 
         response = await service.generate_learning_path(
             user_id="student_1",
             project_id="project_1",
+            event_sink=event_sink,
         )
 
         self.assertEqual(service.requested_goals, ["learning_path"])
+        self.assertIs(service.event_sink, event_sink)
         self.assertEqual(response.learning_path, learning_path)
         self.assertEqual(response.run_id, context.run_id)
         self.assertIsNotNone(response.based_on_diagnosis_id)

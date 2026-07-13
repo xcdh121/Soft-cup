@@ -1,10 +1,11 @@
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
+import { appendSseChunk } from '@/lib/sse'
 import { withToast } from '@/lib/with-toast'
 import { Atom, Registry } from '@effect-atom/atom-react'
 import { HttpBody } from '@effect/platform'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, Layer, Schema, Stream } from 'effect'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -46,6 +47,54 @@ type AgentEvent = {
   payload?: Record<string, unknown>
 }
 
+const StudyPlanProgressUpdate = Schema.Struct({
+  event: Schema.String,
+  status: Schema.String,
+  message: Schema.NullishOr(Schema.String),
+  summary: Schema.NullishOr(Schema.String),
+  agent_name: Schema.NullishOr(Schema.String),
+  event_type: Schema.NullishOr(Schema.String),
+  result: Schema.NullishOr(Schema.Unknown),
+  error: Schema.NullishOr(Schema.String),
+})
+
+type StudyPlanProgress = {
+  event: string
+  status: string
+  message: string
+  agentName?: string
+  eventType?: string
+  error?: string
+}
+
+const progressMessage = (
+  progress: typeof StudyPlanProgressUpdate.Type,
+): string => {
+  if (progress.event === 'completed') return '学习计划生成完成。'
+  if (progress.event === 'failed') return progress.error || '学习计划生成失败。'
+
+  if (progress.status === 'running') {
+    const agentMessages: Record<string, string> = {
+      ProfileAgent: '正在分析学习画像…',
+      KTAgent: '正在评估知识点掌握情况…',
+      CollectiveInsightAgent: '正在汇总学习表现…',
+      DiagnosisAgent: '正在诊断薄弱知识点…',
+      ResourceAgent: '正在匹配学习资源…',
+      PlannerAgent: '正在生成个性化学习路径…',
+      SupervisorAgent: '正在准备学习计划…',
+    }
+    if (progress.agent_name && agentMessages[progress.agent_name]) {
+      return agentMessages[progress.agent_name]
+    }
+  }
+
+  if (progress.event_type === 'route_decided') return '分析流程已确定。'
+  if (progress.event_type === 'artifact_updated') return '已完成一个分析阶段。'
+  return progress.message || progress.summary || '正在生成学习计划…'
+}
+
+export const studyPlanProgressAtom = Atom.make<StudyPlanProgress | null>(null)
+
 type AdaptedStudyPlan = {
   id: string
   user_id: string
@@ -84,6 +133,9 @@ const normalizeLabel = (value: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
 const buildAnalysis = (path: LearningPathContent) => {
   const reasons = (path.adjust_reasons ?? []).filter(Boolean)
   const parts = [path.title, ...reasons].filter(
@@ -93,10 +145,10 @@ const buildAnalysis = (path: LearningPathContent) => {
 }
 
 const buildFocusAreas = (path: LearningPathContent) => {
-  return (path.based_on_knowledge_points ?? [])
-    .filter(Boolean)
+  const labels = (path.based_on_knowledge_points ?? [])
+    .filter((value) => value && !UUID_PATTERN.test(value))
     .map(normalizeLabel)
-    .slice(0, 5)
+  return [...new Set(labels)].slice(0, 5)
 }
 
 const inferActionType = (
@@ -269,6 +321,12 @@ export const generateStudyPlanAtom = runtime.fn(
       const registry = yield* Registry.AtomRegistry
       const { httpClient } = yield* ApiClientService
 
+      registry.set(studyPlanProgressAtom, {
+        event: 'started',
+        status: 'running',
+        message: '正在准备学习计划…',
+      })
+
       const body = HttpBody.unsafeJson({
         trigger: {
           type: 'manual',
@@ -277,11 +335,65 @@ export const generateStudyPlanAtom = runtime.fn(
       })
 
       const response = yield* httpClient.post(
-        `/api/v1/projects/${projectId}/learning-paths/generate`,
+        `/api/v1/projects/${projectId}/learning-paths/generate/stream`,
         { body },
       )
 
-      const learningPath = (yield* response.json) as LearningPathResponse
+      let learningPath: LearningPathResponse | undefined
+      let streamError: string | undefined
+      const decoder = new TextDecoder()
+      let buffer = ''
+      const responseStream = response.stream.pipe(
+        Stream.map((value) => {
+          const parsed = appendSseChunk(
+            buffer,
+            decoder.decode(value, { stream: true }),
+          )
+          buffer = parsed.buffer
+          return parsed.blocks
+        }),
+        Stream.flatMap((blocks) => Stream.fromIterable(blocks)),
+        Stream.map((block) =>
+          block
+            .split('\n')
+            .map((line) => (line.startsWith('data: ') ? line.slice(6) : ''))
+            .filter(Boolean)
+            .join('\n'),
+        ),
+        Stream.filter(Boolean),
+        Stream.flatMap((chunk) =>
+          Schema.decodeUnknown(Schema.parseJson(StudyPlanProgressUpdate))(
+            chunk,
+          ),
+        ),
+        Stream.tap((progress) =>
+          Effect.sync(() => {
+            if (progress.result) {
+              learningPath = progress.result as LearningPathResponse
+            }
+            if (progress.error) {
+              streamError = progress.error
+            }
+            registry.set(studyPlanProgressAtom, {
+              event: progress.event,
+              status: progress.status,
+              message: progressMessage(progress),
+              agentName: progress.agent_name ?? undefined,
+              eventType: progress.event_type ?? undefined,
+              error: progress.error ?? undefined,
+            })
+          }),
+        ),
+      )
+
+      yield* Stream.runCollect(responseStream)
+
+      if (streamError) {
+        throw new Error(streamError)
+      }
+      if (!learningPath) {
+        throw new Error('学习计划生成结束，但没有返回计划内容。')
+      }
 
       registry.refresh(latestStudyPlanRemoteAtom(projectId))
       registry.refresh(studyPlansHistoryRemoteAtom(projectId))

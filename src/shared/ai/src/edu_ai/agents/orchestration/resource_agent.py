@@ -173,8 +173,11 @@ class ResourceAgent(BaseOrchestrationAgent):
                 description="ResourceAgent queued note generation",
                 content="",
             )
-            stream_on_client = context.trigger.type == "resource_package"
-            if not stream_on_client:
+            stream_in_package = (
+                context.trigger.type == "resource_package"
+                and bool(context.meta.get("stream_note_in_package"))
+            )
+            if not stream_in_package:
                 self.note_service.queue_generation(
                     note_id=note.id,
                     project_id=context.project_id,
@@ -186,7 +189,8 @@ class ResourceAgent(BaseOrchestrationAgent):
                 **self._queued_resource("note", note, note.id, note.title),
                 "topic": topic,
                 "custom_instructions": custom_instructions,
-                "stream_on_client": stream_on_client,
+                "stream_on_client": False,
+                "stream_in_package": stream_in_package,
             }
 
         if resource_type == "quiz" and self.quiz_service:
@@ -275,6 +279,7 @@ class ResourceAgent(BaseOrchestrationAgent):
                     "topic": resource.get("topic"),
                     "custom_instructions": resource.get("custom_instructions"),
                     "stream_on_client": bool(resource.get("stream_on_client")),
+                    "stream_in_package": bool(resource.get("stream_in_package")),
                 }
             )
         return recommendations

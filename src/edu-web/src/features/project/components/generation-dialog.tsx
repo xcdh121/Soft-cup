@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select'
 import { projectCourseOutlineAtom } from '@/data-acess/course-library'
 import { generateResourcePackageAtom } from '@/data-acess/resource-package'
+import type { GenerateResourcePackageInput } from '@/data-acess/resource-package'
 
 type GenerationDialogStore = {
   isOpen: boolean
@@ -113,7 +114,7 @@ export function GenerationDialog() {
             .map((point) => point.id)
         : []
 
-      const generation = generateResourcePackage({
+      const generationInput: GenerateResourcePackageInput = {
         projectId,
         target_topic: instructions,
         title: buildGeneratedTitle(actionLabel, instructions),
@@ -128,16 +129,15 @@ export function GenerationDialog() {
           flashcard_count: selectedType === 'flashcard' ? 30 : undefined,
           preferred_length: selectedType === 'flashcard' ? length : undefined,
         },
-      })
-
-      void generation.catch((error) => {
-        console.error('Generation failed:', error)
-      })
+      }
       setIsGenerating(false)
       close()
       await navigate({
         to: '/dashboard/p/$projectId/resource-packages',
         params: { projectId },
+      })
+      void generateResourcePackage(generationInput).catch((error) => {
+        console.error('Generation failed:', error)
       })
 
       if (selectedChapterIds.size > 0) {

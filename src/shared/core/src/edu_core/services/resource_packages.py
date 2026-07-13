@@ -1,5 +1,5 @@
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import contextmanager
 from datetime import UTC, datetime, timezone
 from pathlib import Path
@@ -53,6 +53,9 @@ class ResourcePackageService:
         xfyun_ppt_client: XfyunPptClient | None = None,
         baidu_search_client: BaiduSearchClient | None = None,
         llm_config: LlmProviderConfig | None = None,
+        note_streamer: Callable[
+            [dict[str, Any]], AsyncIterator[dict[str, Any]]
+        ] | None = None,
     ) -> None:
         self.storage = LocalStorageService(storage_root)
         self.agent_orchestration_service = agent_orchestration_service
@@ -63,6 +66,7 @@ class ResourcePackageService:
         self.xfyun_ppt_client = xfyun_ppt_client
         self.baidu_search_client = baidu_search_client
         self.llm_config = llm_config
+        self.note_streamer = note_streamer
 
     def list_resource_packages(
         self,
@@ -423,15 +427,24 @@ class ResourcePackageService:
             completed = 0
             failed = 0
             for order, resource_type in enumerate(resource_types):
+                resource_id = str(uuid4())
                 self._append_agent_event(
                     agent_trace,
                     package_id,
                     "resource_started",
-                    {"resource_type": resource_type, "order": order},
+                    {
+                        "resource_id": resource_id,
+                        "resource_type": resource_type,
+                        "order": order,
+                    },
                 )
                 await self._publish_stream_event(
                     event_sink, package_id, "resource_started",
-                    {"resource_type": resource_type, "order": order},
+                    {
+                        "resource_id": resource_id,
+                        "resource_type": resource_type,
+                        "order": order,
+                    },
                 )
 
                 try:
@@ -449,6 +462,9 @@ class ResourcePackageService:
                         documents=documents,
                         generation_params=generation_params,
                         recommendations=recommendation_pool,
+                        package_id=package_id,
+                        resource_id=resource_id,
+                        event_sink=event_sink,
                     )
                     error_message = None
                     completed += 1
@@ -463,7 +479,7 @@ class ResourcePackageService:
                     failed += 1
 
                 resource = GeneratedResource(
-                    id=str(uuid4()),
+                    id=resource_id,
                     resource_package_id=package_id,
                     project_id=project_id,
                     user_id=user_id,
@@ -789,6 +805,7 @@ class ResourcePackageService:
             "quiz_count": generation_params.get("quiz_count"),
             "flashcard_count": generation_params.get("flashcard_count"),
             "launch_context": generation_params.get("launch_context"),
+            "stream_note_in_package": self.note_streamer is not None,
         }
         if diagnosis is None:
             diagnosis = await self.agent_orchestration_service.generate_diagnosis(
@@ -901,19 +918,35 @@ class ResourcePackageService:
         documents: list[Document],
         generation_params: dict[str, Any],
         recommendations: list[dict[str, Any]],
+        package_id: str,
+        resource_id: str,
+        event_sink: Callable[
+            [ResourcePackageStreamEventDto], Awaitable[None]
+        ] | None,
     ) -> tuple[dict[str, Any], str]:
         recommendation = self._take_matching_recommendation(recommendations, resource_type)
         if recommendation is not None:
-            return (
-                self._build_generated_resource_reference(
-                    project_id=project_id,
-                    resource_type=resource_type,
-                    recommendation=recommendation,
-                    difficulty_level=difficulty_level,
-                    custom_instructions=custom_instructions,
-                ),
-                "generating",
+            generated = self._build_generated_resource_reference(
+                project_id=project_id,
+                resource_type=resource_type,
+                recommendation=recommendation,
+                difficulty_level=difficulty_level,
+                custom_instructions=custom_instructions,
             )
+            if (
+                resource_type == "lecture_note"
+                and recommendation.get("stream_in_package")
+            ):
+                generated = await self._stream_recommended_note(
+                    generated=generated,
+                    recommendation=recommendation,
+                    project_id=project_id,
+                    package_id=package_id,
+                    resource_id=resource_id,
+                    event_sink=event_sink,
+                )
+                return generated, "completed"
+            return generated, "generating"
 
         generated = await self._generate_resource_content_async(
             resource_type=resource_type,
@@ -928,6 +961,78 @@ class ResourcePackageService:
             generation_params=generation_params,
         )
         return generated, "completed"
+
+    async def _stream_recommended_note(
+        self,
+        *,
+        generated: dict[str, Any],
+        recommendation: dict[str, Any],
+        project_id: str,
+        package_id: str,
+        resource_id: str,
+        event_sink: Callable[
+            [ResourcePackageStreamEventDto], Awaitable[None]
+        ] | None,
+    ) -> dict[str, Any]:
+        if self.note_streamer is None:
+            raise RuntimeError("Package note streamer is not configured")
+
+        note_id = str(recommendation.get("target_id") or "")
+        if not note_id:
+            raise ValueError("A streamed note recommendation requires a target ID")
+
+        content = ""
+        title = str(generated.get("title") or "Generated note")
+        summary = generated.get("summary")
+        async for event in self.note_streamer(
+            {
+                "project_id": project_id,
+                "note_id": note_id,
+                "topic": recommendation.get("topic"),
+                "custom_instructions": recommendation.get("custom_instructions"),
+            }
+        ):
+            event_type = str(event.get("event") or "")
+            event_content = event.get("content")
+            if isinstance(event_content, str):
+                content = event_content
+            if event_type == "note_completed":
+                title = str(event.get("title") or title)
+                summary = event.get("description") or summary
+
+            if event_type in {"note_delta", "note_completed"}:
+                await self._publish_stream_event(
+                    event_sink,
+                    package_id,
+                    "resource_delta",
+                    {
+                        "resource_id": resource_id,
+                        "resource_type": "lecture_note",
+                        "target_id": note_id,
+                        "title": title,
+                        "delta": event.get("delta"),
+                        "content": content,
+                        "completed": event_type == "note_completed",
+                    },
+                )
+
+        if not content and self.note_service is not None:
+            note = self.note_service.get_note(note_id=note_id, project_id=project_id)
+            content = note.content
+            title = note.title
+            summary = note.description or summary
+        if not content:
+            raise ValueError("The streamed note completed without content")
+
+        content_json = dict(generated.get("content_json") or {})
+        content_json["stream_on_client"] = False
+        return {
+            **generated,
+            "title": title,
+            "summary": summary,
+            "content_text": content,
+            "content_json": content_json,
+        }
 
     def _take_matching_recommendation(
         self,

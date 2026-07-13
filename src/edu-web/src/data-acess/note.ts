@@ -6,6 +6,7 @@ import { Atom, Registry } from '@effect-atom/atom-react'
 import { HttpBody } from '@effect/platform'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Effect, Layer, Schema, Stream } from 'effect'
+import { appendSseChunk } from '@/lib/sse'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -85,28 +86,28 @@ export const createNoteStreamAtom = Atom.fn(
       )
 
       const decoder = new TextDecoder()
+      let buffer = ''
       const respStream = resp.stream.pipe(
-        Stream.map((value) => decoder.decode(value, { stream: true })),
-        Stream.map((chunk) => {
-          const chunkLines = chunk.split('\n')
-          const res = chunkLines
-            .map((line) =>
-              line.startsWith('data: ') ? line.replace('data: ', '') : '',
-            )
-            .filter((line) => line !== '')
-            .join('\n')
-          return res
-        }),
-        Stream.filter((chunk) => chunk !== ''),
-        Stream.flatMap((chunk) => {
-          const lines = chunk.trim().split('\n')
-          return Stream.fromIterable(lines).pipe(
-            Stream.filter((line) => line.trim() !== ''),
-            Stream.flatMap((line) =>
-              Schema.decodeUnknown(Schema.parseJson(NoteProgressUpdate))(line),
-            ),
+        Stream.map((value) => {
+          const parsed = appendSseChunk(
+            buffer,
+            decoder.decode(value, { stream: true }),
           )
+          buffer = parsed.buffer
+          return parsed.blocks
         }),
+        Stream.flatMap((blocks) => Stream.fromIterable(blocks)),
+        Stream.map((block) =>
+          block
+            .split('\n')
+            .map((line) => (line.startsWith('data: ') ? line.slice(6) : ''))
+            .filter((line) => line !== '')
+            .join('\n'),
+        ),
+        Stream.filter((chunk) => chunk !== ''),
+        Stream.flatMap((chunk) =>
+          Schema.decodeUnknown(Schema.parseJson(NoteProgressUpdate))(chunk),
+        ),
         Stream.tap((progress) =>
           Effect.gen(function* () {
             const registry = yield* Registry.AtomRegistry

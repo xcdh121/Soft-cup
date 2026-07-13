@@ -98,7 +98,7 @@ class FallbackRulesTest(unittest.IsolatedAsyncioTestCase):
             result.result["recommendations"][0]["target_id"], "note_1"
         )
 
-    async def test_resource_package_note_is_left_for_client_streaming(self):
+    async def test_resource_package_note_is_left_for_package_streaming(self):
         note_service = MagicMock()
         note_service.create_note.return_value = SimpleNamespace(
             id="note_stream", title="Streaming note"
@@ -113,6 +113,7 @@ class FallbackRulesTest(unittest.IsolatedAsyncioTestCase):
             meta={
                 "requested_topic": "sorting",
                 "requested_resource_types": ["note"],
+                "stream_note_in_package": True,
             },
             artifacts={"diagnosis": {"diagnosis": {}}},
         )
@@ -121,8 +122,35 @@ class FallbackRulesTest(unittest.IsolatedAsyncioTestCase):
 
         note_service.queue_generation.assert_not_called()
         recommendation = result.result["recommendations"][0]
-        self.assertTrue(recommendation["stream_on_client"])
+        self.assertFalse(recommendation["stream_on_client"])
+        self.assertTrue(recommendation["stream_in_package"])
         self.assertEqual(recommendation["topic"], "sorting")
+
+    async def test_resource_package_note_falls_back_to_server_queue(self):
+        note_service = MagicMock()
+        note_service.create_note.return_value = SimpleNamespace(
+            id="note_queued", title="Queued note"
+        )
+        context = AgentRunContext(
+            run_id="run_resource_package_without_streamer",
+            project_id="project_1",
+            student_id="student_1",
+            goal="recommendations",
+            trigger=AgentTrigger(type="resource_package", id="package_1"),
+            context=AgentContextData(),
+            meta={
+                "requested_topic": "sorting",
+                "requested_resource_types": ["note"],
+            },
+            artifacts={"diagnosis": {"diagnosis": {}}},
+        )
+
+        result = await ResourceAgent(note_service=note_service).run(context)
+
+        note_service.queue_generation.assert_called_once()
+        recommendation = result.result["recommendations"][0]
+        self.assertFalse(recommendation["stream_on_client"])
+        self.assertFalse(recommendation["stream_in_package"])
 
     async def test_planner_without_llm_uses_rule_fallback(self):
         context = AgentRunContext(

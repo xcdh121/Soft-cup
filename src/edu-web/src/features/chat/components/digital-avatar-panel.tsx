@@ -18,7 +18,6 @@ import { env } from '@/env'
 type AvatarStatus = 'disabled' | 'connecting' | 'ready' | 'speaking' | 'error'
 
 type DigitalAvatarPanelProps = {
-  assistantMessageId: string | null
   assistantText: string
   isStreaming: boolean
 }
@@ -54,7 +53,6 @@ const statusCopy: Record<AvatarStatus, string> = {
 }
 
 export const DigitalAvatarPanel = ({
-  assistantMessageId,
   assistantText,
   isStreaming,
 }: DigitalAvatarPanelProps) => {
@@ -64,7 +62,6 @@ export const DigitalAvatarPanel = ({
   const pendingTextRef = useRef<string | null>(null)
   const isSpeakingRef = useRef(false)
   const driveRequestIdRef = useRef(0)
-  const lastDrivenMessageIdRef = useRef<string | null>(assistantMessageId)
   const [instanceKey, setInstanceKey] = useState(0)
   const [status, setStatus] = useState<AvatarStatus>(
     isAvatarConfigured ? 'connecting' : 'disabled',
@@ -210,27 +207,6 @@ export const DigitalAvatarPanel = ({
     }
   }, [driveText, instanceKey])
 
-  useEffect(() => {
-    if (
-      !isAvatarConfigured ||
-      isStreaming ||
-      !assistantMessageId ||
-      !speechText ||
-      assistantMessageId === lastDrivenMessageIdRef.current
-    ) {
-      return
-    }
-
-    // The stream status is authoritative. The short debounce also protects
-    // against backends that send text deltas without an explicit status event.
-    const timer = window.setTimeout(() => {
-      lastDrivenMessageIdRef.current = assistantMessageId
-      void driveText(speechText)
-    }, 500)
-
-    return () => window.clearTimeout(timer)
-  }, [assistantMessageId, driveText, isStreaming, speechText])
-
   const resumePlayback = async () => {
     try {
       await avatarRef.current?.player?.resume()
@@ -264,7 +240,7 @@ export const DigitalAvatarPanel = ({
           </span>
         </div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          大模型回答完成后，数字人会自动为你讲解。
+          大模型回答完成后，点击播放按钮让数字人为你讲解。
         </p>
       </div>
 
@@ -316,11 +292,17 @@ export const DigitalAvatarPanel = ({
           <Button
             variant="outline"
             size="sm"
-            disabled={!isAvatarConfigured || !speechText}
+            disabled={
+              !isAvatarConfigured ||
+              !speechText ||
+              isStreaming ||
+              status === 'connecting' ||
+              status === 'error'
+            }
             onClick={() => void driveText(speechText)}
           >
             <PlayIcon className="size-4" />
-            重播回答
+            {isStreaming ? '回答生成中' : '播放回答'}
           </Button>
           <Button
             variant="outline"

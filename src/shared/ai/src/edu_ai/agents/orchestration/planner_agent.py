@@ -73,6 +73,9 @@ class PlannerAgent(BaseOrchestrationAgent):
                 )
                 generation_mode = "rule_fallback"
 
+        learning_path = self._resolve_knowledge_point_labels(
+            learning_path, context.context.knowledge_points
+        )
         learning_path = self._apply_quality_gates(learning_path)
         skill_execution.confidence = 0.8 if generation_mode == "llm" else 0.6
         skill_execution.fallback_used = (
@@ -137,6 +140,24 @@ class PlannerAgent(BaseOrchestrationAgent):
         path["path_steps"] = steps
         return path
 
+    @staticmethod
+    def _resolve_knowledge_point_labels(
+        learning_path: dict, knowledge_points: list[dict]
+    ) -> dict:
+        """Keep internal IDs out of user-facing knowledge point labels."""
+        path = dict(learning_path)
+        name_by_id = {
+            point["id"]: point.get("name") or point.get("topic") or point["id"]
+            for point in knowledge_points
+            if point.get("id")
+        }
+        path["based_on_knowledge_points"] = [
+            name_by_id.get(value, value)
+            for value in path.get("based_on_knowledge_points", [])
+            if value
+        ]
+        return path
+
     def _build_rule_learning_path(self, context: AgentRunContext) -> dict:
         diagnosis = context.artifacts.get("diagnosis", {}).get("diagnosis", {})
         recommendations = context.artifacts.get("recommendations", {}).get(
@@ -181,7 +202,9 @@ class PlannerAgent(BaseOrchestrationAgent):
                 if value not in (None, [], "unknown")
             ],
             "based_on_knowledge_points": [
-                point.get("id") for point in related_points if point.get("id")
+                point.get("name") or point.get("topic") or point.get("id")
+                for point in related_points
+                if point.get("name") or point.get("topic") or point.get("id")
             ],
             "adjust_reasons": [
                 "Prioritize the weakest knowledge points first.",

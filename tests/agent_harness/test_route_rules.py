@@ -30,7 +30,7 @@ class RouteRulesTest(unittest.TestCase):
         )
 
         preflight = supervisor._preflight(context)
-        route = supervisor._decide_route(preflight)
+        route = supervisor._decide_route(preflight, context)
 
         self.assertEqual(
             route,
@@ -51,12 +51,31 @@ class RouteRulesTest(unittest.TestCase):
         )
 
         preflight = supervisor._preflight(context)
-        route = supervisor._decide_route(preflight)
+        route = supervisor._decide_route(preflight, context)
 
         self.assertEqual(
             route,
             [AgentName.PROFILE, AgentName.KT, AgentName.DIAGNOSIS, AgentName.RESOURCE],
         )
+
+    def test_recommendations_reuses_provided_diagnosis(self):
+        supervisor = SupervisorAgent()
+        context = self._context(
+            "recommendations",
+            AgentContextData(
+                knowledge_states=[
+                    {"knowledge_point_id": "kp_1", "mastery_score": 40}
+                ],
+            ),
+        )
+        context.artifacts["diagnosis"] = {
+            "diagnosis": {"related_knowledge_points": [{"id": "kp_1"}]}
+        }
+
+        preflight = supervisor._preflight(context)
+        route = supervisor._decide_route(preflight, context)
+
+        self.assertEqual(route, [AgentName.RESOURCE])
 
     def test_learning_path_uses_rule_planner_route_without_resource_requirement(self):
         supervisor = SupervisorAgent()
@@ -70,7 +89,7 @@ class RouteRulesTest(unittest.TestCase):
         )
 
         preflight = supervisor._preflight(context)
-        route = supervisor._decide_route(preflight)
+        route = supervisor._decide_route(preflight, context)
 
         self.assertEqual(
             route,

@@ -139,6 +139,7 @@ class OrchestrationRunRequest(BaseModel):
     goal: Literal["diagnosis", "recommendations", "learning_path"] = "diagnosis"
     trigger: AgentTrigger = Field(default_factory=AgentTrigger)
     context: AgentContextData = Field(default_factory=AgentContextData)
+    artifacts: dict[str, Any] = Field(default_factory=dict)
     meta: dict[str, Any] = Field(default_factory=dict)
 
 

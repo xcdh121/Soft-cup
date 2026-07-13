@@ -434,7 +434,7 @@ class DatabaseOrchestrationStore:
                 .order_by(LearningPath.created_at.desc())
                 .first()
             )
-            return self._learning_path_to_response(path) if path else None
+            return self._learning_path_to_response(path, db) if path else None
 
     def list_learning_paths(self, project_id: str) -> list[LearningPathResponse]:
         with self._get_db_session() as db:
@@ -444,7 +444,7 @@ class DatabaseOrchestrationStore:
                 .order_by(LearningPath.created_at.desc())
                 .all()
             )
-            return [self._learning_path_to_response(path) for path in paths]
+            return [self._learning_path_to_response(path, db) for path in paths]
 
     def _recommendation_to_dict(self, recommendation: Recommendation) -> dict:
         return {
@@ -458,16 +458,42 @@ class DatabaseOrchestrationStore:
             "recommended_by": recommendation.recommended_by,
         }
 
-    def _learning_path_to_response(self, path: LearningPath) -> LearningPathResponse:
+    def _learning_path_to_response(
+        self, path: LearningPath, db=None
+    ) -> LearningPathResponse:
+        content = self._resolve_knowledge_point_labels(path.content, db)
         return LearningPathResponse(
             path_id=path.id,
             run_id=path.run_id,
             project_id=path.project_id,
-            learning_path=path.content,
+            learning_path=content,
             based_on_diagnosis_id=path.diagnosis_id,
             based_on_recommendation_ids=path.based_on_recommendation_ids,
             created_at=path.created_at,
         )
+
+    @staticmethod
+    def _resolve_knowledge_point_labels(content: dict, db) -> dict:
+        """Resolve legacy knowledge point IDs when reading persisted paths."""
+        resolved = dict(content or {})
+        values = [
+            value
+            for value in resolved.get("based_on_knowledge_points", [])
+            if isinstance(value, str) and value
+        ]
+        if not db or not values:
+            return resolved
+
+        name_by_id = {
+            point.id: point.name
+            for point in db.query(KnowledgePoint)
+            .filter(KnowledgePoint.id.in_(values))
+            .all()
+        }
+        resolved["based_on_knowledge_points"] = [
+            name_by_id.get(value, value) for value in values
+        ]
+        return resolved
 
     def _to_json(self, value):
         if isinstance(value, BaseModel):
@@ -657,6 +683,7 @@ class AgentOrchestrationService:
             trigger=trigger,
             meta=meta,
             event_sink=event_sink,
+            artifacts={"diagnosis": {"diagnosis": diagnosis.diagnosis}},
         )
         self.store.save_run_events(result)
         response = RecommendationsResponse(
@@ -676,6 +703,7 @@ class AgentOrchestrationService:
         project_id: str,
         diagnosis_id: str | None = None,
         trigger: AgentTrigger | None = None,
+        event_sink: Callable[[AgentEvent], Awaitable[None]] | None = None,
     ) -> LearningPathResponse:
         diagnosis = None
         if diagnosis_id:
@@ -690,6 +718,7 @@ class AgentOrchestrationService:
             meta={"based_on_diagnosis_id": diagnosis.diagnosis_id}
             if diagnosis
             else None,
+            event_sink=event_sink,
         )
         self.store.save_run_events(result)
 
@@ -749,6 +778,7 @@ class AgentOrchestrationService:
         trigger: AgentTrigger | None,
         meta: dict | None = None,
         event_sink: Callable[[AgentEvent], Awaitable[None]] | None = None,
+        artifacts: dict | None = None,
     ) -> SupervisorRunResult:
         context = self._load_context(user_id, project_id)
         return await self.supervisor.run(
@@ -758,6 +788,7 @@ class AgentOrchestrationService:
                 goal=goal,
                 trigger=trigger or AgentTrigger(),
                 context=context,
+                artifacts=artifacts or {},
                 meta=meta or {},
             ),
             event_sink=event_sink,

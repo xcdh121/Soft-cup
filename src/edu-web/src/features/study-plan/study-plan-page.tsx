@@ -16,6 +16,7 @@ import {
 import {
   generateStudyPlanAtom,
   latestStudyPlanRemoteAtom,
+  studyPlanProgressAtom,
   studyPlansHistoryRemoteAtom,
 } from '@/data-acess/study-plan'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
@@ -37,6 +38,7 @@ interface StudyPlanPageProps {
 export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
   const latestPlanResult = useAtomValue(latestStudyPlanRemoteAtom(projectId))
   const historyResult = useAtomValue(studyPlansHistoryRemoteAtom(projectId))
+  const generationProgress = useAtomValue(studyPlanProgressAtom)
 
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -144,6 +146,17 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
             </div>
           </div>
 
+          {isGenerating && generationProgress && (
+            <div
+              className="flex items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3 text-sm"
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+              <span>{generationProgress.message}</span>
+            </div>
+          )}
+
           <div className="grid gap-6">
             {displayedPlan ? (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -169,14 +182,20 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                       </div>
 
                       {/* Focus Areas */}
-                      <div>
-                        <h3 className="text-lg font-semibold mb-2">重点关注</h3>
-                        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                          {displayedPlan.content.focus_areas.map((area, i) => (
-                            <li key={i}>{area}</li>
-                          ))}
-                        </ol>
-                      </div>
+                      {displayedPlan.content.focus_areas.length > 0 && (
+                        <div>
+                          <h3 className="text-lg font-semibold mb-2">
+                            重点关注
+                          </h3>
+                          <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                            {displayedPlan.content.focus_areas.map(
+                              (area, i) => (
+                                <li key={i}>{area}</li>
+                              ),
+                            )}
+                          </ol>
+                        </div>
+                      )}
 
                       {/* Action Items */}
                       <div>

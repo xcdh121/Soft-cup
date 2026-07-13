@@ -1,7 +1,9 @@
 """Router for note CRUD operations."""
 
+import asyncio
 import json
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from typing import Any
 
 from auth import get_current_user
 from dependencies import (
@@ -20,6 +22,55 @@ from pydantic import BaseModel, Field
 from routers.schemas import GenerateRequest, NoteCreate, NoteUpdate
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/notes", tags=["notes"])
+_note_stream_locks: dict[str, asyncio.Lock] = {}
+
+
+async def _stream_note_events(
+    *,
+    project_id: str,
+    note_id: str,
+    request: GenerateRequest,
+    service: NoteService,
+    task_runner: TaskRunnerService,
+) -> AsyncIterator[dict[str, Any]]:
+    """Run at most one note generation for a project/note pair."""
+    lock_key = f"{project_id}:{note_id}"
+    lock = _note_stream_locks.setdefault(lock_key, asyncio.Lock())
+    async with lock:
+        note = service.get_note(note_id=note_id, project_id=project_id)
+        if note.content.strip():
+            yield {
+                "event": "note_completed",
+                "status": "done",
+                "message": "Note already generated",
+                "note_id": note_id,
+                "title": note.title,
+                "description": note.description,
+                "content": note.content,
+                "cached": True,
+            }
+            return
+
+        yield {
+            "event": "generation_started",
+            "status": "generating",
+            "message": "Generating note",
+            "note_id": note_id,
+        }
+        async for event in task_runner.stream_note(
+            {
+                "project_id": project_id,
+                "note_id": note_id,
+                "topic": request.topic,
+                "custom_instructions": request.custom_instructions,
+            }
+        ):
+            completed = event.get("event") == "note_completed"
+            yield {
+                "status": "done" if completed else "generating",
+                "message": "Note generated" if completed else "Generating note",
+                **event,
+            }
 
 
 @router.post("", response_model=NoteDto, status_code=201)
@@ -155,20 +206,14 @@ async def generate_note_stream(
     async def generate_stream() -> AsyncGenerator[bytes]:
         """Generate streaming progress updates"""
         try:
-            service.get_note(note_id=note_id, project_id=project_id)
-            started = {"event": "generation_started", "status": "generating",
-                       "message": "Generating note", "note_id": note_id}
-            yield f"data: {json.dumps(started)}\n\n".encode()
-            async for event in task_runner.stream_note({
-                "project_id": project_id, "note_id": note_id,
-                "topic": request.topic,
-                "custom_instructions": request.custom_instructions,
-            }):
-                completed = event.get("event") == "note_completed"
-                payload = {"status": "done" if completed else "generating",
-                           "message": "Note generated" if completed else "Generating note",
-                           **event}
-                yield f"data: {json.dumps(payload)}\n\n".encode()
+            async for event in _stream_note_events(
+                project_id=project_id,
+                note_id=note_id,
+                request=request,
+                service=service,
+                task_runner=task_runner,
+            ):
+                yield f"data: {json.dumps(event)}\n\n".encode()
 
         except NotFoundError as e:
             payload = {"event": "generation_failed", "status": "done",

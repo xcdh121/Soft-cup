@@ -308,45 +308,51 @@ const ResourcePreviewPanel = ({
   streamingResources: Array<GeneratedResource>
   streamingStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>>
 }) => {
-  if (!resourcePackage) {
-    if (Object.keys(streamingStatuses).length > 0) {
-      return (
-        <div className="space-y-3">
-          {Object.entries(streamingStatuses)
-            .filter(
-              ([type]) =>
-                !streamingResources.some((item) => item.resource_type === type),
-            )
-            .map(([type, status]) => (
-              <div
-                key={type}
-                className="flex items-center justify-between rounded-xl border p-4"
-              >
-                <div className="font-medium">
-                  {resourceTypeLabelMap.get(type as ResourceType) ?? type}
-                </div>
-                <Badge variant={statusToneMap[status]}>{status}</Badge>
+  const hasStreamingResources = Object.values(streamingStatuses).some(
+    (status) => status === 'pending' || status === 'generating',
+  )
+  if (
+    hasStreamingResources ||
+    (!resourcePackage && Object.keys(streamingStatuses).length > 0)
+  ) {
+    return (
+      <div className="space-y-3">
+        {Object.entries(streamingStatuses)
+          .filter(
+            ([type]) =>
+              !streamingResources.some((item) => item.resource_type === type),
+          )
+          .map(([type, status]) => (
+            <div
+              key={type}
+              className="flex items-center justify-between rounded-xl border p-4"
+            >
+              <div className="font-medium">
+                {resourceTypeLabelMap.get(type as ResourceType) ?? type}
               </div>
-            ))}
-          {streamingResources.map((resource) => (
-            <div key={resource.id} className="rounded-xl border p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="font-medium">{resource.title}</div>
-                <Badge variant={statusToneMap[resource.status]}>
-                  {resource.status}
-                </Badge>
-              </div>
-              <div className="mt-3 rounded-lg bg-muted/40 p-3">
-                <ResourceResultPreview
-                  projectId={projectId}
-                  resource={resource}
-                />
-              </div>
+              <Badge variant={statusToneMap[status]}>{status}</Badge>
             </div>
           ))}
-        </div>
-      )
-    }
+        {streamingResources.map((resource) => (
+          <div key={resource.id} className="rounded-xl border p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-medium">{resource.title}</div>
+              <Badge variant={statusToneMap[resource.status]}>
+                {resource.status}
+              </Badge>
+            </div>
+            <div className="mt-3 rounded-lg bg-muted/40 p-3">
+              <ResourceResultPreview
+                projectId={projectId}
+                resource={resource}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (!resourcePackage) {
     return (
       <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
         选择一个资源包以查看生成结果。
@@ -405,6 +411,12 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
   const isGenerateDisabled =
     !topic.trim() || selectedTypes.length === 0 || isSubmitting
 
+  useEffect(() => {
+    if (packageProgress?.status === 'generating') {
+      setSelectedPackage(null)
+    }
+  }, [packageProgress?.packageId, packageProgress?.status])
+
   const helperText = useMemo(
     () =>
       '资源包生成已与项目概览中的 AI 生成统一，统一走同一条多 Agent 生成链路。',
@@ -440,6 +452,7 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
         .map((point) => point.id) ?? []
 
     setIsSubmitting(true)
+    setSelectedPackage(null)
     try {
       const resourcePackage = await generateResourcePackage({
         projectId,
