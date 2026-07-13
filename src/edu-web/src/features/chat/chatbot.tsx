@@ -1,3 +1,16 @@
+import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { Link } from '@tanstack/react-router'
+import { CopyIcon, ExternalLinkIcon, GlobeIcon } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { DigitalAvatarPanel } from './components/digital-avatar-panel'
+import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
+import type {
+  ChatMessageDto,
+  FilePartDto,
+  SourceDocumentPartDto,
+  TextPartDto,
+  ToolCallPartDto,
+} from '@/integrations/api/client'
 import {
   Conversation,
   ConversationContent,
@@ -5,7 +18,6 @@ import {
 } from '@/components/ai-elements/conversation'
 import { Loader } from '@/components/ai-elements/loader'
 import { Message, MessageContent } from '@/components/ai-elements/message'
-import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import {
   PromptInput,
   PromptInputActionAddAttachments,
@@ -42,32 +54,11 @@ import {
   ToolInput,
   ToolOutput,
 } from '@/components/ai-elements/tool'
-import { Badge } from '@/components/ui/badge'
 import {
   chatAtom,
   chatStreamStatusAtom,
   streamMessageAtom,
 } from '@/data-acess/chat'
-import type {
-  ChatMessageDto,
-  FilePartDto,
-  SourceDocumentPartDto,
-  TextPartDto,
-  ToolCallPartDto,
-} from '@/integrations/api/client'
-import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { Link } from '@tanstack/react-router'
-import {
-  ActivityIcon,
-  CheckCircle2Icon,
-  Clock3Icon,
-  CopyIcon,
-  ExternalLinkIcon,
-  GlobeIcon,
-  WrenchIcon,
-  XCircleIcon,
-} from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
 
 const generateId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
@@ -82,15 +73,6 @@ const models = [
     value: 'deepseek/deepseek-r1',
   },
 ]
-
-type ToolTimelineItem = {
-  id: string
-  messageId: string
-  toolName: string
-  toolState: string
-  toolInput: unknown
-  toolOutput: unknown
-}
 
 interface ChatbotProps {
   chatId: string
@@ -179,59 +161,6 @@ const toToolUiState = (
   return 'input-available'
 }
 
-const getToolStatusLabel = (state: string) => {
-  if (state === 'output-available') return 'Done'
-  if (state === 'output-error') return 'Failed'
-  if (state === 'input-streaming') return 'Preparing'
-  return 'Running'
-}
-
-const getToolStatusIcon = (state: string) => {
-  if (state === 'output-available') {
-    return <CheckCircle2Icon className="size-3.5 text-green-600" />
-  }
-  if (state === 'output-error') {
-    return <XCircleIcon className="size-3.5 text-destructive" />
-  }
-  if (state === 'input-streaming') {
-    return <Clock3Icon className="size-3.5 text-muted-foreground" />
-  }
-  return <ActivityIcon className="size-3.5 animate-pulse text-primary" />
-}
-
-const getToolStatusVariant = (state: string): 'secondary' | 'destructive' => {
-  return state === 'output-error' ? 'destructive' : 'secondary'
-}
-
-const summarizeToolValue = (value: unknown) => {
-  if (value === null || value === undefined || value === '') return 'None'
-  if (typeof value === 'string') {
-    return value.length > 120 ? `${value.slice(0, 120)}...` : value
-  }
-  try {
-    const text = JSON.stringify(value)
-    return text.length > 120 ? `${text.slice(0, 120)}...` : text
-  } catch {
-    return String(value)
-  }
-}
-
-const collectToolTimeline = (
-  messages: ReadonlyArray<ChatMessageDto>,
-): ToolTimelineItem[] =>
-  messages.flatMap((message) =>
-    Array.from(message.parts ?? [])
-      .filter((part): part is ToolCallPartDto => part.type === 'tool_call')
-      .map((part, index) => ({
-        id: part.id ?? `${message.id}-${part.tool_call_id ?? index}`,
-        messageId: message.id,
-        toolName: part.tool_name,
-        toolState: part.tool_state,
-        toolInput: part.tool_input,
-        toolOutput: part.tool_output,
-      })),
-  )
-
 export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
   const [input, setInput] = useState('')
   const [model, setModel] = useState<string>(models[0].value)
@@ -249,7 +178,23 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
     ? (chatResult.value.messages ?? [])
     : []
   const isStreaming = streamStatus !== null
-  const toolTimeline = useMemo(() => collectToolTimeline(messages), [messages])
+  const latestAssistantResponse = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]
+      if (message.role !== 'assistant') continue
+
+      const text = Array.from(message.parts ?? [])
+        .filter((part): part is TextPartDto => part.type === 'text')
+        .sort((left, right) => left.order - right.order)
+        .map((part) => part.text_content)
+        .join('\n\n')
+        .trim()
+
+      if (text) return { messageId: message.id, text }
+    }
+
+    return { messageId: null, text: '' }
+  }, [messages])
 
   const blobToDataUrl = useCallback(
     async (blobUrl: string): Promise<string> => {
@@ -272,7 +217,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
       return
     }
 
-    const parts: (TextPartDto | FilePartDto)[] = []
+    const parts: Array<TextPartDto | FilePartDto> = []
 
     if (hasText) {
       parts.push({
@@ -295,11 +240,11 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
             file_type: file.mediaType,
             file_url: file.url,
             order: parts.length + index,
-          } as FilePartDto
+          }
         }
 
         let dataUrl = file.url
-        if (file.url?.startsWith('blob:')) {
+        if (file.url.startsWith('blob:')) {
           dataUrl = await blobToDataUrl(file.url)
         }
 
@@ -313,7 +258,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
           file_type: file.mediaType,
           file_url: dataUrl,
           order: parts.length + index,
-        } as FilePartDto
+        }
       }),
     )
 
@@ -456,7 +401,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                           case 'file':
                             return null
                           case 'tool_call': {
-                            const toolCall = part as ToolCallPartDto
+                            const toolCall = part
                             const normalizedInput = normalizeToolInput(
                               toolCall.tool_input,
                             )
@@ -559,7 +504,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                 />
                 <PromptInputSelect
                   onValueChange={(value) => {
-                    setModel(value as string)
+                    setModel(value)
                   }}
                   value={model}
                 >
@@ -587,95 +532,11 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
         </div>
       </div>
 
-      <aside className="hidden min-h-0 bg-background xl:flex xl:flex-col">
-        <div className="border-b px-5 py-4">
-          <div className="flex items-center gap-2">
-            <WrenchIcon className="size-4 text-primary" />
-            <h2 className="text-sm font-semibold">Tool Activity</h2>
-          </div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Shows search, generation, and resource tools used while the
-            assistant responds.
-          </p>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {toolTimeline.length === 0 ? (
-            <div className="flex min-h-40 flex-col items-center justify-center rounded-md border border-dashed bg-muted/30 px-4 text-center">
-              {isStreaming ? (
-                <>
-                  <ActivityIcon className="mb-3 size-5 animate-pulse text-primary" />
-                  <div className="text-sm font-medium">Thinking</div>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Tool calls will appear here if the assistant searches
-                    documents or generates study resources.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <WrenchIcon className="mb-3 size-5 text-muted-foreground" />
-                  <div className="text-sm font-medium">No tool calls yet</div>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Ask for document search, PPTs, resource packages, quizzes,
-                    flashcards, notes, or mind maps to populate this panel.
-                  </p>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {toolTimeline.map((tool, index) => (
-                <div
-                  key={tool.id}
-                  className="rounded-md border bg-card p-3 text-card-foreground"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                          {index + 1}
-                        </span>
-                        <div className="truncate text-sm font-medium">
-                          {formatToolName(tool.toolName)}
-                        </div>
-                      </div>
-                      <div className="mt-1 truncate pl-8 text-xs text-muted-foreground">
-                        message: {tool.messageId}
-                      </div>
-                    </div>
-                    <Badge
-                      variant={getToolStatusVariant(tool.toolState)}
-                      className="shrink-0 gap-1"
-                    >
-                      {getToolStatusIcon(tool.toolState)}
-                      {getToolStatusLabel(tool.toolState)}
-                    </Badge>
-                  </div>
-
-                  <div className="mt-3 flex flex-col gap-2 rounded-md bg-muted/40 p-2 text-xs">
-                    <div>
-                      <div className="font-medium text-muted-foreground">
-                        Input
-                      </div>
-                      <div className="mt-1 break-words font-mono text-[11px] leading-4">
-                        {summarizeToolValue(tool.toolInput)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="font-medium text-muted-foreground">
-                        Output
-                      </div>
-                      <div className="mt-1 break-words font-mono text-[11px] leading-4">
-                        {summarizeToolValue(tool.toolOutput)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </aside>
+      <DigitalAvatarPanel
+        assistantMessageId={latestAssistantResponse.messageId}
+        assistantText={latestAssistantResponse.text}
+        isStreaming={isStreaming}
+      />
     </div>
   )
 }
