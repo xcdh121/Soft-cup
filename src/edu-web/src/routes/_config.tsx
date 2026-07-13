@@ -117,6 +117,11 @@ const DashboardPage = lazy(() =>
     default: m.DashboardPage,
   })),
 )
+const AgentRuntimeRoute = lazy(() =>
+  import('./agent-runtime-route').then((m) => ({
+    default: m.AgentRuntimeRoute,
+  })),
+)
 const requireAuth = async () => {
   const { isSupabaseConfigured } = await import('@/lib/supabase')
 
@@ -388,6 +393,16 @@ export const settingsRoute = createRoute({
   ),
 })
 
+export const agentRuntimeRoute = createRoute({
+  path: '/agent-runtime',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <AgentRuntimeRoute />
+    </Suspense>
+  ),
+})
+
 export const routeTree = rootRoute.addChildren([
   dashboardRoute.addChildren([
     dashboardIndexRoute,
@@ -409,6 +424,7 @@ export const routeTree = rootRoute.addChildren([
     courseLibraryRoute,
     knowledgeGraphRoute,
     learningEvaluationRoute,
+    agentRuntimeRoute,
     settingsRoute,
   ]),
   indexRoute,
