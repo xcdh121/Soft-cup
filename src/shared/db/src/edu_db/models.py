@@ -76,12 +76,34 @@ class DashboardComment(Base):
     user_id: Mapped[str] = mapped_column(
         String, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
+    parent_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("dashboard_comments.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 
     user = relationship("User", back_populates="dashboard_comments")
+
+
+class DashboardCommentLike(Base):
+    __tablename__ = "dashboard_comment_likes"
+
+    comment_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("dashboard_comments.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class Project(Base):

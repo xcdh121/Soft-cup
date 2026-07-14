@@ -1,15 +1,16 @@
 """Router for quiz CRUD operations."""
 
-from collections.abc import AsyncGenerator
 import json
+import re
+from collections.abc import AsyncGenerator
 
 from auth import get_current_user
+from config import Settings
 from dependencies import (
     get_quiz_service,
     get_settings_dep,
     get_usage_service,
 )
-from config import Settings
 from edu_core.exceptions import NotFoundError
 from edu_core.model_providers import LlmProviderConfig, create_chat_model
 from edu_core.schemas.quizzes import QuizDto, QuizQuestionDto
@@ -137,6 +138,64 @@ class AiExplanationRequest(BaseModel):
 
     question: str | None = Field(None, max_length=2000)
     history: list[AiExplanationMessage] = Field(default_factory=list, max_length=20)
+
+
+class QuizAnswer(BaseModel):
+    question_id: str = Field(min_length=1)
+    selected_option: str = Field(pattern="^[A-D]$")
+
+
+class QuizAnalysisRequest(BaseModel):
+    answers: list[QuizAnswer] = Field(min_length=1, max_length=200)
+
+
+class QuizAnalysisNarrative(BaseModel):
+    summary: str = Field(min_length=1)
+    strengths: list[str] = Field(default_factory=list)
+    focus_areas: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+
+
+class QuizAnalysisDto(QuizAnalysisNarrative):
+    total: int
+    correct: int
+    accuracy: int
+
+
+def _correct_option(question: QuizQuestionDto) -> str | None:
+    raw_answer = question.correct_option.strip()
+    explicit = re.match(
+        r"^(?:选项\s*)?([A-D])(?:\s*[.、:：)）\]-]|$)", raw_answer, re.I
+    )
+    if explicit:
+        return explicit.group(1).upper()
+    normalized = re.sub(r"\s+", " ", raw_answer).strip().lower()
+    option_texts = {
+        "A": question.option_a,
+        "B": question.option_b,
+        "C": question.option_c,
+        "D": question.option_d,
+    }
+    for option, text in option_texts.items():
+        if re.sub(r"\s+", " ", text).strip().lower() == normalized:
+            return option
+    loose = re.match(r"^([A-D])\s+.+$", raw_answer, re.I)
+    return loose.group(1).upper() if loose else None
+
+
+def _json_object(text: str) -> dict:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("AI response does not contain a JSON object")
+    payload = json.loads(cleaned[start : end + 1])
+    if not isinstance(payload, dict):
+        raise ValueError("AI response is not a JSON object")
+    return payload
 
 
 @router.post("/{quiz_id}/generate", response_model=QuizDto)
@@ -382,6 +441,88 @@ D. {question.option_d}
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI explanation failed: {e}")
+
+
+@router.post("/{quiz_id}/analysis", response_model=QuizAnalysisDto)
+async def analyze_quiz_result(
+    project_id: str,
+    quiz_id: str,
+    request: QuizAnalysisRequest,
+    current_user: UserDto = Depends(get_current_user),
+    service: QuizService = Depends(get_quiz_service),
+    settings: Settings = Depends(get_settings_dep),
+) -> QuizAnalysisDto:
+    """Analyze a completed quiz and return actionable Chinese learning advice."""
+    del current_user
+    if not settings.llm_api_key:
+        raise HTTPException(status_code=503, detail="LLM_API_KEY is not configured")
+    try:
+        questions = service.list_quiz_questions(quiz_id=quiz_id, project_id=project_id)
+        answers = {
+            answer.question_id: answer.selected_option for answer in request.answers
+        }
+        attempts = []
+        for question in questions:
+            selected = answers.get(question.id)
+            if selected is None:
+                continue
+            correct_option = _correct_option(question)
+            attempts.append(
+                {
+                    "question": question.question_text,
+                    "selected_option": selected,
+                    "correct_option": correct_option or question.correct_option,
+                    "is_correct": selected == correct_option,
+                    "explanation": question.explanation,
+                    "difficulty": question.difficulty_level,
+                }
+            )
+        if not attempts:
+            raise HTTPException(status_code=400, detail="没有可分析的作答记录")
+
+        correct = sum(item["is_correct"] for item in attempts)
+        total = len(attempts)
+        accuracy = round(correct / total * 100)
+        prompt = f"""你是一名严谨、鼓励式的中文学习导师。请分析学生本次选择题作答结果，识别掌握较好的方面、需要加强的知识点，并给出可直接执行的复习建议。
+
+要求：
+1. 只根据给出的题目和作答数据分析，不编造课程范围外的信息。
+2. 建议应具体、简短，并优先针对错题所反映的问题。
+3. 只返回一个 JSON 对象，不要 Markdown 代码块，格式为：
+{{"summary":"总体分析", "strengths":["优势"], "focus_areas":["薄弱点"], "suggestions":["行动建议"]}}
+
+作答数据：
+{json.dumps(attempts, ensure_ascii=False)}"""
+        model = create_chat_model(
+            LlmProviderConfig(
+                model=settings.llm_model,
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_base_url,
+                temperature=0.2,
+            )
+        ).bind(max_tokens=1200)
+        response = await model.ainvoke(prompt)
+        content = response.content
+        if isinstance(content, str):
+            response_text = content
+        else:
+            response_text = "".join(
+                str(item.get("text", "")) if isinstance(item, dict) else str(item)
+                for item in content
+            )
+        narrative = QuizAnalysisNarrative.model_validate(_json_object(response_text))
+        return QuizAnalysisDto(
+            **narrative.model_dump(),
+            total=total,
+            correct=correct,
+            accuracy=accuracy,
+        )
+    except HTTPException:
+        raise
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="AI 作答分析暂时不可用") from exc
 
 
 @router.patch("/{quiz_id}/questions/{question_id}", response_model=QuizQuestionDto)

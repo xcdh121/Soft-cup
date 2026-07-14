@@ -5,9 +5,11 @@ import { zhCN } from 'date-fns/locale'
 import {
   FlameIcon,
   FolderIcon,
+  HeartIcon,
   Loader2Icon,
   MessageCircleIcon,
   PlusIcon,
+  ReplyIcon,
   SendIcon,
   Trash2Icon,
   TrophyIcon,
@@ -48,8 +50,12 @@ type DashboardComment = {
   id: string
   user_id: string
   user_name: string
+  parent_id: string | null
   content: string
   created_at: string
+  like_count: number
+  is_liked: boolean
+  replies: Array<DashboardComment>
 }
 
 type LeaderboardEntry = {
@@ -209,6 +215,12 @@ const CommunitySection = () => {
   const [content, setContent] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<string | null>(null)
+  const [replyContent, setReplyContent] = useState('')
+  const [submittingReplyId, setSubmittingReplyId] = useState<string | null>(
+    null,
+  )
+  const [likingIds, setLikingIds] = useState<Set<string>>(() => new Set())
   const [error, setError] = useState<string | null>(null)
 
   const loadCommunity = useCallback(async () => {
@@ -260,6 +272,89 @@ const CommunitySection = () => {
       setError('评论没有发出去，请稍后再试。')
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const updateComment = (
+    items: Array<DashboardComment>,
+    commentId: string,
+    update: (comment: DashboardComment) => DashboardComment,
+  ): Array<DashboardComment> =>
+    items.map((comment) => {
+      if (comment.id === commentId) return update(comment)
+      if (comment.replies.some((reply) => reply.id === commentId)) {
+        return {
+          ...comment,
+          replies: comment.replies.map((reply) =>
+            reply.id === commentId ? update(reply) : reply,
+          ),
+        }
+      }
+      return comment
+    })
+
+  const toggleLike = async (commentId: string) => {
+    if (likingIds.has(commentId)) return
+    setLikingIds((current) => new Set(current).add(commentId))
+    try {
+      const authHeaders = await getAuthHeaders()
+      const response = await fetch(
+        `${serverUrl}/api/v1/dashboard/comments/${encodeURIComponent(commentId)}/like`,
+        { method: 'POST', headers: authHeaders },
+      )
+      if (!response.ok) throw new Error('点赞操作失败')
+      const result = (await response.json()) as {
+        like_count: number
+        is_liked: boolean
+      }
+      setComments((current) =>
+        updateComment(current, commentId, (comment) => ({
+          ...comment,
+          like_count: result.like_count,
+          is_liked: result.is_liked,
+        })),
+      )
+    } catch {
+      setError('点赞操作失败，请稍后再试。')
+    } finally {
+      setLikingIds((current) => {
+        const next = new Set(current)
+        next.delete(commentId)
+        return next
+      })
+    }
+  }
+
+  const submitReply = async (commentId: string) => {
+    const trimmedContent = replyContent.trim()
+    if (!trimmedContent || submittingReplyId) return
+    setSubmittingReplyId(commentId)
+    setError(null)
+    try {
+      const authHeaders = await getAuthHeaders()
+      const response = await fetch(
+        `${serverUrl}/api/v1/dashboard/comments/${encodeURIComponent(commentId)}/replies`,
+        {
+          method: 'POST',
+          headers: { ...authHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: trimmedContent }),
+        },
+      )
+      if (!response.ok) throw new Error('回复发布失败')
+      const reply = (await response.json()) as DashboardComment
+      const parentId = reply.parent_id ?? commentId
+      setComments((current) =>
+        updateComment(current, parentId, (comment) => ({
+          ...comment,
+          replies: [...comment.replies, reply],
+        })),
+      )
+      setReplyContent('')
+      setReplyingTo(null)
+    } catch {
+      setError('回复没有发出去，请稍后再试。')
+    } finally {
+      setSubmittingReplyId(null)
     }
   }
 
@@ -331,27 +426,162 @@ const CommunitySection = () => {
               comments.map((comment) => (
                 <article
                   key={comment.id}
-                  className="flex gap-3 rounded-2xl px-3 py-4 transition-colors hover:bg-muted/40"
+                  className="rounded-2xl px-3 py-4 transition-colors hover:bg-muted/40"
                 >
-                  <Avatar className="h-9 w-9 shrink-0">
-                    <AvatarFallback className="bg-primary/10 text-xs text-primary">
-                      {getInitials(comment.user_name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                      <span className="font-medium">{comment.user_name}</span>
-                      <time className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(comment.created_at), {
-                          addSuffix: true,
-                          locale: zhCN,
-                        })}
-                      </time>
+                  <div className="flex gap-3">
+                    <Avatar className="h-9 w-9 shrink-0">
+                      <AvatarFallback className="bg-primary/10 text-xs text-primary">
+                        {getInitials(comment.user_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                        <span className="font-medium">{comment.user_name}</span>
+                        <time className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(comment.created_at), {
+                            addSuffix: true,
+                            locale: zhCN,
+                          })}
+                        </time>
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-foreground/85">
+                        {comment.content}
+                      </p>
+                      <div className="mt-2 flex items-center gap-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className={comment.is_liked ? 'text-rose-600' : ''}
+                          disabled={likingIds.has(comment.id)}
+                          aria-pressed={comment.is_liked}
+                          onClick={() => void toggleLike(comment.id)}
+                        >
+                          <HeartIcon
+                            className={`mr-1 size-4 ${comment.is_liked ? 'fill-current' : ''}`}
+                          />
+                          {comment.like_count > 0 ? comment.like_count : '点赞'}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setReplyingTo((current) =>
+                              current === comment.id ? null : comment.id,
+                            )
+                            setReplyContent('')
+                          }}
+                        >
+                          <ReplyIcon className="mr-1 size-4" />
+                          回复
+                        </Button>
+                      </div>
                     </div>
-                    <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-foreground/85">
-                      {comment.content}
-                    </p>
                   </div>
+
+                  {comment.replies.length > 0 ? (
+                    <div className="mt-3 ml-12 space-y-2 border-l pl-3">
+                      {comment.replies.map((reply) => (
+                        <div
+                          key={reply.id}
+                          className="flex gap-2 rounded-xl bg-muted/35 p-3"
+                        >
+                          <Avatar className="size-7 shrink-0">
+                            <AvatarFallback className="text-[10px]">
+                              {getInitials(reply.user_name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-baseline gap-2 text-sm">
+                              <span className="font-medium">
+                                {reply.user_name}
+                              </span>
+                              <time className="text-xs text-muted-foreground">
+                                {formatDistanceToNow(
+                                  new Date(reply.created_at),
+                                  {
+                                    addSuffix: true,
+                                    locale: zhCN,
+                                  },
+                                )}
+                              </time>
+                            </div>
+                            <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6">
+                              {reply.content}
+                            </p>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className={`mt-1 ${reply.is_liked ? 'text-rose-600' : ''}`}
+                              disabled={likingIds.has(reply.id)}
+                              aria-pressed={reply.is_liked}
+                              onClick={() => void toggleLike(reply.id)}
+                            >
+                              <HeartIcon
+                                className={`mr-1 size-3.5 ${reply.is_liked ? 'fill-current' : ''}`}
+                              />
+                              {reply.like_count > 0 ? reply.like_count : '点赞'}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {replyingTo === comment.id ? (
+                    <div className="mt-3 ml-12 rounded-xl border bg-background p-3">
+                      <Textarea
+                        autoFocus
+                        value={replyContent}
+                        onChange={(event) =>
+                          setReplyContent(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (
+                            (event.ctrlKey || event.metaKey) &&
+                            event.key === 'Enter'
+                          ) {
+                            event.preventDefault()
+                            void submitReply(comment.id)
+                          }
+                        }}
+                        maxLength={500}
+                        rows={2}
+                        className="resize-none"
+                        placeholder={`回复 ${comment.user_name}…`}
+                      />
+                      <div className="mt-2 flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setReplyingTo(null)
+                            setReplyContent('')
+                          }}
+                        >
+                          取消
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={
+                            !replyContent.trim() || Boolean(submittingReplyId)
+                          }
+                          onClick={() => void submitReply(comment.id)}
+                        >
+                          {submittingReplyId === comment.id ? (
+                            <Loader2Icon className="mr-2 size-4 animate-spin" />
+                          ) : (
+                            <SendIcon className="mr-2 size-4" />
+                          )}
+                          发布回复
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </article>
               ))
             )}

@@ -44,6 +44,7 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
   const currentIndex = state.currentQuestionIndex
   const totalQuestions = questions.length
   const showResults = state.showResults
+  const currentQuestion = questions[currentIndex]
 
   const handleNext = async () => {
     await goToNext({ quizId, projectId })
@@ -53,7 +54,6 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
     await goToPrevious({ quizId })
   }
 
-  const currentQuestion = questions[currentIndex]
   const isCurrentSubmitted = Boolean(
     state.submittedByQuestionId[currentQuestion.id],
   )
@@ -69,8 +69,8 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
   if (showResults) return null
 
   return (
-    <div className="flex items-center justify-center pt-4 pb-4">
-      <div className="flex gap-4">
+    <div className="sticky bottom-0 z-10 flex items-center justify-center border-t bg-background/95 px-4 py-4 shadow-[0_-8px_24px_-20px_rgba(0,0,0,0.5)] backdrop-blur">
+      <div className="flex flex-wrap justify-center gap-4">
         <Button
           onClick={handlePrevious}
           disabled={currentIndex === 0}

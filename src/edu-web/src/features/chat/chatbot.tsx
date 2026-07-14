@@ -2,7 +2,6 @@ import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Link } from '@tanstack/react-router'
 import { CopyIcon, ExternalLinkIcon, GlobeIcon } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
-import { DigitalAvatarPanel } from './components/digital-avatar-panel'
 import { MultiAgentCallSequence } from './components/multi-agent-call-sequence'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import type {
@@ -516,7 +515,6 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
       </div>
 
       <MultiAgentCallSequence isRunning={isStreaming} />
-      <DigitalAvatarPanel />
     </div>
   )
 }

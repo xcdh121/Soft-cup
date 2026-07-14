@@ -1,4 +1,5 @@
 import { Result, useAtomValue } from '@effect-atom/atom-react'
+import { Link } from '@tanstack/react-router'
 import {
   ChevronLeft,
   ChevronRight,
@@ -172,9 +173,11 @@ export const ProgrammingPracticePage = ({
     readStoredObject(inputKey),
   )
   const [runResults, setRunResults] = useState<
-    Record<string, ProgrammingRunResult>
+    Partial<Record<string, ProgrammingRunResult>>
   >({})
-  const [runErrors, setRunErrors] = useState<Record<string, string>>({})
+  const [runErrors, setRunErrors] = useState<Partial<Record<string, string>>>(
+    {},
+  )
   const [runningDraftId, setRunningDraftId] = useState<string | null>(null)
   const [revealedSolutions, setRevealedSolutions] = useState<Array<string>>([])
   const [isGrading, setIsGrading] = useState(false)
@@ -678,6 +681,31 @@ export const ProgrammingPracticePage = ({
                       </p>
                     </div>
                   ) : null}
+
+                  <div className="flex justify-end border-t pt-4">
+                    {activeIndex < questions.length - 1 ? (
+                      <Button
+                        type="button"
+                        onClick={() =>
+                          setActiveIndex((index) =>
+                            Math.min(questions.length - 1, index + 1),
+                          )
+                        }
+                      >
+                        分析完成，继续下一题
+                        <ChevronRight className="ml-2 size-4" />
+                      </Button>
+                    ) : (
+                      <Button asChild>
+                        <Link
+                          to="/dashboard/p/$projectId/learning-evaluation/history"
+                          params={{ projectId }}
+                        >
+                          查看历史错题分析
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ) : null}
 

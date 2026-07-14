@@ -4,6 +4,7 @@ import { AppSidebar } from '@/components/navigation/app-sidebar'
 import { AppBreadcrumbs } from '@/components/navigation/app-breadcrumbs'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { isAuthenticatedAtom } from '@/data-acess/auth'
+import { DigitalAvatarPanel } from '@/features/chat/components/digital-avatar-panel'
 
 export const AppShell = () => {
   const isAuthenticated = useAtomValue(isAuthenticatedAtom)
@@ -17,26 +18,34 @@ export const AppShell = () => {
   )
 
   if (!isAuthenticated || !isDashboardRoute) {
-    return <Outlet />
+    return (
+      <>
+        <Outlet />
+        <DigitalAvatarPanel />
+      </>
+    )
   }
 
   return (
-    <SidebarProvider
-      className={isDocumentDetailRoute ? 'h-svh overflow-hidden' : undefined}
-    >
-      <AppSidebar />
-      <SidebarInset className="h-svh min-w-0 overflow-hidden">
-        <AppBreadcrumbs />
-        <div
-          className={
-            isDocumentDetailRoute
-              ? 'min-h-0 flex-1 overflow-hidden'
-              : 'min-h-0 flex-1 overflow-auto'
-          }
-        >
-          <Outlet />
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+    <>
+      <SidebarProvider
+        className={isDocumentDetailRoute ? 'h-svh overflow-hidden' : undefined}
+      >
+        <AppSidebar />
+        <SidebarInset className="h-svh min-w-0 overflow-hidden">
+          <AppBreadcrumbs />
+          <div
+            className={
+              isDocumentDetailRoute
+                ? 'min-h-0 flex-1 overflow-hidden'
+                : 'min-h-0 flex-1 overflow-auto'
+            }
+          >
+            <Outlet />
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
+      <DigitalAvatarPanel />
+    </>
   )
 }

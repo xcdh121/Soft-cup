@@ -2,15 +2,19 @@ import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { useNavigate } from '@tanstack/react-router'
 import { Option } from 'effect'
 import {
+  BrainCircuit,
   CheckCircle,
   ChevronDown,
+  Loader2,
   RotateCcw,
+  Sparkles,
+  TriangleAlert,
   Trophy,
   Upload,
   X,
   XCircle,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { QuizQuestionDto } from '@/integrations/api/client'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,6 +31,19 @@ import {
   resetQuizAtom,
   submitPendingPracticeRecordsAtom,
 } from '@/data-acess/quiz-detail-state'
+import { supabase } from '@/lib/supabase'
+
+type QuizAnalysis = {
+  total: number
+  correct: number
+  accuracy: number
+  summary: string
+  strengths: Array<string>
+  focus_areas: Array<string>
+  suggestions: Array<string>
+}
+
+const serverUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8000'
 
 const getOptionText = (
   question: QuizQuestionDto,
@@ -304,6 +321,167 @@ const CompletionActions = ({ quizId, projectId }: CompletionActionsProps) => {
   )
 }
 
+const AiQuizAnalysis = ({
+  projectId,
+  quizId,
+  answers,
+}: {
+  projectId: string
+  quizId: string
+  answers: Array<{ question_id: string; selected_option: string }>
+}) => {
+  const navigate = useNavigate()
+  const [analysis, setAnalysis] = useState<QuizAnalysis | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  const loadAnalysis = useCallback(
+    async (signal?: AbortSignal) => {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        const response = await fetch(
+          `${serverUrl}/api/v1/projects/${encodeURIComponent(projectId)}/quizzes/${encodeURIComponent(quizId)}/analysis`,
+          {
+            method: 'POST',
+            signal,
+            headers: {
+              'Content-Type': 'application/json',
+              ...(session?.access_token
+                ? { Authorization: `Bearer ${session.access_token}` }
+                : {}),
+            },
+            body: JSON.stringify({ answers }),
+          },
+        )
+        const payload: unknown = await response.json().catch(() => null)
+        if (!response.ok) {
+          const detail =
+            payload &&
+            typeof payload === 'object' &&
+            'detail' in payload &&
+            typeof payload.detail === 'string'
+              ? payload.detail
+              : 'AI 分析生成失败'
+          throw new Error(detail)
+        }
+        setAnalysis(payload as QuizAnalysis)
+      } catch (requestError) {
+        if (
+          requestError instanceof DOMException &&
+          requestError.name === 'AbortError'
+        ) {
+          return
+        }
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : 'AI 分析生成失败，请稍后重试。',
+        )
+      } finally {
+        if (!signal?.aborted) setIsLoading(false)
+      }
+    },
+    [answers, projectId, quizId],
+  )
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void loadAnalysis(controller.signal)
+    return () => controller.abort()
+  }, [loadAnalysis])
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-5">
+        <Loader2 className="size-5 animate-spin text-primary" />
+        <div>
+          <div className="font-semibold">AI 正在分析本次作答</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            正在归纳掌握情况、薄弱点和下一步建议…
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !analysis) {
+    return (
+      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
+        <div className="flex gap-2 text-sm text-destructive">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <span>{error ?? 'AI 分析生成失败，请稍后重试。'}</span>
+        </div>
+        <Button
+          className="mt-4"
+          variant="outline"
+          onClick={() => void loadAnalysis()}
+        >
+          重新分析
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5 rounded-2xl border border-primary/20 bg-primary/5 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 font-semibold">
+          <BrainCircuit className="size-5 text-primary" />
+          AI 作答分析已完成
+        </div>
+        <span className="rounded-full bg-background px-3 py-1 text-sm font-medium">
+          正确率 {analysis.accuracy}%（{analysis.correct}/{analysis.total}）
+        </span>
+      </div>
+      <p className="text-sm leading-7">{analysis.summary}</p>
+      <div className="grid gap-4 md:grid-cols-3">
+        {[
+          ['掌握较好', analysis.strengths],
+          ['重点加强', analysis.focus_areas],
+          ['学习建议', analysis.suggestions],
+        ].map(([title, items]) => (
+          <div
+            key={title as string}
+            className="rounded-xl bg-background/80 p-4"
+          >
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+              <Sparkles className="size-4 text-primary" />
+              {title as string}
+            </div>
+            {(items as Array<string>).length ? (
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                {(items as Array<string>).map((item) => (
+                  <li key={item} className="leading-6">
+                    · {item}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">暂无</p>
+            )}
+          </div>
+        ))}
+      </div>
+      <Button
+        className="w-full"
+        size="lg"
+        onClick={() =>
+          navigate({
+            to: '/dashboard/p/$projectId/learning-evaluation/history',
+            params: { projectId },
+          })
+        }
+      >
+        查看历史错题分析
+      </Button>
+    </div>
+  )
+}
+
 type QuizResultsViewProps = {
   quizId: string
   projectId: string
@@ -362,6 +540,16 @@ export const QuizResultsView = ({
   }, [questions, state.selectedByQuestionId])
 
   const total = questions.length
+  const analysisAnswers = useMemo(
+    () =>
+      questions.flatMap((question) => {
+        const selected = state.selectedByQuestionId[question.id]
+        return selected
+          ? [{ question_id: question.id, selected_option: selected }]
+          : []
+      }),
+    [questions, state.selectedByQuestionId],
+  )
 
   return Result.builder(statsResult)
     .onSuccess(() => (
@@ -390,6 +578,14 @@ export const QuizResultsView = ({
               onOpenChange={setShowIncorrect}
             />
           </div>
+
+          <Separator />
+
+          <AiQuizAnalysis
+            projectId={projectId}
+            quizId={quizId}
+            answers={analysisAnswers}
+          />
 
           <Separator />
 
