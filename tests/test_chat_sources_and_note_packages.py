@@ -2,6 +2,7 @@ import unittest
 from contextlib import ExitStack
 from unittest.mock import patch
 
+from edu_core.services.chats import ChatService
 from edu_core.services.resource_packages import ResourcePackageService
 from edu_core.services.search import SearchService
 from edu_db.models import (
@@ -145,6 +146,36 @@ class ChatSourcesAndNotePackagesTests(unittest.TestCase):
         self.assertEqual(packages[0].completed_resource_count, 1)
         self.assertEqual(packages[0].resources[0].status, "completed")
         self.assertEqual(packages[0].resources[0].content_text, "# Strings")
+
+    def test_chat_sources_are_deduplicated_by_document_not_segment(self):
+        service = ChatService.__new__(ChatService)
+        first_source = {
+            "id": "segment-1",
+            "segment_id": "segment-1",
+            "document_id": "document-1",
+            "title": "strings.pdf",
+            "page_number": 3,
+        }
+        second_source = {
+            **first_source,
+            "id": "segment-2",
+            "segment_id": "segment-2",
+            "page_number": 4,
+        }
+
+        with self.session_factory() as db:
+            source_ids: set[str] = set()
+            first_part = service._create_source_document_part(
+                first_source, db, source_ids, 0
+            )
+            self.assertIsNotNone(first_part)
+            self.assertEqual(first_part.source_id, "document-1")
+            source_ids.add(first_part.source_id)
+            duplicate_part = service._create_source_document_part(
+                second_source, db, source_ids, 1
+            )
+
+        self.assertIsNone(duplicate_part)
 
 
 if __name__ == "__main__":

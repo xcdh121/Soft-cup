@@ -18,8 +18,8 @@ from langchain.agents.middleware import (
     wrap_model_call,
     wrap_tool_call,
 )
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 
 
@@ -131,12 +131,29 @@ def ensure_sources_in_stream(
 
 
 def make_chatbot(llm: BaseChatModel):
+    # Chat-created content must use the unified resource-package pipeline so it
+    # is visible from one results page and has one stable package link. Keep the
+    # dedicated tools available for browsing/updating existing legacy content,
+    # but do not expose their separate creation paths to the chat agent.
+    dedicated_creation_tools = {
+        "flashcards_create",
+        "quiz_create",
+        "note_create",
+        "mindmap_create",
+    }
+    content_management_tools = [
+        tool
+        for tool in [
+            *flashcard_tools,
+            *quiz_tools,
+            *note_tools,
+            *mind_map_tools,
+        ]
+        if getattr(tool, "name", None) not in dedicated_creation_tools
+    ]
     tools = [
         *rag_tools,
-        *flashcard_tools,
-        *quiz_tools,
-        *note_tools,
-        *mind_map_tools,
+        *content_management_tools,
         *resource_package_tools,
     ]
 

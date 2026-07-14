@@ -1,4 +1,4 @@
-import { BrainCircuitIcon, LibraryBigIcon, Settings2 } from 'lucide-react'
+import { BrainCircuitIcon, GraduationCapIcon, Settings2 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { CurrentProjectNav } from './current-project-nav'
 import { NavMain } from './nav-main'
@@ -44,9 +44,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain
           items={[
             {
-              title: '课程资料库',
-              url: '/dashboard/course-library',
-              icon: LibraryBigIcon,
+              title: '我的课程',
+              url: '/dashboard/my-courses',
+              icon: GraduationCapIcon,
             },
             {
               title: '智能协作观测台',

@@ -71,6 +71,11 @@ class ToolState:
 class ChatService:
     """Service for managing chats with AI-powered responses."""
 
+    # RAG can be invoked more than once while the agent refines a response. Keep
+    # the citations useful by counting logical documents, rather than every
+    # matching chunk returned by every invocation.
+    MAX_SOURCE_DOCUMENTS = 5
+
     def __init__(
         self,
         search_service=None,
@@ -199,7 +204,10 @@ class ChatService:
         Returns:
             SourceDocumentPartDto if created, None if skipped (duplicate or invalid)
         """
-        source_id = source.get("id") or source.get("document_id", "")
+        # Search results are document *segments*.  Using the segment ID here made
+        # several chunks from the same PDF appear as several independent sources
+        # (and repeated searches could therefore show 10 or 15 sources).
+        source_id = source.get("document_id") or source.get("id", "")
         if not source_id or source_id in existing_source_ids:
             return None
 
@@ -222,7 +230,9 @@ class ChatService:
         media_type = media_type_map.get(file_type.lower(), "application/pdf")
 
         provider_metadata = {
-            "document_id": source.get("document_id"),
+            # Only real uploaded documents have a document-detail route. Course
+            # library results use synthetic IDs and should not link to that route.
+            "document_id": str(document.id) if document else None,
             "segment_id": source.get("segment_id") or source.get("id"),
             "page_number": source.get("page_number"),
             "score": source.get("score"),
@@ -1173,6 +1183,8 @@ class ChatService:
 
                 # Create source-document parts
                 for source in sources:
+                    if len(existing_source_ids) >= self.MAX_SOURCE_DOCUMENTS:
+                        break
                     source_part = self._create_source_document_part(
                         source, db_session, existing_source_ids, len(current_parts)
                     )
@@ -1275,6 +1287,11 @@ class ChatService:
 
                                         # Create source-document parts
                                         for source in sources:
+                                            if (
+                                                len(existing_source_ids)
+                                                >= self.MAX_SOURCE_DOCUMENTS
+                                            ):
+                                                break
                                             source_part = (
                                                 self._create_source_document_part(
                                                     source,

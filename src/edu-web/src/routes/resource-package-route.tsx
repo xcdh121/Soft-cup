@@ -3,5 +3,11 @@ import { resourcePackageRoute } from '@/routes/_config'
 
 export const ResourcePackageRoute = () => {
   const params = resourcePackageRoute.useParams()
-  return <ResourcePackagePage projectId={params.projectId} />
+  const search = resourcePackageRoute.useSearch()
+  return (
+    <ResourcePackagePage
+      projectId={params.projectId}
+      initialPackageId={search?.packageId}
+    />
+  )
 }

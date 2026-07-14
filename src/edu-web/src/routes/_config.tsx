@@ -109,6 +109,11 @@ const CourseLibraryRoute = lazy(() =>
     default: m.CourseLibraryRoute,
   })),
 )
+const MyCoursesRoute = lazy(() =>
+  import('./my-courses-route').then((m) => ({
+    default: m.MyCoursesRoute,
+  })),
+)
 const KnowledgeGraphRoute = lazy(() =>
   import('./knowledge-graph-route').then((m) => ({
     default: m.KnowledgeGraphRoute,
@@ -351,6 +356,7 @@ export const customStudyPlanRoute = createRoute({
 export const resourcePackageRoute = createRoute({
   path: '/p/$projectId/resource-packages',
   getParentRoute: () => dashboardRoute,
+  validateSearch: z.object({ packageId: z.string().optional() }).optional(),
   component: () => (
     <Suspense fallback={<LoadingPage />}>
       <ResourcePackageRoute />
@@ -401,9 +407,20 @@ export const learnerProfileRoute = createRoute({
 export const courseLibraryRoute = createRoute({
   path: '/course-library',
   getParentRoute: () => dashboardRoute,
+  validateSearch: z.object({ courseId: z.string().optional() }).optional(),
   component: () => (
     <Suspense fallback={<LoadingPage />}>
       <CourseLibraryRoute />
+    </Suspense>
+  ),
+})
+
+export const myCoursesRoute = createRoute({
+  path: '/my-courses',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <MyCoursesRoute />
     </Suspense>
   ),
 })
@@ -509,6 +526,7 @@ export const routeTree = rootRoute.addChildren([
     pdfOcrRoute,
     programmingPracticeRoute,
     learnerProfileRoute,
+    myCoursesRoute,
     courseLibraryRoute,
     knowledgeGraphRoute,
     learningEvaluationRoute,

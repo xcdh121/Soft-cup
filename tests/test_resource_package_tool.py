@@ -40,7 +40,7 @@ class ResourcePackageToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["resource_types"], ["pptx"])
         self.assertEqual(
             result["resource_package_url"],
-            "/dashboard/p/project-1/resource-packages",
+            "/dashboard/p/project-1/resource-packages?packageId=package-1",
         )
         self.assertEqual(calls[0]["user_id"], "user-1")
         self.assertEqual(calls[0]["project_id"], "project-1")

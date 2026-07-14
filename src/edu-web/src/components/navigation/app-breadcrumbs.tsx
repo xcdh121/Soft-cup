@@ -12,6 +12,7 @@ import { projectsAtom } from '@/data-acess/project'
 
 const getPageTrail = (pathname: string): Array<string> => {
   if (pathname === '/dashboard') return ['仪表盘']
+  if (pathname === '/dashboard/my-courses') return ['我的课程']
   if (pathname === '/dashboard/course-library') return ['课程资料库']
   if (pathname === '/dashboard/agent-runtime') return ['智能协作观测台']
   if (pathname === '/dashboard/settings') return ['设置']

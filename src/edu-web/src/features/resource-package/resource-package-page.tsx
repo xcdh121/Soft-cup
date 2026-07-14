@@ -365,12 +365,19 @@ const ResourcePreviewPanel = ({
   )
 }
 
-export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
+export const ResourcePackagePage = ({
+  projectId,
+  initialPackageId,
+}: {
+  projectId: string
+  initialPackageId?: string
+}) => {
   const generateResourcePackage = useAtomSet(generateResourcePackageAtom, {
     mode: 'promise',
   })
   const courseOutlineResult = useAtomValue(projectCourseOutlineAtom(projectId))
   const packageProgress = useAtomValue(resourcePackageProgressAtom)
+  const packagesResult = useAtomValue(resourcePackagesAtom(projectId))
   const refreshResourcePackages = useAtomSet(refreshResourcePackagesAtom, {
     mode: 'promise',
   })
@@ -400,10 +407,18 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
     useState<ResourcePackage | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  useEffect(() => {
+    if (!initialPackageId || !Result.isSuccess(packagesResult)) return
+    const requestedPackage = packagesResult.value.find(
+      (resourcePackage) => resourcePackage.id === initialPackageId,
+    )
+    if (requestedPackage) setSelectedPackage(requestedPackage)
+  }, [initialPackageId, packagesResult])
+
   const courseOutline =
     courseOutlineResult._tag === 'Success' ? courseOutlineResult.value : null
   const selectedDifficultyStage =
-    DIFFICULTY_STAGES[difficultyStage] ?? DIFFICULTY_STAGES[2]!
+    DIFFICULTY_STAGES[difficultyStage] ?? DIFFICULTY_STAGES[2]
   const difficulty = selectedDifficultyStage.value
   const difficultyProgress =
     (difficultyStage / (DIFFICULTY_STAGES.length - 1)) * 100

@@ -484,9 +484,15 @@ const CourseBrowser = ({
   )
 }
 
-export const CourseLibraryPage = () => {
+export const CourseLibraryPage = ({
+  initialCourseId,
+}: {
+  initialCourseId?: string
+}) => {
   const coursesResult = useAtomValue(coursesAtom)
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(
+    initialCourseId ?? null,
+  )
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
 
   const courses = Result.isSuccess(coursesResult) ? coursesResult.value : []
@@ -496,10 +502,17 @@ export const CourseLibraryPage = () => {
     null
 
   useEffect(() => {
-    if (!selectedCourseId && selectedCourse) {
+    if (selectedCourse && selectedCourseId !== selectedCourse.id) {
       setSelectedCourseId(selectedCourse.id)
     }
   }, [selectedCourse, selectedCourseId])
+
+  useEffect(() => {
+    if (initialCourseId) {
+      setSelectedCourseId(initialCourseId)
+      setSelectedPointId(null)
+    }
+  }, [initialCourseId])
 
   const handleSelectCourse = (courseId: string) => {
     setSelectedCourseId(courseId)

@@ -133,14 +133,19 @@ const parseToolOutput = (toolCall: ToolCallPartDto) => {
 
 const getResourcePackageResult = (toolName: string, output: unknown) => {
   if (
-    toolName !== 'resource_package_generate' ||
+    ![
+      'resource_package_generate',
+      'note_create',
+      'note_create_scoped',
+    ].includes(toolName) ||
     !output ||
     typeof output !== 'object'
   ) {
     return null
   }
   const value = output as Record<string, unknown>
-  return typeof value.package_id === 'string' ? value : null
+  const packageId = value.package_id ?? value.resource_package_id
+  return typeof packageId === 'string' ? { ...value, packageId } : null
 }
 
 const toToolUiState = (
@@ -159,6 +164,38 @@ const toToolUiState = (
     return state
   }
   return 'input-available'
+}
+
+const ResourcePackageLink = ({
+  message,
+  projectId,
+}: {
+  message: ChatMessageDto
+  projectId: string
+}) => {
+  const resourcePackageResult = message.parts
+    ?.filter((part): part is ToolCallPartDto => part.type === 'tool_call')
+    .map((toolCall) => {
+      const { output } = parseToolOutput(toolCall)
+      return getResourcePackageResult(toolCall.tool_name, output)
+    })
+    .find((result) => result !== null)
+
+  if (!resourcePackageResult) return null
+
+  return (
+    <div className="flex justify-start">
+      <Link
+        to="/dashboard/p/$projectId/resource-packages"
+        params={{ projectId }}
+        search={{ packageId: resourcePackageResult.packageId }}
+        className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+      >
+        查看生成的资源包
+        <ExternalLinkIcon className="size-4" />
+      </Link>
+    </div>
+  )
 }
 
 export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
@@ -312,10 +349,22 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
 
                   {message.parts &&
                     (() => {
-                      const sourceDocuments = message.parts.filter(
-                        (part): part is SourceDocumentPartDto =>
-                          part.type === 'source-document',
-                      )
+                      const sourceDocuments = Array.from(
+                        new Map(
+                          message.parts
+                            .filter(
+                              (part): part is SourceDocumentPartDto =>
+                                part.type === 'source-document',
+                            )
+                            .map((source) => [
+                              String(
+                                source.provider_metadata?.document_id ??
+                                  source.source_id,
+                              ),
+                              source,
+                            ]),
+                        ).values(),
+                      ).slice(0, 5)
 
                       return sourceDocuments.length > 0 ? (
                         <Sources key={`${message.id}-sources`}>
@@ -389,7 +438,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                             )
                             const { output, errorText } =
                               parseToolOutput(toolCall)
-                            const resourcePackageResult =
+                            const toolResourcePackageResult =
                               getResourcePackageResult(
                                 toolCall.tool_name,
                                 output,
@@ -400,7 +449,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                                 key={`${message.id}-part-${index}`}
                                 defaultOpen={
                                   toolCall.tool_state === 'output-error' ||
-                                  resourcePackageResult !== null
+                                  toolResourcePackageResult !== null
                                 }
                               >
                                 <ToolHeader
@@ -418,18 +467,6 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                                       errorText={errorText}
                                     />
                                   )}
-                                  {resourcePackageResult && (
-                                    <div className="border-t p-4">
-                                      <Link
-                                        to="/dashboard/p/$projectId/resource-packages"
-                                        params={{ projectId }}
-                                        className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                                      >
-                                        查看生成的资源包
-                                        <ExternalLinkIcon className="size-4" />
-                                      </Link>
-                                    </div>
-                                  )}
                                 </ToolContent>
                               </Tool>
                             )
@@ -438,6 +475,11 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                             return null
                         }
                       })}
+
+                  <ResourcePackageLink
+                    message={message}
+                    projectId={projectId}
+                  />
                 </div>
               ))}
               {isStreaming && <Loader />}

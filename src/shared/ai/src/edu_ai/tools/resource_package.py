@@ -7,7 +7,6 @@ from edu_ai.chatbot.context import ChatbotContext
 from langchain.tools import tool
 from langgraph.prebuilt import ToolRuntime
 
-
 ResourceType = Literal[
     "lecture_note",
     "mind_map",
@@ -28,11 +27,11 @@ DifficultyLevel = Literal["beginner", "intermediate", "advanced"]
     "resource_package_generate",
     description=(
         "Generate a unified learning resource package for the current project. "
-        "Use this when the user requests a PPT/PPTX, a PPT outline, video "
-        "recommendations, or several resource types together. For a PPT file, "
-        "set resource_types to ['pptx']. For a combined package, include every "
-        "requested type. Do not use this for a single note, mind map, quiz, or "
-        "flashcard set when its dedicated tool is available."
+        "Use this for every request that creates learning content, including a "
+        "single note, mind map, quiz/practice set, flashcard set, PPT/PPTX, PPT "
+        "outline, video recommendation, or several resource types together. For "
+        "a PPT file, set resource_types to ['pptx']; for a combined package, "
+        "include every requested type."
     ),
 )
 async def generate_resource_package(
@@ -70,13 +69,14 @@ async def generate_resource_package(
     return json.dumps(
         {
             "status": package.status,
-            "message": "资源包已生成，可前往资源包页面查看。",
+            "message": "资源包已生成，可前往资源包页面查看。",  # noqa: RUF001
             "package_id": package.id,
             "resource_types": requested_types,
             "completed_resource_count": package.completed_resource_count,
             "failed_resource_count": package.failed_resource_count,
             "resource_package_url": (
                 f"/dashboard/p/{ctx.project_id}/resource-packages"
+                f"?packageId={package.id}"
             ),
         },
         ensure_ascii=False,
