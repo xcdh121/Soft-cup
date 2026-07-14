@@ -5,6 +5,7 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import contextmanager, suppress
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Union
 from uuid import uuid4
 
@@ -1442,16 +1443,29 @@ Only respond with the title, nothing else. Do not use quotes."""
             Exception: If blob storage is not configured or upload fails
         """
         try:
+            safe_filename = filename.replace("\\", "/").rsplit("/", 1)[-1]
+            safe_filename = safe_filename.replace("\x00", "").strip() or "image"
             relative_path = self.storage.build_chat_file_path(
                 project_id=project_id,
                 chat_id=chat_id,
-                filename=filename,
+                filename=safe_filename,
                 unique_prefix=str(uuid4()),
             )
             self.storage.write_bytes(relative_path, file_content)
             return relative_path
         except Exception as e:
             raise Exception(f"Failed to upload chat file: {e}") from e
+
+    def resolve_chat_file(
+        self, *, project_id: str, chat_id: str, file_key: str
+    ) -> Path:
+        """Resolve a stored chat attachment without allowing path traversal."""
+        safe_key = file_key.replace("\\", "/").rsplit("/", 1)[-1]
+        if not safe_key or safe_key in {".", ".."} or safe_key != file_key:
+            raise ValueError("Invalid chat file key")
+        return self.storage.resolve(
+            f"projects/{project_id}/chat-files/{chat_id}/{safe_key}"
+        )
 
     @contextmanager
     def _get_db_session(self):

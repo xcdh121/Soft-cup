@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { CopyIcon, ExternalLinkIcon, GlobeIcon } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { MultiAgentCallSequence } from './components/multi-agent-call-sequence'
+import { ChatImageAttachment } from './components/chat-image-attachment'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import type {
   ChatMessageDto,
@@ -323,22 +324,25 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                                   part.type === 'file',
                               )
                               .map((part: FilePartDto, index: number) => (
-                                <div
-                                  key={`${message.id}-file-${index}`}
-                                  className="flex items-center gap-2 rounded bg-muted p-2"
-                                >
-                                  <span className="text-sm">
-                                    {part.file_name}
-                                  </span>
-                                  {part.file_url && (
-                                    <a
-                                      href={part.file_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-xs text-primary hover:underline"
-                                    >
-                                      View
-                                    </a>
+                                <div key={`${message.id}-file-${index}`}>
+                                  {part.file_type.startsWith('image/') ? (
+                                    <ChatImageAttachment file={part} />
+                                  ) : (
+                                    <div className="flex items-center gap-2 rounded bg-muted p-2">
+                                      <span className="text-sm">
+                                        {part.file_name}
+                                      </span>
+                                      {part.file_url && (
+                                        <a
+                                          href={part.file_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-xs text-primary hover:underline"
+                                        >
+                                          View
+                                        </a>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               ))}

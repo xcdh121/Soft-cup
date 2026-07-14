@@ -1,6 +1,7 @@
 import base64
 import json
 import sys
+import tempfile
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,6 +10,7 @@ from unittest.mock import AsyncMock, Mock
 from urllib.parse import parse_qs, urlparse
 
 from edu_core.services.chats import ChatService
+from edu_core.storage import LocalStorageService
 from fastapi import HTTPException
 
 API_SRC = Path(__file__).resolve().parents[1] / "src" / "edu-api"
@@ -141,6 +143,13 @@ class XfyunImageUnderstandingTests(unittest.IsolatedAsyncioTestCase):
             is_enabled=True,
             understand=AsyncMock(return_value="图中是一道二次函数题。"),
         )
+        chat_service = SimpleNamespace(
+            upload_chat_file=Mock(
+                return_value=(
+                    "projects/project-1/chat-files/chat-1/image-id-question.png"
+                )
+            )
+        )
         body = ChatCompletionRequest.model_validate(
             {
                 "parts": [
@@ -158,17 +167,29 @@ class XfyunImageUnderstandingTests(unittest.IsolatedAsyncioTestCase):
 
         parts = await _prepare_chat_parts(
             body,
+            project_id="project-1",
+            chat_id="chat-1",
             user_id="user-1",
+            chat_service=chat_service,
             image_client=image_client,
         )
 
         self.assertEqual(parts[0], {"type": "text", "text": "请讲解这道题"})
         self.assertEqual(parts[1]["type"], "file")
         self.assertEqual(parts[1]["file_name"], "question.png")
-        self.assertEqual(parts[1]["file_url"], "")
+        self.assertEqual(
+            parts[1]["file_url"],
+            "/api/v1/projects/project-1/chats/chat-1/files/image-id-question.png",
+        )
         self.assertTrue(parts[2]["text"].startswith("[图片理解上下文:question.png]"))
         self.assertIn("二次函数", parts[2]["text"])
         image_client.understand.assert_awaited_once()
+        chat_service.upload_chat_file.assert_called_once_with(
+            b"png-bytes",
+            "question.png",
+            "project-1",
+            "chat-1",
+        )
         self.assertIn(
             "请讲解这道题",
             image_client.understand.await_args.kwargs["question"],
@@ -191,7 +212,10 @@ class XfyunImageUnderstandingTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as context:
             await _prepare_chat_parts(
                 body,
+                project_id="project-1",
+                chat_id="chat-1",
                 user_id="user-1",
+                chat_service=SimpleNamespace(upload_chat_file=Mock()),
                 image_client=SimpleNamespace(is_enabled=True),
             )
 
@@ -207,7 +231,10 @@ class XfyunImageUnderstandingTests(unittest.IsolatedAsyncioTestCase):
                     "type": "file",
                     "file_name": "question.png",
                     "file_type": "image/png",
-                    "file_url": "",
+                    "file_url": (
+                        "/api/v1/projects/project-1/chats/chat-1/files/"
+                        "image-id-question.png"
+                    ),
                 },
                 {
                     "type": "text",
@@ -220,9 +247,40 @@ class XfyunImageUnderstandingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(parts[0].file_name, "question.png")
         self.assertEqual(parts[0].file_type, "image/png")
-        self.assertEqual(parts[0].file_url, "")
+        self.assertEqual(
+            parts[0].file_url,
+            "/api/v1/projects/project-1/chats/chat-1/files/image-id-question.png",
+        )
         self.assertEqual(text_parts, ["[图片理解上下文:question.png]\n一道函数题"])
         self.assertEqual(db.add.call_count, 2)
+
+    def test_chat_file_storage_sanitizes_names_and_blocks_traversal(self):
+        service = ChatService.__new__(ChatService)
+        with tempfile.TemporaryDirectory() as storage_root:
+            service.storage = LocalStorageService(storage_root)
+            relative_path = service.upload_chat_file(
+                b"image-bytes",
+                "../question.png",
+                "project-1",
+                "chat-1",
+            )
+
+            self.assertNotIn("..", relative_path)
+            file_key = relative_path.rsplit("/", 1)[-1]
+            self.assertEqual(
+                service.resolve_chat_file(
+                    project_id="project-1",
+                    chat_id="chat-1",
+                    file_key=file_key,
+                ).read_bytes(),
+                b"image-bytes",
+            )
+            with self.assertRaises(ValueError):
+                service.resolve_chat_file(
+                    project_id="project-1",
+                    chat_id="chat-1",
+                    file_key="../question.png",
+                )
 
 
 if __name__ == "__main__":

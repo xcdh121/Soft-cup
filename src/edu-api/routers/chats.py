@@ -1,9 +1,12 @@
 """Router for chat CRUD operations."""
 
+import asyncio
 import base64
 import binascii
+import mimetypes
 from collections.abc import AsyncGenerator
 from typing import Any
+from urllib.parse import quote
 
 from auth import get_current_user
 from dependencies import (
@@ -19,7 +22,7 @@ from edu_core.schemas.chats import (
 from edu_core.schemas.users import UserDto
 from edu_core.services import ChatService, UsageService
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from xfyun_image_understanding import (
     XfyunImageUnderstandingClient,
     XfyunImageUnderstandingError,
@@ -69,7 +72,10 @@ def _decode_image_data_url(part: FilePart) -> bytes:
 async def _prepare_chat_parts(
     body: ChatCompletionRequest,
     *,
+    project_id: str,
+    chat_id: str,
     user_id: str,
+    chat_service: ChatService,
     image_client: XfyunImageUnderstandingClient,
 ) -> list[dict[str, Any]]:
     """Turn uploaded images into grounded text context for the text-only LLM."""
@@ -103,12 +109,25 @@ async def _prepare_chat_parts(
             status_code = 503 if not image_client.is_enabled else 502
             raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
+        relative_path = await asyncio.to_thread(
+            chat_service.upload_chat_file,
+            image,
+            filename,
+            project_id,
+            chat_id,
+        )
+        file_key = relative_path.rsplit("/", 1)[-1]
+        file_url = (
+            f"/api/v1/projects/{project_id}/chats/{chat_id}/files/"
+            f"{quote(file_key, safe='')}"
+        )
+
         processed_parts.append(
             {
                 "type": "file",
                 "file_name": filename,
                 "file_type": part.media_type,
-                "file_url": "",
+                "file_url": file_url,
             }
         )
         processed_parts.append(
@@ -155,6 +174,40 @@ async def get_chat(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{chat_id}/files/{file_key}")
+async def get_chat_file(
+    project_id: str,
+    chat_id: str,
+    file_key: str,
+    current_user: UserDto = Depends(get_current_user),
+    service: ChatService = Depends(get_chat_service),
+):
+    """Serve a persisted chat image after checking chat ownership."""
+    try:
+        chat = service.get_chat(chat_id=chat_id, user_id=current_user.id)
+        if chat.project_id != project_id:
+            raise NotFoundError(f"Chat {chat_id} not found")
+        storage_path = service.resolve_chat_file(
+            project_id=project_id,
+            chat_id=chat_id,
+            file_key=file_key,
+        )
+        if not storage_path.is_file():
+            raise HTTPException(status_code=404, detail="Chat file not found")
+        media_type, _ = mimetypes.guess_type(file_key)
+        return FileResponse(
+            path=storage_path,
+            media_type=media_type or "application/octet-stream",
+            content_disposition_type="inline",
+            headers={
+                "Cache-Control": "private, max-age=3600",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+    except (NotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="Chat file not found") from exc
 
 
 @router.get("", response_model=list[ChatDto])
@@ -233,7 +286,10 @@ async def send_streaming_message(
 
     processed_parts = await _prepare_chat_parts(
         body,
+        project_id=project_id,
+        chat_id=chat_id,
         user_id=user_id,
+        chat_service=chat_service,
         image_client=image_client,
     )
 
@@ -243,7 +299,7 @@ async def send_streaming_message(
             chat_id, user_id, processed_parts
         ):
             part_json = part_event.model_dump_json()
-            yield f"data: {part_json}\n\n".encode("utf-8")
+            yield f"data: {part_json}\n\n".encode()
 
     return StreamingResponse(
         generate_stream(),

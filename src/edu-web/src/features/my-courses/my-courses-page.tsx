@@ -16,6 +16,7 @@ import { SidebarTrigger } from '@/components/ui/sidebar'
 import courseStructureCover from '../../../../source/1.png'
 import courseClassroomCover from '../../../../source/2.png'
 import courseLearningCover from '../../../../source/3.png'
+import machineLearningCover from '../../../../source/6.png'
 
 const courseCovers = [
   courseStructureCover,
@@ -24,6 +25,8 @@ const courseCovers = [
 ]
 
 const getCourseCover = (course: Course) => {
+  if (course.code === 'ML-DEMO') return machineLearningCover
+
   const seed = `${course.id}${course.code ?? ''}`
   const hash = Array.from(seed).reduce(
     (total, character) => total + character.charCodeAt(0),
