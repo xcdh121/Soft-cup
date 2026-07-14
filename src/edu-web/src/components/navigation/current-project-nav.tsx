@@ -11,6 +11,7 @@ import {
   ListChecksIcon,
   MessageSquareIcon,
   NetworkIcon,
+  ScanTextIcon,
   SparklesIcon,
   UserRoundIcon,
 } from 'lucide-react'
@@ -157,6 +158,25 @@ export function CurrentProjectNav() {
                   >
                     <BotIcon className="size-4 opacity-70" />
                     <span>AI 导师</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  tooltip="手写文字识别"
+                  isActive={
+                    location.pathname ===
+                    `/dashboard/p/${currentProjectId}/handwriting-recognition`
+                  }
+                >
+                  <Link
+                    to="/dashboard/p/$projectId/handwriting-recognition"
+                    params={{ projectId: currentProjectId }}
+                  >
+                    <ScanTextIcon className="size-4 opacity-70" />
+                    <span>手写文字识别</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

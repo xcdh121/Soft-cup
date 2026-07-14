@@ -83,6 +83,16 @@ class ProgrammingGradeDto(BaseModel):
     grading_mode: Literal["ai"] = Field(default="ai", description="Grading mode")
 
 
+class ProgrammingRunDto(BaseModel):
+    language: str = Field(..., description="Runtime language selected by the sandbox")
+    version: str = Field(default="", description="Runtime version")
+    stdout: str = Field(default="", description="Standard output")
+    stderr: str = Field(default="", description="Standard error")
+    output: str = Field(default="", description="Combined display output")
+    exit_code: int | None = Field(None, description="Process exit code")
+    signal: str | None = Field(None, description="Terminating signal, if any")
+
+
 class ResourcePackageDto(BaseModel):
     model_config = {"from_attributes": True}
 

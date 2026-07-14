@@ -4,7 +4,9 @@ import {
   ChevronRight,
   Lightbulb,
   Loader2,
+  Play,
   Sparkles,
+  Terminal,
   TriangleAlert,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -37,6 +39,16 @@ type ProgrammingGrade = {
   complexity_analysis: string | null
   grading_mode: 'ai'
   language?: ProgrammingLanguage
+}
+
+type ProgrammingRunResult = {
+  language: string
+  version: string
+  stdout: string
+  stderr: string
+  output: string
+  exit_code: number | null
+  signal: string | null
 }
 
 const serverUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8000'
@@ -145,6 +157,7 @@ export const ProgrammingPracticePage = ({
   const draftKey = `programming-drafts:${projectId}:${resourceId}`
   const gradeKey = `programming-grades:${projectId}:${resourceId}`
   const languageKey = `programming-languages:${projectId}:${resourceId}`
+  const inputKey = `programming-inputs:${projectId}:${resourceId}`
   const [activeIndex, setActiveIndex] = useState(0)
   const [drafts, setDrafts] = useState<Record<string, string>>(() =>
     readStoredObject(draftKey),
@@ -155,6 +168,14 @@ export const ProgrammingPracticePage = ({
   const [languages, setLanguages] = useState<Record<string, string>>(() =>
     readStoredObject(languageKey),
   )
+  const [inputs, setInputs] = useState<Record<string, string>>(() =>
+    readStoredObject(inputKey),
+  )
+  const [runResults, setRunResults] = useState<
+    Record<string, ProgrammingRunResult>
+  >({})
+  const [runErrors, setRunErrors] = useState<Record<string, string>>({})
+  const [runningDraftId, setRunningDraftId] = useState<string | null>(null)
   const [revealedSolutions, setRevealedSolutions] = useState<Array<string>>([])
   const [isGrading, setIsGrading] = useState(false)
   const [gradingError, setGradingError] = useState<string | null>(null)
@@ -216,6 +237,10 @@ export const ProgrammingPracticePage = ({
           : language === 'python'
             ? (question.starterCode ?? '')
             : ''
+      const stdin = inputs[draftId] ?? ''
+      const runResult = runResults[draftId]
+      const runError = runErrors[draftId]
+      const isRunning = runningDraftId === draftId
       const storedGrade = Object.hasOwn(grades, question.id)
         ? grades[question.id]
         : undefined
@@ -244,6 +269,74 @@ export const ProgrammingPracticePage = ({
         const next = { ...languages, [question.id]: value }
         setLanguages(next)
         window.localStorage.setItem(languageKey, JSON.stringify(next))
+      }
+
+      const updateInput = (value: string) => {
+        const next = { ...inputs, [draftId]: value }
+        setInputs(next)
+        window.localStorage.setItem(inputKey, JSON.stringify(next))
+      }
+
+      const runAnswer = async () => {
+        const nextDrafts = { ...drafts, [draftId]: answer }
+        setDrafts(nextDrafts)
+        window.localStorage.setItem(draftKey, JSON.stringify(nextDrafts))
+        setRunningDraftId(draftId)
+        setRunErrors((current) => ({ ...current, [draftId]: '' }))
+
+        try {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession()
+          const response = await fetch(
+            `${serverUrl}/api/v1/projects/${projectId}/generated-resources/${resourceId}/programming-run`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(session?.access_token
+                  ? { Authorization: `Bearer ${session.access_token}` }
+                  : {}),
+              },
+              body: JSON.stringify({
+                question_id: question.id,
+                code: answer,
+                stdin,
+                language,
+              }),
+            },
+          )
+          const payload: unknown = await response.json().catch(() => null)
+          if (!response.ok) {
+            throw new Error(
+              getApiErrorMessage(payload) ??
+                `代码运行服务返回错误（HTTP ${response.status}）`,
+            )
+          }
+          if (
+            !payload ||
+            typeof payload !== 'object' ||
+            !('output' in payload)
+          ) {
+            throw new Error('代码运行服务返回了无法识别的数据。')
+          }
+          setRunResults((current) => ({
+            ...current,
+            [draftId]: payload as ProgrammingRunResult,
+          }))
+        } catch (error) {
+          setRunErrors((current) => ({
+            ...current,
+            [draftId]:
+              error instanceof TypeError
+                ? `无法连接代码运行服务（${serverUrl}）。请确认后端已启动。`
+                : error instanceof Error
+                  ? error.message
+                  : '代码运行失败，请稍后重试。',
+          }))
+        } finally {
+          setRunningDraftId(null)
+        }
       }
 
       const submitAnswer = async () => {
@@ -423,6 +516,50 @@ export const ProgrammingPracticePage = ({
                 className="min-h-80 resize-y font-mono text-sm leading-6"
                 placeholder="请在这里编写代码答案..."
               />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <label
+                    htmlFor="programming-stdin"
+                    className="text-sm font-semibold"
+                  >
+                    标准输入
+                  </label>
+                  <Textarea
+                    id="programming-stdin"
+                    value={stdin}
+                    onChange={(event) => updateInput(event.target.value)}
+                    spellCheck={false}
+                    className="min-h-32 resize-y rounded-none font-mono text-sm"
+                    placeholder="输入程序运行时需要读取的数据，例如：&#10;3 5"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <Terminal className="size-4" />
+                      运行输出
+                    </div>
+                    {runResult ? (
+                      <span className="text-xs text-muted-foreground">
+                        退出码：{runResult.exit_code ?? '—'}
+                      </span>
+                    ) : null}
+                  </div>
+                  <pre
+                    className={cn(
+                      'min-h-32 overflow-auto border bg-slate-950 p-3 font-mono text-sm leading-6 text-slate-100',
+                      runError && 'border-destructive/70 text-red-300',
+                    )}
+                    aria-live="polite"
+                  >
+                    {isRunning
+                      ? '正在运行...'
+                      : runError ||
+                        runResult?.output ||
+                        '点击“运行代码”后在这里查看输出。'}
+                  </pre>
+                </div>
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm text-muted-foreground">
                   {grade
@@ -430,6 +567,19 @@ export const ProgrammingPracticePage = ({
                     : '提交后将由 AI 从正确性、复杂度和代码质量等方面评分。'}
                 </div>
                 <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => void runAnswer()}
+                    disabled={!answer.trim() || isRunning}
+                  >
+                    {isRunning ? (
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                    ) : (
+                      <Play className="mr-2 size-4" />
+                    )}
+                    {isRunning ? '运行中' : '运行代码'}
+                  </Button>
                   {question.referenceSolution ? (
                     <Button
                       type="button"

@@ -443,5 +443,15 @@ class ProgrammingGradeRequest(BaseModel):
     question_id: str = Field(..., min_length=1, max_length=200)
     answer: str = Field(..., min_length=1, max_length=50000)
     language: Literal["python", "cpp", "java", "javascript", "go"] = Field(
-        default="python", description="Programming language used by the submitted answer"
+        default="python",
+        description="Programming language used by the submitted answer",
+    )
+
+
+class ProgrammingRunRequest(BaseModel):
+    question_id: str = Field(..., min_length=1, max_length=200)
+    code: str = Field(..., min_length=1, max_length=50000)
+    stdin: str = Field(default="", max_length=20000)
+    language: Literal["python", "cpp", "java", "javascript", "go"] = Field(
+        default="python", description="Programming language to execute"
     )

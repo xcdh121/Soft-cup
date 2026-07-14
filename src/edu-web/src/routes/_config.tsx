@@ -84,6 +84,11 @@ const ResourcePackageRoute = lazy(() =>
     default: m.ResourcePackageRoute,
   })),
 )
+const HandwritingRecognitionRoute = lazy(() =>
+  import('./handwriting-recognition-route').then((m) => ({
+    default: m.HandwritingRecognitionRoute,
+  })),
+)
 const ProgrammingPracticeRoute = lazy(() =>
   import('./programming-practice-route').then((m) => ({
     default: m.ProgrammingPracticeRoute,
@@ -348,6 +353,16 @@ export const resourcePackageRoute = createRoute({
   ),
 })
 
+export const handwritingRecognitionRoute = createRoute({
+  path: '/p/$projectId/handwriting-recognition',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <HandwritingRecognitionRoute />
+    </Suspense>
+  ),
+})
+
 export const programmingPracticeRoute = createRoute({
   path: '/p/$projectId/programming/$resourceId',
   getParentRoute: () => dashboardRoute,
@@ -475,6 +490,7 @@ export const routeTree = rootRoute.addChildren([
     studyPlanRoute,
     customStudyPlanRoute,
     resourcePackageRoute,
+    handwritingRecognitionRoute,
     programmingPracticeRoute,
     learnerProfileRoute,
     courseLibraryRoute,

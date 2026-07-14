@@ -64,6 +64,15 @@ class Settings(BaseSettings):
     xfyun_iat_host: str = "iat.xf-yun.com"
     xfyun_iat_path: str = "/v1"
 
+    # XFYun handwriting recognition
+    xfyun_handwriting_enabled: bool = False
+    xfyun_handwriting_app_id: str = ""
+    xfyun_handwriting_api_key: str = ""
+    xfyun_handwriting_base_url: str = (
+        "https://webapi.xfyun.cn/v1/service/v1/ocr/handwriting"
+    )
+    xfyun_handwriting_timeout_seconds: float = 30.0
+
     # Baidu AI Search
     baidu_search_api_key: str = ""
     baidu_search_base_url: str = "https://qianfan.baidubce.com"
@@ -71,11 +80,17 @@ class Settings(BaseSettings):
     baidu_search_sites: str = "bilibili.com"
     baidu_search_timeout_seconds: float = 15.0
 
+    # Sandboxed code execution (Piston-compatible POST /api/v2/execute endpoint)
+    code_execution_api_url: str = ""
+    code_execution_api_token: str = ""
+    code_execution_timeout_seconds: float = 15.0
+
     # Usage Limits (per day per user)
     max_chat_messages_per_day: int = 50
     max_flashcard_generations_per_day: int = 10
     max_quiz_generations_per_day: int = 10
     max_document_uploads_per_day: int = 5
+
 
 @lru_cache
 def get_settings() -> Settings:

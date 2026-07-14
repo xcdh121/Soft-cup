@@ -4,10 +4,13 @@ from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 
 from auth import get_current_user
-from dependencies import get_resource_package_service
+from code_execution import CodeExecutionError, execute_code
+from config import Settings
+from dependencies import get_resource_package_service, get_settings_dep
 from edu_core.schemas.resource_packages import (
     GeneratedResourceDto,
     ProgrammingGradeDto,
+    ProgrammingRunDto,
     ResourcePackageDto,
     ResourcePackageStreamEventDto,
 )
@@ -18,6 +21,7 @@ from fastapi.responses import StreamingResponse
 from routers.schemas import (
     GenerateResourcePackageRequest,
     ProgrammingGradeRequest,
+    ProgrammingRunRequest,
     UpdateGeneratedResourceRequest,
 )
 
@@ -207,6 +211,53 @@ async def grade_programming_answer(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="AI 判题服务暂时不可用，请稍后重试。",
         ) from exc
+
+
+@generated_resources_router.post(
+    "/{resource_id}/programming-run", response_model=ProgrammingRunDto
+)
+async def run_programming_answer(
+    project_id: str,
+    resource_id: str,
+    run_request: ProgrammingRunRequest,
+    user=Depends(get_current_user),
+    service: ResourcePackageService = Depends(get_resource_package_service),
+    settings: Settings = Depends(get_settings_dep),
+):
+    resource = service.get_generated_resource(user.id, project_id, resource_id)
+    if resource.resource_type != "programming_questions":
+        raise HTTPException(status_code=400, detail="所选资源不是编程题。")
+
+    questions = (resource.content_json or {}).get("questions", [])
+    if not any(
+        isinstance(question, dict)
+        and str(question.get("id")) == run_request.question_id
+        for question in questions
+    ):
+        raise HTTPException(status_code=404, detail="未找到对应的编程题。")
+    if not settings.code_execution_api_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="代码运行服务尚未配置，请联系管理员设置 CODE_EXECUTION_API_URL。",
+        )
+
+    try:
+        result = await execute_code(
+            api_url=settings.code_execution_api_url,
+            api_token=settings.code_execution_api_token,
+            language=run_request.language,
+            code=run_request.code,
+            stdin=run_request.stdin,
+            timeout_seconds=settings.code_execution_timeout_seconds,
+        )
+    except CodeExecutionError as exc:
+        logger.warning("Sandboxed code execution failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    return ProgrammingRunDto(**result.__dict__)
 
 
 @generated_resources_router.post(
