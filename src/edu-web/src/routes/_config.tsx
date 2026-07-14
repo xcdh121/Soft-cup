@@ -74,6 +74,11 @@ const StudyPlanRoute = lazy(() =>
     default: m.StudyPlanRoute,
   })),
 )
+const CustomStudyPlanRoute = lazy(() =>
+  import('./custom-study-plan-route').then((m) => ({
+    default: m.CustomStudyPlanRoute,
+  })),
+)
 const ResourcePackageRoute = lazy(() =>
   import('./resource-package-route').then((m) => ({
     default: m.ResourcePackageRoute,
@@ -323,6 +328,16 @@ export const studyPlanRoute = createRoute({
   ),
 })
 
+export const customStudyPlanRoute = createRoute({
+  path: '/p/$projectId/study-plan/customize',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <CustomStudyPlanRoute />
+    </Suspense>
+  ),
+})
+
 export const resourcePackageRoute = createRoute({
   path: '/p/$projectId/resource-packages',
   getParentRoute: () => dashboardRoute,
@@ -378,7 +393,47 @@ export const learningEvaluationRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   component: () => (
     <Suspense fallback={<LoadingPage />}>
-      <LearningEvaluationRoute />
+      <LearningEvaluationRoute section="history" />
+    </Suspense>
+  ),
+})
+
+export const learningEvaluationHistoryRoute = createRoute({
+  path: '/p/$projectId/learning-evaluation/history',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <LearningEvaluationRoute section="history" />
+    </Suspense>
+  ),
+})
+
+export const learningEvaluationProgrammingRoute = createRoute({
+  path: '/p/$projectId/learning-evaluation/programming',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <LearningEvaluationRoute section="practice" />
+    </Suspense>
+  ),
+})
+
+export const learningEvaluationChoiceRoute = createRoute({
+  path: '/p/$projectId/learning-evaluation/choice',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <LearningEvaluationRoute section="practice" />
+    </Suspense>
+  ),
+})
+
+export const learningEvaluationPracticeRoute = createRoute({
+  path: '/p/$projectId/learning-evaluation/practice',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <LearningEvaluationRoute section="practice" />
     </Suspense>
   ),
 })
@@ -418,12 +473,17 @@ export const routeTree = rootRoute.addChildren([
     mindMapDetailRoute,
 
     studyPlanRoute,
+    customStudyPlanRoute,
     resourcePackageRoute,
     programmingPracticeRoute,
     learnerProfileRoute,
     courseLibraryRoute,
     knowledgeGraphRoute,
     learningEvaluationRoute,
+    learningEvaluationHistoryRoute,
+    learningEvaluationProgrammingRoute,
+    learningEvaluationChoiceRoute,
+    learningEvaluationPracticeRoute,
     agentRuntimeRoute,
     settingsRoute,
   ]),

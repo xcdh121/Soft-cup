@@ -1,7 +1,6 @@
 import {
   BookOpen,
   BrainCircuitIcon,
-  BrainIcon,
   LibraryBigIcon,
   Settings2,
 } from 'lucide-react'
@@ -33,10 +32,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               asChild
             >
               <Link to="/dashboard">
-                <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
-                  <BrainIcon className="size-4" />
-                </div>
-                <span className="text-lg font-bold">EduAgent</span>
+                <img
+                  src="/source/4.jpg"
+                  alt="万径"
+                  className="aspect-square size-10 rounded-lg object-cover"
+                />
+                <span className="text-lg font-bold">万径</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

@@ -55,6 +55,12 @@ export type EvaluationResource = {
 
 export type LearningEvaluation = {
   resources: Array<EvaluationResource>
+  practiceRecords: Array<{
+    id: string
+    topic: string
+    wasCorrect: boolean
+    createdAt: string
+  }>
   wrongRecords: Array<{
     id: string
     itemType: string
@@ -267,6 +273,12 @@ export const learningEvaluationAtom = Atom.family((projectId: string) =>
           ...flashcardResources,
           ...programmingResources,
         ].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        practiceRecords: records.map((record) => ({
+          id: record.id,
+          topic: record.topic,
+          wasCorrect: record.was_correct,
+          createdAt: record.created_at,
+        })),
         wrongRecords: records
           .filter((record) => !record.was_correct)
           .sort((a, b) => b.created_at.localeCompare(a.created_at))

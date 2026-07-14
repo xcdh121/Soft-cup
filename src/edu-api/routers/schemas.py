@@ -437,3 +437,11 @@ class UpdateGeneratedResourceRequest(BaseModel):
     content_text: str | None = Field(None, description="Text content")
     content_json: dict | None = Field(None, description="Structured content")
     generation_reason: str | None = Field(None, description="Generation reason")
+
+
+class ProgrammingGradeRequest(BaseModel):
+    question_id: str = Field(..., min_length=1, max_length=200)
+    answer: str = Field(..., min_length=1, max_length=50000)
+    language: Literal["python", "cpp", "java", "javascript", "go"] = Field(
+        default="python", description="Programming language used by the submitted answer"
+    )

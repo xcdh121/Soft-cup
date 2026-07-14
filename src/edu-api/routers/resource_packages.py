@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 
@@ -6,17 +7,21 @@ from auth import get_current_user
 from dependencies import get_resource_package_service
 from edu_core.schemas.resource_packages import (
     GeneratedResourceDto,
+    ProgrammingGradeDto,
     ResourcePackageDto,
     ResourcePackageStreamEventDto,
 )
 from edu_core.services.resource_packages import ResourcePackageService
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from routers.schemas import (
     GenerateResourcePackageRequest,
+    ProgrammingGradeRequest,
     UpdateGeneratedResourceRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 resource_packages_router = APIRouter(
     prefix="/api/v1/projects/{project_id}/resource-packages",
@@ -175,6 +180,33 @@ def update_generated_resource(
     return service.update_generated_resource(
         user.id, project_id, resource_id, request.model_dump(exclude_none=True)
     )
+
+
+@generated_resources_router.post(
+    "/{resource_id}/programming-grade", response_model=ProgrammingGradeDto
+)
+async def grade_programming_answer(
+    project_id: str,
+    resource_id: str,
+    request: ProgrammingGradeRequest,
+    user=Depends(get_current_user),
+    service: ResourcePackageService = Depends(get_resource_package_service),
+):
+    try:
+        return await service.grade_programming_answer(
+            user_id=user.id,
+            project_id=project_id,
+            resource_id=resource_id,
+            question_id=request.question_id,
+            answer=request.answer,
+            language=request.language,
+        )
+    except RuntimeError as exc:
+        logger.exception("AI programming grading failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI 判题服务暂时不可用，请稍后重试。",
+        ) from exc
 
 
 @generated_resources_router.post(

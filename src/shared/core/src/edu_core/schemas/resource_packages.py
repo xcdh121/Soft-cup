@@ -65,6 +65,24 @@ class GeneratedResourceDto(BaseModel):
     completed_at: datetime | None = Field(None, description="Completion time")
 
 
+class ProgrammingGradeDto(BaseModel):
+    score: int = Field(..., ge=0, le=100, description="AI score from 0 to 100")
+    passed: bool = Field(..., description="Whether the answer meets the pass threshold")
+    verdict: Literal["accepted", "needs_improvement", "incorrect"] = Field(
+        ..., description="Overall grading verdict"
+    )
+    summary: str = Field(..., min_length=1, description="Overall grading summary")
+    strengths: list[str] = Field(default_factory=list, description="What was done well")
+    issues: list[str] = Field(default_factory=list, description="Problems found in the answer")
+    suggestions: list[str] = Field(
+        default_factory=list, description="Actionable improvement suggestions"
+    )
+    complexity_analysis: str | None = Field(
+        None, description="Time and space complexity analysis"
+    )
+    grading_mode: Literal["ai"] = Field(default="ai", description="Grading mode")
+
+
 class ResourcePackageDto(BaseModel):
     model_config = {"from_attributes": True}
 

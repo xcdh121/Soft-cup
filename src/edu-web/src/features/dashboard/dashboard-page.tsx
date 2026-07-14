@@ -3,18 +3,10 @@ import { Link } from '@tanstack/react-router'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import {
-  ArrowUpRightIcon,
-  BookOpenIcon,
-  BotIcon,
-  ClipboardCheckIcon,
-  Clock3Icon,
   FlameIcon,
   FolderIcon,
-  GraduationCapIcon,
-  LibraryBigIcon,
   Loader2Icon,
   MessageCircleIcon,
-  NetworkIcon,
   PlusIcon,
   SendIcon,
   TrophyIcon,
@@ -25,7 +17,6 @@ import dashboardSlideTwo from '../../../../source/2.png'
 import dashboardSlideThree from '../../../../source/3.png'
 import type { CarouselApi } from '@/components/ui/carousel'
 import { projectsAtom } from '@/data-acess/project'
-import { usageAtom } from '@/data-acess/usage'
 import { useCreateProjectDialog } from '@/features/project/components/upsert-project-dialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -46,17 +37,9 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { supabase } from '@/lib/supabase'
 
-type StudyStat = {
-  label: string
-  value: string
-  description: string
-  icon: typeof BookOpenIcon
-}
-
 type StudyShortcutContentProps = {
   label: string
   description: string
-  icon: typeof BookOpenIcon
 }
 
 type DashboardComment = {
@@ -94,25 +77,18 @@ const dashboardSlides = [
 ]
 
 const studyShortcutClassName =
-  'group flex min-h-0 w-full items-center gap-3 rounded-2xl border bg-card/85 px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:bg-card hover:shadow-md'
+  'group flex min-h-0 w-full items-center bg-card/85 px-4 py-3 text-left transition-colors hover:bg-muted/60'
 
 const StudyShortcutContent = ({
   label,
   description,
-  icon: Icon,
 }: StudyShortcutContentProps) => (
-  <>
-    <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
-      <Icon className="h-5 w-5" />
+  <div className="min-w-0 flex-1">
+    <div className="font-medium leading-5">{label}</div>
+    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+      {description}
     </div>
-    <div className="min-w-0 flex-1">
-      <div className="font-medium leading-5">{label}</div>
-      <div className="mt-0.5 truncate text-xs text-muted-foreground">
-        {description}
-      </div>
-    </div>
-    <ArrowUpRightIcon className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />
-  </>
+  </div>
 )
 
 const StudyOverviewCarousel = () => {
@@ -146,7 +122,7 @@ const StudyOverviewCarousel = () => {
     <Carousel
       setApi={setApi}
       opts={{ loop: true }}
-      className="min-w-0 overflow-hidden rounded-2xl border bg-slate-950 shadow-sm"
+      className="min-w-0 overflow-hidden border bg-slate-950 shadow-sm"
       aria-label="数据结构学习图片"
     >
       <CarouselContent className="-ml-0">
@@ -209,15 +185,6 @@ const getInitials = (name: string) =>
     .join('')
     .toUpperCase()
     .slice(0, 2) || '同学'
-
-const formatStudyDuration = (minutes: number) => {
-  if (minutes < 60) return `${minutes} 分钟`
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return remainingMinutes === 0
-    ? `${hours} 小时`
-    : `${hours} 小时 ${remainingMinutes} 分钟`
-}
 
 const heatStyle = (count: number, maxCount: number) => {
   const intensity = maxCount === 0 ? 0 : count / maxCount
@@ -435,7 +402,6 @@ const CommunitySection = () => {
 
 export const DashboardPage = () => {
   const projectsResult = useAtomValue(projectsAtom)
-  const usageResult = useAtomValue(usageAtom)
   const openCreateProjectDialog = useCreateProjectDialog((state) => state.open)
 
   const hasProjects =
@@ -443,71 +409,6 @@ export const DashboardPage = () => {
   const firstProjectId = Result.isSuccess(projectsResult)
     ? projectsResult.value[0]?.id
     : undefined
-
-  const todayStudyStats: Array<StudyStat> = Result.isSuccess(usageResult)
-    ? (() => {
-        const activityCount =
-          usageResult.value.chat_messages.used +
-          usageResult.value.flashcard_generations.used +
-          usageResult.value.quiz_generations.used +
-          usageResult.value.mindmap_generations.used
-        const estimatedMinutes =
-          usageResult.value.chat_messages.used * 6 +
-          usageResult.value.flashcard_generations.used * 12 +
-          usageResult.value.quiz_generations.used * 15 +
-          usageResult.value.mindmap_generations.used * 10
-        const masteredKnowledgePoints =
-          usageResult.value.flashcard_generations.used * 3 +
-          usageResult.value.quiz_generations.used * 2 +
-          usageResult.value.mindmap_generations.used * 4
-
-        return [
-          {
-            label: '已学内容',
-            value: `${activityCount} 项`,
-            description: '按今日学习活动汇总',
-            icon: BookOpenIcon,
-          },
-          {
-            label: '学习时长',
-            value: formatStudyDuration(estimatedMinutes),
-            description: '依据今日学习活动估算',
-            icon: Clock3Icon,
-          },
-          {
-            label: '掌握知识点',
-            value: `${masteredKnowledgePoints} 个`,
-            description: '依据今日练习与内容生成估算',
-            icon: GraduationCapIcon,
-          },
-        ]
-      })()
-    : [
-        {
-          label: '已学内容',
-          value: Result.isFailure(usageResult) ? '0 项' : '--',
-          description: Result.isFailure(usageResult)
-            ? '暂时无法获取今日学习数据'
-            : '正在加载今日学习概览',
-          icon: BookOpenIcon,
-        },
-        {
-          label: '学习时长',
-          value: Result.isFailure(usageResult) ? '0 分钟' : '--',
-          description: Result.isFailure(usageResult)
-            ? '暂时无法获取今日学习数据'
-            : '正在整理学习时长',
-          icon: Clock3Icon,
-        },
-        {
-          label: '掌握知识点',
-          value: Result.isFailure(usageResult) ? '0 个' : '--',
-          description: Result.isFailure(usageResult)
-            ? '暂时无法获取今日学习数据'
-            : '正在汇总掌握情况',
-          icon: GraduationCapIcon,
-        },
-      ]
 
   return (
     <div className="min-h-screen bg-background p-8">
@@ -527,18 +428,18 @@ export const DashboardPage = () => {
           )}
         </div>
 
-        <Card className="border-primary/15 bg-gradient-to-br from-primary/8 via-background to-background shadow-sm">
+        <Card className="rounded-none border-primary/15 bg-gradient-to-br from-primary/8 via-background to-background shadow-sm">
           <CardHeader className="space-y-2">
             <CardTitle className="text-xl">今日学习概览</CardTitle>
             <CardDescription>
-              集中展示你今天已经学习的内容、投入的时间和掌握情况。
+              从常用入口快速进入 AI 指导、题库、课程资料和知识图谱。
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,4fr)_minmax(180px,1fr)]">
+          <CardContent>
+            <div className="grid items-stretch lg:grid-cols-[minmax(0,4fr)_minmax(180px,1fr)]">
               <StudyOverviewCarousel />
 
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-1 lg:grid-rows-4">
+              <div className="grid grid-cols-2 overflow-hidden border lg:grid-cols-1 lg:grid-rows-4 lg:border-l-0 [&>*:nth-child(even)]:border-l [&>*:nth-child(n+3)]:border-t lg:[&>*:nth-child(even)]:border-l-0 lg:[&>*:nth-child(n+2)]:border-t">
                 {firstProjectId ? (
                   <Link
                     to="/dashboard/p/$projectId"
@@ -548,7 +449,6 @@ export const DashboardPage = () => {
                     <StudyShortcutContent
                       label="AI 指导"
                       description="获取个性化学习建议"
-                      icon={BotIcon}
                     />
                   </Link>
                 ) : (
@@ -560,21 +460,19 @@ export const DashboardPage = () => {
                     <StudyShortcutContent
                       label="AI 指导"
                       description="创建项目后开始使用"
-                      icon={BotIcon}
                     />
                   </button>
                 )}
 
                 {firstProjectId ? (
                   <Link
-                    to="/dashboard/p/$projectId"
+                    to="/dashboard/p/$projectId/learning-evaluation/practice"
                     params={{ projectId: firstProjectId }}
                     className={studyShortcutClassName}
                   >
                     <StudyShortcutContent
                       label="学习题库"
                       description="练习并巩固知识点"
-                      icon={ClipboardCheckIcon}
                     />
                   </Link>
                 ) : (
@@ -586,7 +484,6 @@ export const DashboardPage = () => {
                     <StudyShortcutContent
                       label="学习题库"
                       description="创建项目后开始练习"
-                      icon={ClipboardCheckIcon}
                     />
                   </button>
                 )}
@@ -598,7 +495,6 @@ export const DashboardPage = () => {
                   <StudyShortcutContent
                     label="课程资料"
                     description="浏览数据结构资料库"
-                    icon={LibraryBigIcon}
                   />
                 </Link>
 
@@ -611,7 +507,6 @@ export const DashboardPage = () => {
                     <StudyShortcutContent
                       label="知识图谱"
                       description="查看知识关联脉络"
-                      icon={NetworkIcon}
                     />
                   </Link>
                 ) : (
@@ -623,40 +518,10 @@ export const DashboardPage = () => {
                     <StudyShortcutContent
                       label="知识图谱"
                       description="创建项目后查看图谱"
-                      icon={NetworkIcon}
                     />
                   </button>
                 )}
               </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              {todayStudyStats.map((stat) => {
-                const Icon = stat.icon
-                return (
-                  <div
-                    key={stat.label}
-                    className="group flex min-w-0 items-center gap-4 rounded-2xl border bg-card/85 p-4 backdrop-blur transition-colors hover:border-primary/30 hover:bg-card"
-                  >
-                    <div className="rounded-xl bg-primary/10 p-3 text-primary transition-transform group-hover:scale-105">
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                        <span className="text-sm text-muted-foreground">
-                          {stat.label}
-                        </span>
-                        <span className="text-2xl font-semibold tracking-tight">
-                          {stat.value}
-                        </span>
-                      </div>
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                        {stat.description}
-                      </p>
-                    </div>
-                  </div>
-                )
-              })}
             </div>
           </CardContent>
         </Card>
