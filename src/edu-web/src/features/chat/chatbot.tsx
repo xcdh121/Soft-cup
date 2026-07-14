@@ -1,7 +1,7 @@
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Link } from '@tanstack/react-router'
 import { CopyIcon, ExternalLinkIcon, GlobeIcon } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { DigitalAvatarPanel } from './components/digital-avatar-panel'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import type {
@@ -178,24 +178,6 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
     ? (chatResult.value.messages ?? [])
     : []
   const isStreaming = streamStatus !== null
-  const latestAssistantResponse = useMemo(() => {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index]
-      if (message.role !== 'assistant') continue
-
-      const text = Array.from(message.parts ?? [])
-        .filter((part): part is TextPartDto => part.type === 'text')
-        .sort((left, right) => left.order - right.order)
-        .map((part) => part.text_content)
-        .join('\n\n')
-        .trim()
-
-      if (text) return text
-    }
-
-    return ''
-  }, [messages])
-
   const blobToDataUrl = useCallback(
     async (blobUrl: string): Promise<string> => {
       const response = await fetch(blobUrl)
@@ -532,10 +514,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
         </div>
       </div>
 
-      <DigitalAvatarPanel
-        assistantText={latestAssistantResponse}
-        isStreaming={isStreaming}
-      />
+      <DigitalAvatarPanel />
     </div>
   )
 }

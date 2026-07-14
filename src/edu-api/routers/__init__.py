@@ -7,6 +7,7 @@ from .diagnosis import router as diagnosis_router
 from .documents import course_books_router, router as documents_router
 from .flashcard_groups import router as flashcard_groups_router
 from .handwriting import router as handwriting_router
+from .pdf_ocr import router as pdf_ocr_router
 from .knowledge_states import knowledge_graph_router
 from .knowledge_states import router as knowledge_states_router
 from .learner_profiles import router as learner_profiles_router
@@ -37,6 +38,7 @@ __all__ = [
     "documents_router",
     "flashcard_groups_router",
     "handwriting_router",
+    "pdf_ocr_router",
     "generated_resources_router",
     "knowledge_graph_router",
     "knowledge_points_router",

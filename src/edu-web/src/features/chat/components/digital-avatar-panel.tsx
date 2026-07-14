@@ -1,26 +1,36 @@
 import {
   CircleAlertIcon,
   Loader2Icon,
-  PlayIcon,
+  MicIcon,
   RefreshCwIcon,
+  SendIcon,
   SparklesIcon,
+  SquareIcon,
   Volume2Icon,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import AvatarPlatform, {
   PlayerEvents,
+  RecorderEvents,
   SDKEvents,
 } from '../../../../avatar-sdk-web_3.2.3.1002/esm/index.js'
-import { prepareSpeechText, splitSpeechText } from './digital-avatar-text'
+import {
+  getAvatarEventStatus,
+  getAvatarEventText,
+} from './digital-avatar-event'
+import type { Recorder } from '../../../../avatar-sdk-web_3.2.3.1002/esm/index.js'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { env } from '@/env'
 
-type AvatarStatus = 'disabled' | 'connecting' | 'ready' | 'speaking' | 'error'
-
-type DigitalAvatarPanelProps = {
-  assistantText: string
-  isStreaming: boolean
-}
+type AvatarStatus =
+  | 'disabled'
+  | 'connecting'
+  | 'ready'
+  | 'listening'
+  | 'thinking'
+  | 'speaking'
+  | 'error'
 
 const avatarConfig = {
   serverUrl:
@@ -47,65 +57,31 @@ const getErrorMessage = (error: unknown) => {
 const statusCopy: Record<AvatarStatus, string> = {
   disabled: '等待配置',
   connecting: '正在连接',
-  ready: '已就绪',
+  ready: '可以提问',
+  listening: '正在聆听',
+  thinking: '正在思考',
   speaking: '正在讲解',
   error: '连接异常',
 }
 
-export const DigitalAvatarPanel = ({
-  assistantText,
-  isStreaming,
-}: DigitalAvatarPanelProps) => {
+export const DigitalAvatarPanel = () => {
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const avatarRef = useRef<AvatarPlatform | null>(null)
+  const recorderRef = useRef<Recorder | null>(null)
   const isReadyRef = useRef(false)
-  const pendingTextRef = useRef<string | null>(null)
   const isSpeakingRef = useRef(false)
-  const driveRequestIdRef = useRef(0)
+  const isRecordingRef = useRef(false)
   const [instanceKey, setInstanceKey] = useState(0)
+  const [question, setQuestion] = useState('')
+  const [lastQuestion, setLastQuestion] = useState('')
+  const [answerText, setAnswerText] = useState('')
+  const [isThinking, setIsThinking] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
   const [status, setStatus] = useState<AvatarStatus>(
     isAvatarConfigured ? 'connecting' : 'disabled',
   )
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [needsInteraction, setNeedsInteraction] = useState(false)
-
-  const speechText = useMemo(
-    () => prepareSpeechText(assistantText),
-    [assistantText],
-  )
-
-  const driveText = useCallback(async (text: string) => {
-    const avatar = avatarRef.current
-    if (!avatar || !isReadyRef.current) {
-      pendingTextRef.current = text
-      return
-    }
-
-    const requestId = ++driveRequestIdRef.current
-    const chunks = splitSpeechText(text)
-
-    try {
-      if (isSpeakingRef.current) {
-        await avatar.interrupt()
-      }
-      isSpeakingRef.current = true
-      setErrorMessage(null)
-      setStatus('speaking')
-
-      for (const chunk of chunks) {
-        if (requestId !== driveRequestIdRef.current) return
-        await avatar.writeText(chunk, {
-          nlp: false,
-          avatar_dispatch: { interactive_mode: 0 },
-        })
-      }
-    } catch (error) {
-      if (requestId !== driveRequestIdRef.current) return
-      isSpeakingRef.current = false
-      setStatus('error')
-      setErrorMessage(getErrorMessage(error))
-    }
-  }, [])
 
   useEffect(() => {
     if (!isAvatarConfigured || !wrapperRef.current) return
@@ -116,20 +92,31 @@ export const DigitalAvatarPanel = ({
     isReadyRef.current = false
     setStatus('connecting')
     setErrorMessage(null)
+    setNeedsInteraction(false)
 
     avatar
-      .on(SDKEvents.connected, () => {
-        if (!disposed) setStatus('ready')
+      .on(SDKEvents.nlp, (event: unknown) => {
+        if (disposed) return
+        const text = getAvatarEventText(event)
+        if (text) setAnswerText(text)
+        if (getAvatarEventStatus(event) === 2) setIsThinking(false)
+      })
+      .on(SDKEvents.asr, (event: unknown) => {
+        if (disposed) return
+        const text = getAvatarEventText(event)
+        if (text) setLastQuestion(text)
       })
       .on(SDKEvents.frame_start, () => {
         if (!disposed) {
           isSpeakingRef.current = true
+          setIsThinking(false)
           setStatus('speaking')
         }
       })
       .on(SDKEvents.frame_stop, () => {
         if (!disposed) {
           isSpeakingRef.current = false
+          setIsThinking(false)
           setStatus('ready')
         }
       })
@@ -137,16 +124,20 @@ export const DigitalAvatarPanel = ({
         if (!disposed) {
           isReadyRef.current = false
           isSpeakingRef.current = false
+          isRecordingRef.current = false
+          setIsRecording(false)
+          setIsThinking(false)
           setStatus('error')
           setErrorMessage(
-            event ? getErrorMessage(event) : '数字人连接已断开，请重试',
+            event ? getErrorMessage(event) : '数字人连接已断开，请重新连接',
           )
         }
       })
       .on(SDKEvents.error, (error: unknown) => {
         if (!disposed) {
-          isReadyRef.current = false
-          isSpeakingRef.current = false
+          isRecordingRef.current = false
+          setIsRecording(false)
+          setIsThinking(false)
           setStatus('error')
           setErrorMessage(getErrorMessage(error))
         }
@@ -160,6 +151,26 @@ export const DigitalAvatarPanel = ({
       if (!disposed) {
         setStatus('error')
         setErrorMessage(getErrorMessage(error))
+      }
+    })
+
+    const recorder = avatar.createRecorder({ sampleRate: 16000 })
+    recorderRef.current = recorder
+    recorder.on(RecorderEvents.ended, () => {
+      if (!disposed) {
+        isRecordingRef.current = false
+        setIsRecording(false)
+        setIsThinking(true)
+        setStatus('thinking')
+      }
+    })
+    recorder.on(RecorderEvents.error, (error: unknown) => {
+      if (!disposed) {
+        isRecordingRef.current = false
+        setIsRecording(false)
+        setIsThinking(false)
+        setStatus('ready')
+        setErrorMessage(`无法使用麦克风：${getErrorMessage(error)}`)
       }
     })
 
@@ -178,6 +189,11 @@ export const DigitalAvatarPanel = ({
         height: 1280,
       },
       tts: { vcn: avatarConfig.vcn! },
+      avatar_dispatch: {
+        interactive_mode: 1,
+        content_analysis: 1,
+      },
+      air: { air: 1, add_nonsemantic: 1 },
     })
 
     void avatar
@@ -186,9 +202,6 @@ export const DigitalAvatarPanel = ({
         if (disposed) return
         isReadyRef.current = true
         setStatus('ready')
-        const pendingText = pendingTextRef.current
-        pendingTextRef.current = null
-        if (pendingText) void driveText(pendingText)
       })
       .catch((error: unknown) => {
         if (!disposed) {
@@ -200,12 +213,82 @@ export const DigitalAvatarPanel = ({
     return () => {
       disposed = true
       avatarRef.current = null
+      recorderRef.current = null
       isReadyRef.current = false
       isSpeakingRef.current = false
-      driveRequestIdRef.current += 1
+      isRecordingRef.current = false
       avatar.destroy()
     }
-  }, [driveText, instanceKey])
+  }, [instanceKey])
+
+  const askQuestion = useCallback(async () => {
+    const text = question.trim()
+    const avatar = avatarRef.current
+    if (!text || !avatar || !isReadyRef.current || isRecordingRef.current) {
+      return
+    }
+
+    try {
+      if (isSpeakingRef.current) await avatar.interrupt()
+      setLastQuestion(text)
+      setAnswerText('')
+      setQuestion('')
+      setErrorMessage(null)
+      setIsThinking(true)
+      setStatus('thinking')
+      await avatar.writeText(text, {
+        nlp: true,
+        avatar_dispatch: { interactive_mode: 1 },
+      })
+    } catch (error) {
+      setIsThinking(false)
+      setStatus('error')
+      setErrorMessage(getErrorMessage(error))
+    }
+  }, [question])
+
+  const toggleRecording = useCallback(async () => {
+    const avatar = avatarRef.current
+    const recorder = recorderRef.current
+    if (!avatar || !recorder || !isReadyRef.current) return
+
+    try {
+      if (isRecordingRef.current) {
+        await recorder.stopRecord()
+        isRecordingRef.current = false
+        setIsRecording(false)
+        setIsThinking(true)
+        setStatus('thinking')
+        return
+      }
+
+      if (isSpeakingRef.current) await avatar.interrupt()
+      setLastQuestion('正在识别语音…')
+      setAnswerText('')
+      setErrorMessage(null)
+      setIsThinking(false)
+      await recorder.startRecord(
+        30_000,
+        () => {
+          isRecordingRef.current = false
+          setIsRecording(false)
+          setIsThinking(true)
+          setStatus('thinking')
+        },
+        { nlp: true },
+      )
+      isRecordingRef.current = true
+      setIsRecording(true)
+      setStatus('listening')
+    } catch (error) {
+      isRecordingRef.current = false
+      setIsRecording(false)
+      setStatus('ready')
+      setErrorMessage(
+        `语音提问启动失败，请检查麦克风权限和 HTTPS 环境：${getErrorMessage(error)}`,
+      )
+    }
+  }, [])
 
   const resumePlayback = async () => {
     try {
@@ -216,20 +299,25 @@ export const DigitalAvatarPanel = ({
     }
   }
 
+  const unavailable =
+    !isAvatarConfigured || status === 'connecting' || status === 'error'
+
   return (
     <aside className="hidden min-h-0 bg-background xl:flex xl:flex-col">
       <div className="border-b px-5 py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <SparklesIcon className="size-4 text-primary" />
-            <h2 className="text-sm font-semibold">AI 数字人</h2>
+            <h2 className="text-sm font-semibold">知识库数字人</h2>
           </div>
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span
               className={`size-1.5 rounded-full ${
                 status === 'ready'
                   ? 'bg-emerald-500'
-                  : status === 'speaking'
+                  : status === 'speaking' ||
+                      status === 'thinking' ||
+                      status === 'listening'
                     ? 'animate-pulse bg-primary'
                     : status === 'error'
                       ? 'bg-destructive'
@@ -240,18 +328,18 @@ export const DigitalAvatarPanel = ({
           </span>
         </div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          大模型回答完成后，点击播放按钮让数字人为你讲解。
+          可询问数据结构知识或平台操作，数字人会理解问题并回答讲解。
         </p>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
-        <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border bg-neutral-950 shadow-sm">
-          <div ref={wrapperRef} className="size-full min-h-80" />
+      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+        <div className="relative min-h-64 flex-[4] overflow-hidden rounded-xl border bg-neutral-950 shadow-sm">
+          <div ref={wrapperRef} className="size-full" />
 
           {status === 'connecting' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-neutral-950 text-neutral-200">
               <Loader2Icon className="size-6 animate-spin" />
-              <span className="text-sm">正在连接数字人...</span>
+              <span className="text-sm">正在连接数字人…</span>
             </div>
           )}
 
@@ -282,38 +370,90 @@ export const DigitalAvatarPanel = ({
           )}
         </div>
 
+        <div className="max-h-40 min-h-20 overflow-y-auto rounded-lg border bg-muted/30 p-3 text-xs leading-5">
+          {!lastQuestion && !isThinking && !answerText && (
+            <div className="text-muted-foreground">
+              <p>你可以这样问：</p>
+              <p>“什么是二叉树？” 或 “如何在平台上传学习文档？”</p>
+            </div>
+          )}
+          {lastQuestion && (
+            <p>
+              <span className="font-medium text-foreground">你问：</span>
+              <span className="text-muted-foreground">{lastQuestion}</span>
+            </p>
+          )}
+          {isThinking && (
+            <p className="mt-1 flex items-center gap-1.5 text-primary">
+              <Loader2Icon className="size-3.5 animate-spin" />
+              正在查询知识库并组织讲解…
+            </p>
+          )}
+          {answerText && (
+            <p className="mt-1 whitespace-pre-wrap">
+              <span className="font-medium text-primary">数字人：</span>
+              <span>{answerText}</span>
+            </p>
+          )}
+        </div>
+
         {errorMessage && (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs leading-5 text-destructive">
             {errorMessage}
           </div>
         )}
 
+        <Textarea
+          value={question}
+          maxLength={500}
+          rows={2}
+          disabled={unavailable || isRecording}
+          className="min-h-16 resize-none text-sm"
+          placeholder="向数字人提问数据结构或平台操作…"
+          onChange={(event) => setQuestion(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault()
+              void askQuestion()
+            }
+          }}
+        />
+
         <div className="grid grid-cols-2 gap-2">
           <Button
-            variant="outline"
             size="sm"
             disabled={
-              !isAvatarConfigured ||
-              !speechText ||
-              isStreaming ||
-              status === 'connecting' ||
-              status === 'error'
+              unavailable || !question.trim() || isThinking || isRecording
             }
-            onClick={() => void driveText(speechText)}
+            onClick={() => void askQuestion()}
           >
-            <PlayIcon className="size-4" />
-            {isStreaming ? '回答生成中' : '播放回答'}
+            <SendIcon className="size-4" />
+            提问
           </Button>
           <Button
-            variant="outline"
+            variant={isRecording ? 'destructive' : 'outline'}
             size="sm"
-            disabled={!isAvatarConfigured}
-            onClick={() => setInstanceKey((key) => key + 1)}
+            disabled={unavailable || (isThinking && !isRecording)}
+            onClick={() => void toggleRecording()}
           >
-            <RefreshCwIcon className="size-4" />
-            重新连接
+            {isRecording ? (
+              <SquareIcon className="size-4" />
+            ) : (
+              <MicIcon className="size-4" />
+            )}
+            {isRecording ? '结束提问' : '语音提问'}
           </Button>
         </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!isAvatarConfigured}
+          onClick={() => setInstanceKey((key) => key + 1)}
+        >
+          <RefreshCwIcon className="size-4" />
+          重新连接
+        </Button>
       </div>
     </aside>
   )

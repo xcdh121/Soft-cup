@@ -6,6 +6,7 @@ import {
   BookOpenTextIcon,
   BotIcon,
   ChevronRightIcon,
+  FileScanIcon,
   FileStackIcon,
   HistoryIcon,
   ListChecksIcon,
@@ -177,6 +178,25 @@ export function CurrentProjectNav() {
                   >
                     <ScanTextIcon className="size-4 opacity-70" />
                     <span>手写文字识别</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  tooltip="PDF 文档识别"
+                  isActive={
+                    location.pathname ===
+                    `/dashboard/p/${currentProjectId}/pdf-ocr`
+                  }
+                >
+                  <Link
+                    to="/dashboard/p/$projectId/pdf-ocr"
+                    params={{ projectId: currentProjectId }}
+                  >
+                    <FileScanIcon className="size-4 opacity-70" />
+                    <span>PDF 文档识别</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

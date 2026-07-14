@@ -25,6 +25,7 @@ from routers import (
     documents_router,
     flashcard_groups_router,
     handwriting_router,
+    pdf_ocr_router,
     generated_resources_router,
     knowledge_graph_router,
     knowledge_points_router,
@@ -125,6 +126,7 @@ class Api:
         self.app.include_router(quizzes_router)
         self.app.include_router(flashcard_groups_router)
         self.app.include_router(handwriting_router)
+        self.app.include_router(pdf_ocr_router)
         self.app.include_router(practice_records_router)
         self.app.include_router(mind_maps_router)
         self.app.include_router(study_plans_router)

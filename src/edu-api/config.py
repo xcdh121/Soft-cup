@@ -73,6 +73,13 @@ class Settings(BaseSettings):
     )
     xfyun_handwriting_timeout_seconds: float = 30.0
 
+    # XFYun PDF document OCR
+    xfyun_pdf_ocr_enabled: bool = False
+    xfyun_pdf_ocr_app_id: str = ""
+    xfyun_pdf_ocr_secret: str = ""
+    xfyun_pdf_ocr_base_url: str = "https://iocr.xfyun.cn/ocrzdq/v1/pdfOcr"
+    xfyun_pdf_ocr_timeout_seconds: float = 120.0
+
     # Baidu AI Search
     baidu_search_api_key: str = ""
     baidu_search_base_url: str = "https://qianfan.baidubce.com"
