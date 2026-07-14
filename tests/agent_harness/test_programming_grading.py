@@ -67,6 +67,60 @@ class ProgrammingGradingTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"programming_language": "cpp"', fake_model.prompt)
         self.assertFalse(hasattr(fake_model, "with_structured_output"))
 
+    async def test_grading_normalizes_model_verdict_before_validation(self):
+        class FakeModel:
+            async def ainvoke(self, prompt):
+                return SimpleNamespace(
+                    content="""
+                    {
+                      "score": 82,
+                      "passed": false,
+                      "verdict": "correct",
+                      "summary": "The solution is correct.",
+                      "strengths": ["Correct algorithm"],
+                      "issues": [],
+                      "suggestions": ["Add comments"],
+                      "complexity_analysis": "O(n) time and O(1) space",
+                      "grading_mode": "ai"
+                    }
+                    """
+                )
+
+        service = ResourcePackageService(
+            llm_config=LlmProviderConfig(model="compatible-model", api_key="test")
+        )
+        service.get_generated_resource = MagicMock(
+            return_value=SimpleNamespace(
+                resource_type="programming_questions",
+                content_json={
+                    "questions": [
+                        {
+                            "id": "q1",
+                            "title": "Sum two numbers",
+                            "description": "Read two integers and print their sum.",
+                        }
+                    ]
+                },
+            )
+        )
+
+        with patch(
+            "edu_core.services.resource_packages.create_chat_model",
+            return_value=FakeModel(),
+        ):
+            result = await service.grade_programming_answer(
+                user_id="user-1",
+                project_id="project-1",
+                resource_id="resource-1",
+                question_id="q1",
+                answer="std::cout << a + b;",
+                language="cpp",
+            )
+
+        self.assertEqual(result.score, 82)
+        self.assertTrue(result.passed)
+        self.assertEqual(result.verdict, "accepted")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -186,7 +186,9 @@ Grading requirements:
    concrete code or algorithm change.
 5. Return 2-4 useful items for strengths, issues, and suggestions where possible.
    Include both time and space complexity in complexity_analysis.
-6. Return exactly one JSON object without Markdown fences, using this shape:
+6. The verdict must be exactly one of "accepted", "needs_improvement", or
+   "incorrect"; do not use synonyms such as "correct". Return exactly one JSON
+   object without Markdown fences, using this shape:
    {{"score": 0, "passed": false, "verdict": "incorrect",
    "summary": "...", "strengths": ["..."], "issues": ["..."],
    "suggestions": ["..."], "complexity_analysis": "...",
@@ -203,6 +205,16 @@ Problem and answer JSON:
             raise RuntimeError("AI programming grading service is unavailable") from exc
         try:
             payload = self._extract_json_payload(str(response.content))
+            # These fields are derived from the validated score below. Normalize
+            # them before validation so an otherwise usable model response is not
+            # rejected because it used a verdict synonym such as "correct".
+            payload.update(
+                {
+                    "passed": False,
+                    "verdict": "incorrect",
+                    "grading_mode": "ai",
+                }
+            )
             result = ProgrammingGradeDto.model_validate(payload)
         except Exception as exc:
             raise RuntimeError(
