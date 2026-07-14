@@ -457,8 +457,25 @@ class ChatService:
         for part_index, part_dict in enumerate(parts):
             part_type = part_dict.get("type", PartType.TEXT)
 
-            # Filter out file parts - file upload is not supported
             if part_type == PartType.FILE:
+                db_part = DBChatMessagePart(
+                    id=str(uuid4()),
+                    message_id=user_message_db.id,
+                    part_type=part_type,
+                    order=part_index,
+                    file_name=part_dict.get("file_name") or "image",
+                    file_type=part_dict.get("file_type") or "application/octet-stream",
+                    file_url=part_dict.get("file_url") or "",
+                )
+                user_parts_dto.append(
+                    FilePartDto(
+                        file_name=db_part.file_name,
+                        file_type=db_part.file_type,
+                        file_url=db_part.file_url,
+                        order=part_index,
+                    )
+                )
+                db.add(db_part)
                 continue
 
             if part_type == PartType.TEXT:

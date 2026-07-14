@@ -73,6 +73,18 @@ class Settings(BaseSettings):
     )
     xfyun_handwriting_timeout_seconds: float = 30.0
 
+    # XFYun Spark image understanding
+    xfyun_image_understanding_enabled: bool = False
+    xfyun_image_understanding_app_id: str = ""
+    xfyun_image_understanding_api_key: str = ""
+    xfyun_image_understanding_api_secret: str = ""
+    xfyun_image_understanding_base_url: str = (
+        "wss://spark-api.cn-huabei-1.xf-yun.com/v2.1/image"
+    )
+    xfyun_image_understanding_domain: str = "imagev3"
+    xfyun_image_understanding_timeout_seconds: float = 60.0
+    xfyun_image_understanding_max_tokens: int = 2048
+
     # XFYun PDF document OCR
     xfyun_pdf_ocr_enabled: bool = False
     xfyun_pdf_ocr_app_id: str = ""

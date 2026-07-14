@@ -23,29 +23,9 @@ import {
 
 const models = [
   {
-    id: 'gpt-4o',
-    name: 'GPT-4o',
-    provider: 'openai',
-  },
-  {
-    id: 'gpt-4o-mini',
-    name: 'GPT-4o Mini',
-    provider: 'openai',
-  },
-  {
-    id: 'claude-opus-4-20250514',
-    name: 'Claude 4 Opus',
-    provider: 'anthropic',
-  },
-  {
-    id: 'claude-sonnet-4-20250514',
-    name: 'Claude 4 Sonnet',
-    provider: 'anthropic',
-  },
-  {
-    id: 'gemini-2.0-flash-exp',
-    name: 'Gemini 2.0 Flash',
-    provider: 'google',
+    id: 'deepseek-v4-pro',
+    name: 'DeepSeek V4',
+    provider: 'deepseek',
   },
 ]
 

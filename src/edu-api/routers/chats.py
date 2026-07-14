@@ -1,15 +1,15 @@
 """Router for chat CRUD operations."""
 
-
+import base64
+import binascii
 from collections.abc import AsyncGenerator
-from datetime import datetime
 from typing import Any
-from uuid import uuid4
 
 from auth import get_current_user
 from dependencies import (
     get_chat_service,
     get_usage_service,
+    get_xfyun_image_understanding_client,
 )
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.chats import (
@@ -20,10 +20,105 @@ from edu_core.schemas.users import UserDto
 from edu_core.services import ChatService, UsageService
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from xfyun_image_understanding import (
+    XfyunImageUnderstandingClient,
+    XfyunImageUnderstandingError,
+)
 
-from routers.schemas import ChatCompletionRequest, ChatCreate, ChatUpdate, FilePart
+from routers.schemas import (
+    ChatCompletionRequest,
+    ChatCreate,
+    ChatUpdate,
+    FilePart,
+    TextPart,
+)
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/chats", tags=["chats"])
+
+MAX_VISION_IMAGE_BYTES = 4 * 1024 * 1024
+SUPPORTED_VISION_IMAGE_TYPES = {"image/jpeg", "image/png"}
+VISION_CONTEXT_PREFIX = "[图片理解上下文:"
+
+
+def _decode_image_data_url(part: FilePart) -> bytes:
+    """Validate and decode an image attachment without fetching remote URLs."""
+    media_type = part.media_type.lower().strip()
+    if media_type not in SUPPORTED_VISION_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail="AI 导师图片理解目前仅支持 JPG、JPEG 和 PNG",
+        )
+    if not part.url.startswith("data:") or "," not in part.url:
+        raise HTTPException(status_code=400, detail="图片附件必须使用 data URL 上传")
+
+    metadata, encoded = part.url.split(",", 1)
+    expected_prefix = f"data:{media_type};base64"
+    if metadata.lower() != expected_prefix:
+        raise HTTPException(status_code=400, detail="图片类型与附件内容不匹配")
+    try:
+        image = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="图片附件编码无效") from exc
+    if not image:
+        raise HTTPException(status_code=400, detail="图片附件内容为空")
+    if len(image) > MAX_VISION_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="图片大小不能超过 4 MB")
+    return image
+
+
+async def _prepare_chat_parts(
+    body: ChatCompletionRequest,
+    *,
+    user_id: str,
+    image_client: XfyunImageUnderstandingClient,
+) -> list[dict[str, Any]]:
+    """Turn uploaded images into grounded text context for the text-only LLM."""
+    user_question = "\n".join(
+        part.text.strip()
+        for part in body.parts
+        if isinstance(part, TextPart) and part.text.strip()
+    )
+    processed_parts: list[dict[str, Any]] = []
+
+    for part in body.parts:
+        if isinstance(part, TextPart):
+            processed_parts.append(part.model_dump())
+            continue
+
+        image = _decode_image_data_url(part)
+        filename = part.filename or "image"
+        vision_question = (
+            "请为 AI 导师准确、详细地分析这张图片。识别其中的文字、数学公式、"
+            "图表、对象、空间关系和关键信息; 不要猜测看不清的内容。"
+        )
+        if user_question:
+            vision_question += f"\n用户希望解决的问题: {user_question}"
+        try:
+            description = await image_client.understand(
+                image,
+                question=vision_question,
+                uid=user_id,
+            )
+        except XfyunImageUnderstandingError as exc:
+            status_code = 503 if not image_client.is_enabled else 502
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+        processed_parts.append(
+            {
+                "type": "file",
+                "file_name": filename,
+                "file_type": part.media_type,
+                "file_url": "",
+            }
+        )
+        processed_parts.append(
+            {
+                "type": "text",
+                "text": f"{VISION_CONTEXT_PREFIX}{filename}]\n{description}",
+            }
+        )
+
+    return processed_parts
 
 
 @router.post("", response_model=ChatDto, status_code=201)
@@ -126,6 +221,9 @@ async def send_streaming_message(
     current_user: UserDto = Depends(get_current_user),
     chat_service: ChatService = Depends(get_chat_service),
     usage_service: UsageService = Depends(get_usage_service),
+    image_client: XfyunImageUnderstandingClient = Depends(
+        get_xfyun_image_understanding_client
+    ),
 ):
     """Send a streaming message to a chat."""
     user_id = current_user.id
@@ -133,13 +231,11 @@ async def send_streaming_message(
     # Check usage limit before processing
     usage_service.check_and_increment(user_id, "chat_message")
 
-    processed_parts = []
-    for part in body.parts:
-        # Filter out file parts - file upload is not supported
-        if isinstance(part, FilePart):
-            continue
-
-        processed_parts.append(part.model_dump())
+    processed_parts = await _prepare_chat_parts(
+        body,
+        user_id=user_id,
+        image_client=image_client,
+    )
 
     async def generate_stream() -> AsyncGenerator[bytes]:
         """Generate streaming response chunks - each part as a separate SSE event"""

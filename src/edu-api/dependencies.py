@@ -1,7 +1,7 @@
 """FastAPI dependencies for service construction."""
 
 from config import Settings, get_settings
-from task_runner import TaskRunnerService
+from edu_core.model_providers import LlmProviderConfig
 from edu_core.services import (
     AgentOrchestrationService,
     ChatService,
@@ -10,9 +10,9 @@ from edu_core.services import (
     DocumentService,
     DocumentUploadService,
     FlashcardGroupService,
-    MindMapService,
     KnowledgeStateService,
     LearnerProfileService,
+    MindMapService,
     NoteService,
     PracticeService,
     ProjectService,
@@ -27,7 +27,11 @@ from edu_core.services.baidu_search import BaiduSearchClient, BaiduSearchConfig
 from edu_core.services.xfyun_ppt import XfyunPptClient, XfyunPptConfig
 from edu_queue.service import ArqQueueService, QueueService
 from fastapi import Depends
-from edu_core.model_providers import LlmProviderConfig
+from task_runner import TaskRunnerService
+from xfyun_image_understanding import (
+    XfyunImageUnderstandingClient,
+    XfyunImageUnderstandingConfig,
+)
 
 
 def get_settings_dep() -> Settings:
@@ -107,6 +111,35 @@ def get_usage_service(
 def get_project_service() -> ProjectService:
     """Get ProjectService instance."""
     return ProjectService()
+
+
+def get_xfyun_image_understanding_client(
+    settings: Settings = Depends(get_settings_dep),
+) -> XfyunImageUnderstandingClient:
+    """Build the server-side XFYun vision client.
+
+    Image-specific credentials take precedence. Existing IAT credentials are a
+    convenient fallback when both capabilities belong to the same XFYun app.
+    """
+    return XfyunImageUnderstandingClient(
+        XfyunImageUnderstandingConfig(
+            enabled=settings.xfyun_image_understanding_enabled,
+            app_id=(
+                settings.xfyun_image_understanding_app_id or settings.xfyun_iat_app_id
+            ),
+            api_key=(
+                settings.xfyun_image_understanding_api_key or settings.xfyun_iat_api_key
+            ),
+            api_secret=(
+                settings.xfyun_image_understanding_api_secret
+                or settings.xfyun_iat_api_secret
+            ),
+            base_url=settings.xfyun_image_understanding_base_url,
+            domain=settings.xfyun_image_understanding_domain,
+            timeout_seconds=settings.xfyun_image_understanding_timeout_seconds,
+            max_tokens=settings.xfyun_image_understanding_max_tokens,
+        )
+    )
 
 
 def get_course_service() -> CourseService:
@@ -267,8 +300,6 @@ def get_mind_map_service(
 ) -> MindMapService:
     """Get MindMapService instance."""
     return MindMapService(queue_service=queue_service)
-
-
 
 
 def get_chat_service_with_streaming(

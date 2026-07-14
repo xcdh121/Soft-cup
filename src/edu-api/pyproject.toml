@@ -17,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "scalar-fastapi>=1.0.0",
     "uvicorn>=0.38.0",
+    "websockets>=14.0",
 ]
 
 [tool.uv.sources]

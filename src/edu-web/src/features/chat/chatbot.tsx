@@ -63,14 +63,12 @@ import {
 const generateId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 
+const VISION_CONTEXT_PREFIX = '[图片理解上下文:'
+
 const models = [
   {
-    name: 'GPT 4o',
-    value: 'openai/gpt-4o',
-  },
-  {
-    name: 'Deepseek R1',
-    value: 'deepseek/deepseek-r1',
+    name: 'DeepSeek V4',
+    value: 'deepseek-v4-pro',
   },
 ]
 
@@ -332,14 +330,16 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                                   <span className="text-sm">
                                     {part.file_name}
                                   </span>
-                                  <a
-                                    href={part.file_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs text-primary hover:underline"
-                                  >
-                                    View
-                                  </a>
+                                  {part.file_url && (
+                                    <a
+                                      href={part.file_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline"
+                                    >
+                                      View
+                                    </a>
+                                  )}
                                 </div>
                               ))}
                           </div>
@@ -395,7 +395,14 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
 
                   {message.parts &&
                     message.parts
-                      .filter((part) => part.type !== 'source-document')
+                      .filter(
+                        (part) =>
+                          part.type !== 'source-document' &&
+                          !(
+                            part.type === 'text' &&
+                            part.text_content.startsWith(VISION_CONTEXT_PREFIX)
+                          ),
+                      )
                       .map((part, index: number) => {
                         switch (part.type) {
                           case 'text':
@@ -490,7 +497,9 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
           <PromptInput
             onSubmit={handleSubmit}
             className="mt-4 shrink-0"
+            accept="image/jpeg,image/png"
             globalDrop
+            maxFileSize={4 * 1024 * 1024}
             multiple
           >
             <PromptInputHeader>
@@ -548,7 +557,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                 </PromptInputSelect>
               </PromptInputTools>
               <PromptInputSubmit
-                disabled={!input && !isStreaming}
+                disabled={isStreaming}
                 status={isStreaming ? 'streaming' : 'ready'}
               />
             </PromptInputFooter>
