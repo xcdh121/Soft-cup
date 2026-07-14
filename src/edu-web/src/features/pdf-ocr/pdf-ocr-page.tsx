@@ -7,6 +7,7 @@ import {
   FileTextIcon,
   Loader2Icon,
   LockKeyholeIcon,
+  PackagePlusIcon,
   RotateCcwIcon,
   ScanLineIcon,
   ShieldCheckIcon,
@@ -41,6 +42,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { getPdfOcrTask, startPdfOcrTask } from '@/lib/xfyun-pdf-ocr'
+import { importResourcePackage } from '@/lib/resource-package-import'
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -124,6 +126,8 @@ export const PdfOcrPage = ({ projectId }: { projectId: string }) => {
   const [isDragging, setIsDragging] = useState(false)
   const [isReading, setIsReading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [savedPackageId, setSavedPackageId] = useState<string | null>(null)
 
   const isProcessing = task ? !FINAL_STATUSES.has(task.status) : false
 
@@ -163,6 +167,7 @@ export const PdfOcrPage = ({ projectId }: { projectId: string }) => {
     setIsReading(true)
     setError(null)
     setTask(null)
+    setSavedPackageId(null)
     try {
       const pages = await validatePdf(nextFile)
       setFile(nextFile)
@@ -181,6 +186,7 @@ export const PdfOcrPage = ({ projectId }: { projectId: string }) => {
     setFile(null)
     setPageCount(null)
     setTask(null)
+    setSavedPackageId(null)
     setError(null)
     if (inputRef.current) inputRef.current.value = ''
   }
@@ -203,6 +209,28 @@ export const PdfOcrPage = ({ projectId }: { projectId: string }) => {
       )
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const saveToResourcePackage = async () => {
+    if (!task?.download_url || !file || isSaving || savedPackageId) return
+    setIsSaving(true)
+    try {
+      const resourcePackage = await importResourcePackage({
+        projectId,
+        title: `${file.name.replace(/\.pdf$/i, '')} · 识别文档`,
+        summary: `讯飞 PDF 文档识别结果（${pageCount ?? task.pages.length} 页）`,
+        origin: 'pdf_ocr',
+        resourceType: 'reading_material',
+        contentFormat: task.export_format ?? format,
+        fileUrl: task.download_url,
+      })
+      setSavedPackageId(resourcePackage.id)
+      toast.success('PDF 识别结果已存入资源包')
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : '存入资源包失败')
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -511,17 +539,32 @@ export const PdfOcrPage = ({ projectId }: { projectId: string }) => {
 
                   <div className="mt-auto pt-8">
                     {task.download_url ? (
-                      <Button className="w-full" size="lg" asChild>
-                        <a
-                          href={task.download_url}
-                          target="_blank"
-                          rel="noreferrer"
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Button size="lg" variant="outline" asChild>
+                          <a
+                            href={task.download_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <DownloadIcon />
+                            下载{FORMAT_LABELS[task.export_format ?? format]}
+                          </a>
+                        </Button>
+                        <Button
+                          size="lg"
+                          disabled={isSaving || Boolean(savedPackageId)}
+                          onClick={saveToResourcePackage}
                         >
-                          <DownloadIcon />
-                          下载
-                          {FORMAT_LABELS[task.export_format ?? format]}结果
-                        </a>
-                      </Button>
+                          {isSaving ? (
+                            <Loader2Icon className="animate-spin" />
+                          ) : savedPackageId ? (
+                            <CheckCircle2Icon />
+                          ) : (
+                            <PackagePlusIcon />
+                          )}
+                          {savedPackageId ? '已存入资源包' : '存入资源包'}
+                        </Button>
+                      </div>
                     ) : null}
                     <div className="mt-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
                       <span className="truncate">任务号：{task.task_no}</span>

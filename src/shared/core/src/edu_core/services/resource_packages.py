@@ -123,6 +123,93 @@ class ResourcePackageService:
                 raise NotFoundError(f"Generated resource {resource_id} not found")
             return self._resource_to_dto(resource)
 
+    def import_resource(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        title: str,
+        summary: str,
+        origin: str,
+        resource_type: str,
+        content_format: str,
+        content_text: str | None = None,
+        file_url: str | None = None,
+    ) -> ResourcePackageDto:
+        """Store an existing OCR/translation result as a completed package."""
+        if resource_type not in {"lecture_note", "reading_material"}:
+            raise ValueError("Unsupported imported resource type")
+        if not (content_text and content_text.strip()) and not file_url:
+            raise ValueError("Imported resource must include text or a file URL")
+
+        with self._get_db_session() as db:
+            project = (
+                db.query(Project)
+                .filter(Project.id == project_id, Project.owner_id == user_id)
+                .first()
+            )
+            if not project:
+                raise NotFoundError(f"Project {project_id} not found")
+
+            now = datetime.now(UTC)
+            package_id = str(uuid4())
+            resource_id = str(uuid4())
+            package = ResourcePackage(
+                id=package_id,
+                project_id=project_id,
+                user_id=user_id,
+                title=title,
+                description=summary,
+                generation_mode="manual",
+                status="completed",
+                target_topic=title,
+                target_goal="保存 AI 助学处理结果",
+                difficulty_level="intermediate",
+                estimated_minutes=5,
+                source_document_ids=[],
+                knowledge_point_ids=[],
+                weak_knowledge_point_ids=[],
+                preferred_resource_types=[resource_type],
+                generation_params={"origin": origin, "imported": True},
+                agent_trace=[],
+                resource_count=1,
+                completed_resource_count=1,
+                failed_resource_count=0,
+                created_at=now,
+                updated_at=now,
+                completed_at=now,
+            )
+            resource = GeneratedResource(
+                id=resource_id,
+                resource_package_id=package_id,
+                project_id=project_id,
+                user_id=user_id,
+                resource_type=resource_type,
+                title=title,
+                summary=summary,
+                status="completed",
+                format=content_format,
+                content_text=content_text,
+                content_json={"origin": origin},
+                file_url=file_url,
+                source_document_ids=[],
+                knowledge_point_ids=[],
+                difficulty_level="intermediate",
+                estimated_minutes=5,
+                version=1,
+                generation_order=0,
+                generator_agent="XFYunAssistant",
+                generation_reason="用户将 AI 助学处理结果存入资源包",
+                created_at=now,
+                updated_at=now,
+                completed_at=now,
+            )
+            db.add(package)
+            db.add(resource)
+            db.commit()
+            db.refresh(package)
+            return self._model_to_dto(package)
+
     async def grade_programming_answer(
         self,
         *,

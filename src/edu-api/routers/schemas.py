@@ -1,7 +1,7 @@
 """Request schemas for CRUD operations."""
 
 from datetime import datetime
-from typing import Any, List, Union, Literal
+from typing import Any, Literal, Union
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -216,6 +216,22 @@ class NoteUpdate(BaseModel):
     description: str | None = Field(None, description="Description of the note")
 
 
+class ImportResourceRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    summary: str = Field(..., min_length=1, max_length=500)
+    origin: Literal["handwriting", "pdf_ocr", "translation"]
+    resource_type: Literal["lecture_note", "reading_material"]
+    content_format: str = Field(..., min_length=1, max_length=50)
+    content_text: str | None = Field(None, max_length=100_000)
+    file_url: str | None = Field(None, max_length=2_000)
+
+    @model_validator(mode="after")
+    def validate_content(self):
+        if not (self.content_text and self.content_text.strip()) and not self.file_url:
+            raise ValueError("content_text or file_url is required")
+        return self
+
+
 class QuizCreate(BaseModel):
     name: str = Field(..., description="Name of the quiz")
     description: str | None = Field(None, description="Description of the quiz")
@@ -241,9 +257,6 @@ class FlashcardGroupUpdate(BaseModel):
     )
 
 
-from typing import List, Union, Literal
-
-
 class TextPart(BaseModel):
     type: Literal["text"]
     text: str
@@ -257,7 +270,7 @@ class FilePart(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
-    parts: List[Union[TextPart, FilePart]]
+    parts: list[Union[TextPart, FilePart]]
 
 
 class FlashcardCreate(BaseModel):

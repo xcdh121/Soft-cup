@@ -24,9 +24,8 @@ from routers import (
     diagnosis_router,
     documents_router,
     flashcard_groups_router,
-    handwriting_router,
-    pdf_ocr_router,
     generated_resources_router,
+    handwriting_router,
     knowledge_graph_router,
     knowledge_points_router,
     knowledge_states_router,
@@ -34,6 +33,7 @@ from routers import (
     learning_paths_router,
     mind_maps_router,
     notes_router,
+    pdf_ocr_router,
     practice_records_router,
     projects_router,
     quizzes_router,
@@ -41,6 +41,7 @@ from routers import (
     resource_packages_router,
     speech_router,
     study_plans_router,
+    translation_router,
     usage_router,
     users_router,
 )
@@ -130,6 +131,7 @@ class Api:
         self.app.include_router(practice_records_router)
         self.app.include_router(mind_maps_router)
         self.app.include_router(study_plans_router)
+        self.app.include_router(translation_router)
         self.app.include_router(recommendations_router)
         self.app.include_router(learning_paths_router)
         self.app.include_router(resource_packages_router)

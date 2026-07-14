@@ -20,6 +20,7 @@ from fastapi.responses import StreamingResponse
 
 from routers.schemas import (
     GenerateResourcePackageRequest,
+    ImportResourceRequest,
     ProgrammingGradeRequest,
     ProgrammingRunRequest,
     UpdateGeneratedResourceRequest,
@@ -64,6 +65,23 @@ async def generate_resource_package(
         user_id=user.id,
         project_id=project_id,
         payload=request.model_dump(),
+    )
+
+
+@resource_packages_router.post(
+    "/import", response_model=ResourcePackageDto, status_code=status.HTTP_201_CREATED
+)
+def import_resource_package(
+    project_id: str,
+    request: ImportResourceRequest,
+    user=Depends(get_current_user),
+    service: ResourcePackageService = Depends(get_resource_package_service),
+):
+    """Persist an AI-assistant OCR or translation result as a resource package."""
+    return service.import_resource(
+        user_id=user.id,
+        project_id=project_id,
+        **request.model_dump(),
     )
 
 

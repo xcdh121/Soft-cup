@@ -8,6 +8,7 @@ import {
   FileScanIcon,
   FileStackIcon,
   HistoryIcon,
+  LanguagesIcon,
   ListChecksIcon,
   NetworkIcon,
   ScanTextIcon,
@@ -45,7 +46,7 @@ const ProjectNavSection = ({
   children: ReactNode
 }) => (
   <section aria-label={title} className="space-y-1">
-    <h3 className="px-2 text-[11px] font-semibold tracking-wide text-sidebar-foreground/55">
+    <h3 className="mx-1 flex h-8 items-center justify-center rounded-lg border border-sky-100 bg-sky-50/80 px-2 text-center text-[11px] font-semibold tracking-wide text-sky-800/75 dark:border-sky-900/60 dark:bg-sky-950/35 dark:text-sky-200/75">
       {title}
     </h3>
     <SidebarMenu>{children}</SidebarMenu>
@@ -100,7 +101,7 @@ export function CurrentProjectNav() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
-                  tooltip="手写文字识别"
+                  tooltip="手写笔记识别"
                   isActive={
                     location.pathname ===
                     `/dashboard/p/${currentProjectId}/handwriting-recognition`
@@ -111,7 +112,7 @@ export function CurrentProjectNav() {
                     params={{ projectId: currentProjectId }}
                   >
                     <ScanTextIcon className="size-4 opacity-70" />
-                    <span>手写文字识别</span>
+                    <span>手写笔记识别</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -131,6 +132,25 @@ export function CurrentProjectNav() {
                   >
                     <FileScanIcon className="size-4 opacity-70" />
                     <span>PDF 文档识别</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  tooltip="文档翻译"
+                  isActive={
+                    location.pathname ===
+                    `/dashboard/p/${currentProjectId}/document-translation`
+                  }
+                >
+                  <Link
+                    to="/dashboard/p/$projectId/document-translation"
+                    params={{ projectId: currentProjectId }}
+                  >
+                    <LanguagesIcon className="size-4 opacity-70" />
+                    <span>文档翻译</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

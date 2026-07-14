@@ -80,6 +80,14 @@ class Settings(BaseSettings):
     xfyun_pdf_ocr_base_url: str = "https://iocr.xfyun.cn/ocrzdq/v1/pdfOcr"
     xfyun_pdf_ocr_timeout_seconds: float = 120.0
 
+    # XFYun Machine Translation (New)
+    xfyun_translation_enabled: bool = False
+    xfyun_translation_app_id: str = ""
+    xfyun_translation_api_key: str = ""
+    xfyun_translation_api_secret: str = ""
+    xfyun_translation_base_url: str = "https://itrans.xf-yun.com/v1/its"
+    xfyun_translation_timeout_seconds: float = 30.0
+
     # Baidu AI Search
     baidu_search_api_key: str = ""
     baidu_search_base_url: str = "https://qianfan.baidubce.com"

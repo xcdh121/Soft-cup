@@ -4,6 +4,7 @@ import {
   DownloadIcon,
   FileImageIcon,
   Loader2Icon,
+  PackagePlusIcon,
   RotateCcwIcon,
   ScanTextIcon,
   ShieldCheckIcon,
@@ -33,6 +34,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { recognizeHandwriting } from '@/lib/xfyun-handwriting'
+import { importResourcePackage } from '@/lib/resource-package-import'
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024
 const SUPPORTED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'bmp']
@@ -77,6 +79,8 @@ export const HandwritingRecognitionPage = ({
   const [error, setError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isRecognizing, setIsRecognizing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [savedPackageId, setSavedPackageId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!file) {
@@ -110,12 +114,14 @@ export const HandwritingRecognitionPage = ({
     }
     setFile(nextFile)
     setResult(null)
+    setSavedPackageId(null)
     setError(null)
   }
 
   const reset = () => {
     setFile(null)
     setResult(null)
+    setSavedPackageId(null)
     setError(null)
     if (inputRef.current) inputRef.current.value = ''
   }
@@ -152,6 +158,30 @@ export const HandwritingRecognitionPage = ({
     toast.success('识别文字已复制')
   }
 
+  const saveToResourcePackage = async () => {
+    if (!result?.text || isSaving || savedPackageId) return
+    setIsSaving(true)
+    try {
+      const resourcePackage = await importResourcePackage({
+        projectId,
+        title: file
+          ? `${file.name.replace(/\.[^.]+$/, '')} · 手写笔记`
+          : '手写笔记',
+        summary: '由讯飞手写笔记识别生成的可检索文本',
+        origin: 'handwriting',
+        resourceType: 'lecture_note',
+        contentFormat: 'text',
+        contentText: result.text,
+      })
+      setSavedPackageId(resourcePackage.id)
+      toast.success('已存入资源包')
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : '存入资源包失败')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   return (
     <div className="h-full overflow-y-auto bg-muted/20">
       <main className="mx-auto w-full max-w-7xl px-5 py-7 lg:px-8">
@@ -167,7 +197,7 @@ export const HandwritingRecognitionPage = ({
             </div>
             <div>
               <h1 className="text-2xl font-semibold tracking-tight">
-                手写文字识别
+                手写笔记识别
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 上传手写笔记或答题图片，快速提取可复制、可编辑的文字。
@@ -342,14 +372,28 @@ export const HandwritingRecognitionPage = ({
                   <Textarea
                     value={result.text}
                     readOnly
-                    aria-label="手写文字识别结果"
+                    aria-label="手写笔记识别结果"
                     className="min-h-0 flex-1 resize-none rounded-none border-0 p-6 text-[15px] leading-7 shadow-none focus-visible:ring-0"
                   />
                   <div className="flex items-center justify-between gap-3 border-t px-5 py-4">
                     <span className="text-xs text-muted-foreground">
                       可直接复制到笔记或对话中继续使用
                     </span>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button
+                        size="sm"
+                        disabled={isSaving || Boolean(savedPackageId)}
+                        onClick={saveToResourcePackage}
+                      >
+                        {isSaving ? (
+                          <Loader2Icon className="animate-spin" />
+                        ) : savedPackageId ? (
+                          <CheckCircle2Icon />
+                        ) : (
+                          <PackagePlusIcon />
+                        )}
+                        {savedPackageId ? '已存入资源包' : '存入资源包'}
+                      </Button>
                       <Button variant="outline" size="sm" onClick={copyResult}>
                         <CopyIcon />
                         复制
@@ -357,7 +401,7 @@ export const HandwritingRecognitionPage = ({
                       <Button variant="outline" size="sm" asChild>
                         <a
                           href={`data:text/plain;charset=utf-8,${encodeURIComponent(result.text)}`}
-                          download="手写文字识别结果.txt"
+                          download="手写笔记识别结果.txt"
                         >
                           <DownloadIcon />
                           下载
@@ -373,7 +417,7 @@ export const HandwritingRecognitionPage = ({
                   </div>
                   <div className="text-sm font-medium">等待识别</div>
                   <p className="mt-2 max-w-72 text-sm leading-6 text-muted-foreground">
-                    在左侧上传一张包含手写文字的图片，然后点击“开始识别”。
+                    在左侧上传一张包含手写笔记的图片，然后点击“开始识别”。
                   </p>
                 </div>
               )}

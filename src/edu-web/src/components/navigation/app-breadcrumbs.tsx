@@ -29,8 +29,9 @@ const getPageTrail = (pathname: string): Array<string> => {
     return ['题目练习', '编程练习']
   }
   if (pathname.endsWith('/custom-documents')) return ['文档学习']
-  if (pathname.endsWith('/handwriting-recognition')) return ['手写文字识别']
+  if (pathname.endsWith('/handwriting-recognition')) return ['手写笔记识别']
   if (pathname.endsWith('/pdf-ocr')) return ['PDF 文档识别']
+  if (pathname.endsWith('/document-translation')) return ['文档翻译']
   if (pathname.endsWith('/knowledge-graph')) return ['知识图谱']
   if (pathname.endsWith('/learner-profile')) return ['学生画像']
   if (pathname.endsWith('/study-plan/customize')) {

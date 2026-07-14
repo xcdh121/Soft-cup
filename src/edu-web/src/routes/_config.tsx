@@ -94,6 +94,11 @@ const PdfOcrRoute = lazy(() =>
     default: m.PdfOcrRoute,
   })),
 )
+const DocumentTranslationRoute = lazy(() =>
+  import('./document-translation-route').then((m) => ({
+    default: m.DocumentTranslationRoute,
+  })),
+)
 const ProgrammingPracticeRoute = lazy(() =>
   import('./programming-practice-route').then((m) => ({
     default: m.ProgrammingPracticeRoute,
@@ -384,6 +389,16 @@ export const pdfOcrRoute = createRoute({
   ),
 })
 
+export const documentTranslationRoute = createRoute({
+  path: '/p/$projectId/document-translation',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <DocumentTranslationRoute />
+    </Suspense>
+  ),
+})
+
 export const programmingPracticeRoute = createRoute({
   path: '/p/$projectId/programming/$resourceId',
   getParentRoute: () => dashboardRoute,
@@ -524,6 +539,7 @@ export const routeTree = rootRoute.addChildren([
     resourcePackageRoute,
     handwritingRecognitionRoute,
     pdfOcrRoute,
+    documentTranslationRoute,
     programmingPracticeRoute,
     learnerProfileRoute,
     myCoursesRoute,

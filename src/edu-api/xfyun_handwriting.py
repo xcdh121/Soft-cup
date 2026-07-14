@@ -60,7 +60,7 @@ def _build_auth_headers(
 def _normalize_response(payload: dict[str, Any]) -> dict[str, Any]:
     code = str(payload.get("code", ""))
     if code != "0":
-        description = str(payload.get("desc") or "讯飞手写文字识别失败")
+        description = str(payload.get("desc") or "讯飞手写笔记识别失败")
         raise XfyunHandwritingError(f"{description} (错误码 {code or 'unknown'})")
 
     data = payload.get("data") or {}
@@ -135,7 +135,7 @@ class XfyunHandwritingClient:
         include_location: bool = False,
     ) -> dict[str, Any]:
         if not self.is_enabled:
-            raise XfyunHandwritingError("手写文字识别服务尚未配置")
+            raise XfyunHandwritingError("手写笔记识别服务尚未配置")
         if language not in {"en", "cn|en"}:
             raise XfyunHandwritingError("不支持的识别语言")
 
@@ -159,9 +159,9 @@ class XfyunHandwritingClient:
                 )
                 response.raise_for_status()
         except httpx.TimeoutException as exc:
-            raise XfyunHandwritingError("手写文字识别请求超时, 请稍后重试") from exc
+            raise XfyunHandwritingError("手写笔记识别请求超时, 请稍后重试") from exc
         except httpx.HTTPError as exc:
-            raise XfyunHandwritingError("暂时无法连接手写文字识别服务") from exc
+            raise XfyunHandwritingError("暂时无法连接手写笔记识别服务") from exc
 
         try:
             payload = response.json()
