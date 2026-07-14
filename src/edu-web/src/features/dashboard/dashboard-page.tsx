@@ -1,4 +1,4 @@
-import { Result, useAtomValue } from '@effect-atom/atom-react'
+import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Link } from '@tanstack/react-router'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
@@ -9,6 +9,7 @@ import {
   MessageCircleIcon,
   PlusIcon,
   SendIcon,
+  Trash2Icon,
   TrophyIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
@@ -16,8 +17,9 @@ import dashboardSlideOne from '../../../../source/1.png'
 import dashboardSlideTwo from '../../../../source/2.png'
 import dashboardSlideThree from '../../../../source/3.png'
 import type { CarouselApi } from '@/components/ui/carousel'
-import { projectsAtom } from '@/data-acess/project'
+import { deleteProjectAtom, projectsAtom } from '@/data-acess/project'
 import { useCreateProjectDialog } from '@/features/project/components/upsert-project-dialog'
+import { useConfirmationDialog } from '@/components/confirmation-dialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
@@ -402,13 +404,40 @@ const CommunitySection = () => {
 
 export const DashboardPage = () => {
   const projectsResult = useAtomValue(projectsAtom)
+  const deleteProject = useAtomSet(deleteProjectAtom, { mode: 'promise' })
   const openCreateProjectDialog = useCreateProjectDialog((state) => state.open)
+  const confirmationDialog = useConfirmationDialog()
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
+    null,
+  )
 
   const hasProjects =
     Result.isSuccess(projectsResult) && projectsResult.value.length > 0
   const firstProjectId = Result.isSuccess(projectsResult)
     ? projectsResult.value[0]?.id
     : undefined
+
+  const handleDeleteProject = async (
+    projectId: string,
+    projectName: string,
+  ) => {
+    const confirmed = await confirmationDialog.open({
+      title: '删除项目',
+      description: `确定要删除“${projectName}”吗？此操作无法撤销，并会删除项目中的聊天、文档和 AI 内容。`,
+      confirmLabel: '删除',
+      cancelLabel: '取消',
+      variant: 'destructive',
+    })
+
+    if (!confirmed) return
+
+    setDeletingProjectId(projectId)
+    try {
+      await deleteProject(projectId)
+    } finally {
+      setDeletingProjectId(null)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background p-8">
@@ -566,15 +595,31 @@ export const DashboardPage = () => {
                       <CardDescription>{project.description}</CardDescription>
                     )}
                   </CardHeader>
-                  <CardContent>
-                    <Link
-                      to="/dashboard/p/$projectId"
-                      params={{ projectId: project.id }}
-                    >
-                      <Button variant="outline" className="w-full">
+                  <CardContent className="flex gap-2">
+                    <Button asChild variant="outline" className="flex-1">
+                      <Link
+                        to="/dashboard/p/$projectId"
+                        params={{ projectId: project.id }}
+                      >
                         打开项目
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      disabled={deletingProjectId === project.id}
+                      aria-label={`删除项目 ${project.name}`}
+                      title="删除项目"
+                      onClick={() =>
+                        void handleDeleteProject(project.id, project.name)
+                      }
+                    >
+                      {deletingProjectId === project.id ? (
+                        <Loader2Icon className="size-4 animate-spin" />
+                      ) : (
+                        <Trash2Icon className="size-4" />
+                      )}
+                    </Button>
                   </CardContent>
                 </Card>
               ))}

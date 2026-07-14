@@ -1,6 +1,5 @@
 import { Result, useAtomValue } from '@effect-atom/atom-react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { Cause } from 'effect'
 import {
   BarChart3Icon,
   BookOpenTextIcon,
@@ -10,14 +9,12 @@ import {
   FileStackIcon,
   HistoryIcon,
   ListChecksIcon,
-  MessageSquareIcon,
   NetworkIcon,
   ScanTextIcon,
   SparklesIcon,
   UserRoundIcon,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import type { ChatDto } from '@/integrations/api/client'
 import {
   Collapsible,
   CollapsibleContent,
@@ -33,74 +30,11 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
-import { chatsAtom } from '@/data-acess/chat'
 import { projectsAtom } from '@/data-acess/project'
 
 const getCurrentProjectId = (pathname: string) => {
   const match = pathname.match(/^\/dashboard\/p\/([^/]+)/)
   return match?.[1] ?? null
-}
-
-const ChatItem = ({ chat }: { chat: ChatDto }) => {
-  const { location } = useRouterState()
-
-  return (
-    <SidebarMenuSubItem>
-      <SidebarMenuSubButton
-        asChild
-        size="md"
-        isActive={location.pathname.endsWith(`/c/${chat.id}`)}
-      >
-        <Link
-          to="/dashboard/p/$projectId/c/$chatId"
-          params={{
-            projectId: chat.project_id,
-            chatId: chat.id,
-          }}
-        >
-          <span>{chat.title ?? '未命名聊天'}</span>
-        </Link>
-      </SidebarMenuSubButton>
-    </SidebarMenuSubItem>
-  )
-}
-
-const ProjectChatList = ({ projectId }: { projectId: string }) => {
-  const chatsResult = useAtomValue(chatsAtom(projectId))
-
-  return Result.builder(chatsResult)
-    .onSuccess((chats) => (
-      <>
-        {chats.map((chat) => (
-          <ChatItem key={chat.id} chat={chat} />
-        ))}
-
-        {chats.length === 0 && (
-          <SidebarMenuSubItem>
-            <SidebarMenuSubButton size="md">
-              <span className="text-sm text-muted-foreground">还没有聊天</span>
-            </SidebarMenuSubButton>
-          </SidebarMenuSubItem>
-        )}
-      </>
-    ))
-    .onInitialOrWaiting(() => (
-      <SidebarMenuSubItem>
-        <SidebarMenuSubButton size="md">
-          <span className="text-sm text-muted-foreground">正在加载聊天...</span>
-        </SidebarMenuSubButton>
-      </SidebarMenuSubItem>
-    ))
-    .onFailure((cause) => (
-      <SidebarMenuSubItem>
-        <SidebarMenuSubButton size="md">
-          <span className="text-sm text-muted-foreground">
-            聊天加载失败: {Cause.pretty(cause)}
-          </span>
-        </SidebarMenuSubButton>
-      </SidebarMenuSubItem>
-    ))
-    .render()
 }
 
 const ProjectNavSection = ({
@@ -200,26 +134,6 @@ export function CurrentProjectNav() {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-
-              <Collapsible defaultOpen className="group/chat-history">
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      tooltip="对话记录"
-                      isActive={location.pathname.includes('/c/')}
-                    >
-                      <MessageSquareIcon className="size-4 opacity-70" />
-                      <span>对话记录</span>
-                      <ChevronRightIcon className="ml-auto transition-transform duration-200 group-data-[state=open]/chat-history:rotate-90" />
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      <ProjectChatList projectId={currentProjectId} />
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
             </ProjectNavSection>
 
             <ProjectNavSection title="学习中心">

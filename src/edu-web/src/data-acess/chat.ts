@@ -387,6 +387,10 @@ export const streamMessageAtom = runtime
     ) {
       const registry = yield* Registry.AtomRegistry
 
+      // Start the UI lifecycle before waiting for the first SSE event. The
+      // chat stream does not guarantee that every event carries a status.
+      get.set(chatStreamStatusAtom(input.chatId), 'thinking')
+
       // Add user message using the new action pattern
       const chatKey = `${input.projectId}:${input.chatId}`
       get.set(
@@ -432,16 +436,18 @@ export const streamMessageAtom = runtime
         .pipe(
           // If the request fails, remove the temporary message
           Effect.tapError(() =>
-            Effect.sync(() =>
+            Effect.sync(() => {
               get.set(
                 chatAtom(chatKey),
                 ChatMessagesAction.RemoveTemporaryMessage(),
-              ),
-            ),
+              )
+              get.set(chatStreamStatusAtom(input.chatId), null)
+            }),
           ),
         )
 
       if (resp.status === 429) {
+        get.set(chatStreamStatusAtom(input.chatId), null)
         registry.set(
           chatAtom(chatKey),
           ChatMessagesAction.RemoveTemporaryMessage(),
@@ -463,6 +469,9 @@ export const streamMessageAtom = runtime
         ),
         Stream.tap(handleStreamPart(input, get, registry)),
         Stream.runCollect,
+        Effect.ensuring(
+          Effect.sync(() => get.set(chatStreamStatusAtom(input.chatId), null)),
+        ),
       )
 
       // The backend may have extracted stable profile facts from this chat.

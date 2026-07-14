@@ -1,9 +1,4 @@
-import {
-  BookOpen,
-  BrainCircuitIcon,
-  LibraryBigIcon,
-  Settings2,
-} from 'lucide-react'
+import { BrainCircuitIcon, LibraryBigIcon, Settings2 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { CurrentProjectNav } from './current-project-nav'
 import { NavMain } from './nav-main'
@@ -57,11 +52,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               title: '智能协作观测台',
               url: '/dashboard/agent-runtime',
               icon: BrainCircuitIcon,
-            },
-            {
-              title: 'Docs',
-              url: 'https://github.com/StudentTraineeCenter/edu-agent/tree/master/docs',
-              icon: BookOpen,
             },
             {
               title: 'Settings',
