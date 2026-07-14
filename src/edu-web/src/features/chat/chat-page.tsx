@@ -1,8 +1,8 @@
-import { chatAtom } from '@/data-acess/chat'
 import { Result, useAtomValue } from '@effect-atom/atom-react'
 import { Loader2Icon } from 'lucide-react'
 import { Chatbot } from './chatbot'
 import { ChatHeader } from './components/chat-header'
+import { chatAtom } from '@/data-acess/chat'
 
 type ChatPageProps = {
   projectId: string
@@ -13,7 +13,9 @@ export const ChatPage = ({ projectId, chatId }: ChatPageProps) => {
   const chatKey = `${projectId}:${chatId}`
   const chatResult = useAtomValue(chatAtom(chatKey))
 
-  const isLoading = chatResult.waiting
+  // A background refresh runs after every completed response. Keep rendering
+  // the successful snapshot while that refresh reconciles server data.
+  const isLoading = chatResult.waiting && !Result.isSuccess(chatResult)
   const isError = Result.isFailure(chatResult)
 
   if (isLoading) {

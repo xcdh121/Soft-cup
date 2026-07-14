@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { Loader2Icon, SparklesIcon } from 'lucide-react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import {
+  ExternalLinkIcon,
+  Loader2Icon,
+  SparklesIcon,
+  TagsIcon,
+} from 'lucide-react'
 import type {
   AgentProgressStep,
   DifficultyLevel,
@@ -145,10 +151,19 @@ const ResourcePackageSelector = ({
 }: {
   projectId: string
   selectedPackageId: string | null
-  onSelect: (resourcePackage: ResourcePackage) => void
+  onSelect: (resourcePackage: ResourcePackage | null) => void
 }) => {
   const packagesResult = useAtomValue(resourcePackagesAtom(projectId))
   const packages = Result.isSuccess(packagesResult) ? packagesResult.value : []
+  const [category, setCategory] = useState<'all' | ResourceType>('all')
+  const filteredPackages = packages.filter(
+    (resourcePackage) =>
+      category === 'all' ||
+      resourcePackage.preferred_resource_types.includes(category) ||
+      resourcePackage.resources.some(
+        (resource) => resource.resource_type === category,
+      ),
+  )
 
   if (packagesResult.waiting) {
     return (
@@ -176,25 +191,70 @@ const ResourcePackageSelector = ({
   }
 
   return (
-    <Select
-      value={selectedPackageId ?? undefined}
-      onValueChange={(packageId) => {
-        const resourcePackage = packages.find((item) => item.id === packageId)
-        if (resourcePackage) onSelect(resourcePackage)
-      }}
-    >
-      <SelectTrigger className="w-full md:w-80">
-        <SelectValue placeholder="选择一个资源包" />
-      </SelectTrigger>
-      <SelectContent>
-        {packages.map((resourcePackage) => (
-          <SelectItem key={resourcePackage.id} value={resourcePackage.id}>
-            {resourcePackage.title} · {resourcePackage.completed_resource_count}
-            /{resourcePackage.resource_count}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="flex flex-col gap-2 md:flex-row">
+      <Select
+        value={category}
+        onValueChange={(value) => {
+          const nextCategory = value as 'all' | ResourceType
+          setCategory(nextCategory)
+          const selectedPackage = packages.find(
+            (item) => item.id === selectedPackageId,
+          )
+          if (
+            selectedPackage &&
+            nextCategory !== 'all' &&
+            !selectedPackage.preferred_resource_types.includes(nextCategory) &&
+            !selectedPackage.resources.some(
+              (resource) => resource.resource_type === nextCategory,
+            )
+          ) {
+            onSelect(null)
+          }
+        }}
+      >
+        <SelectTrigger className="w-full md:w-40" aria-label="资源包分类">
+          <TagsIcon className="size-4" />
+          <SelectValue placeholder="资源分类" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">全部类型</SelectItem>
+          {RESOURCE_TYPE_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {filteredPackages.length > 0 ? (
+        <Select
+          value={selectedPackageId ?? undefined}
+          onValueChange={(packageId) => {
+            const resourcePackage = packages.find(
+              (item) => item.id === packageId,
+            )
+            if (resourcePackage) onSelect(resourcePackage)
+          }}
+        >
+          <SelectTrigger className="w-full min-w-0 md:flex-1">
+            <SelectValue placeholder="选择一个资源包" />
+          </SelectTrigger>
+          <SelectContent>
+            {filteredPackages.map((resourcePackage) => (
+              <SelectItem key={resourcePackage.id} value={resourcePackage.id}>
+                {resourcePackage.title} ·{' '}
+                {resourcePackage.completed_resource_count}/
+                {resourcePackage.resource_count}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <div className="flex h-9 flex-1 items-center rounded-md border border-dashed px-3 text-sm text-muted-foreground">
+          当前分类暂无资源包
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -375,8 +435,13 @@ export const ResourcePackagePage = ({
   const generateResourcePackage = useAtomSet(generateResourcePackageAtom, {
     mode: 'promise',
   })
+  const navigate = useNavigate()
   const courseOutlineResult = useAtomValue(projectCourseOutlineAtom(projectId))
-  const packageProgress = useAtomValue(resourcePackageProgressAtom)
+  const globalPackageProgress = useAtomValue(resourcePackageProgressAtom)
+  const packageProgress =
+    globalPackageProgress?.projectId === projectId
+      ? globalPackageProgress
+      : null
   const packagesResult = useAtomValue(resourcePackagesAtom(projectId))
   const refreshResourcePackages = useAtomSet(refreshResourcePackagesAtom, {
     mode: 'promise',
@@ -385,6 +450,28 @@ export const ResourcePackagePage = ({
   useEffect(() => {
     void refreshResourcePackages(projectId)
   }, [projectId, refreshResourcePackages])
+
+  useEffect(() => {
+    if (
+      packageProgress?.status !== 'generating' ||
+      !packageProgress.packageId ||
+      packageProgress.packageId === initialPackageId
+    ) {
+      return
+    }
+    void navigate({
+      to: '/dashboard/p/$projectId/resource-packages',
+      params: { projectId },
+      search: { packageId: packageProgress.packageId },
+      replace: true,
+    })
+  }, [
+    initialPackageId,
+    navigate,
+    packageProgress?.packageId,
+    packageProgress?.status,
+    projectId,
+  ])
 
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
@@ -505,6 +592,30 @@ export const ResourcePackagePage = ({
           </div>
 
           <AgentProgressPanel steps={packageProgress?.agentSteps ?? []} />
+
+          {packageProgress?.status === 'generating' &&
+          packageProgress.packageId ? (
+            <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-medium">
+                  已进入新资源包，内容正在生成
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  该链接从任务开始阶段即可打开，生成进度会持续更新。
+                </div>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link
+                  to="/dashboard/p/$projectId/resource-packages"
+                  params={{ projectId }}
+                  search={{ packageId: packageProgress.packageId }}
+                >
+                  打开对应资源包
+                  <ExternalLinkIcon className="size-4" />
+                </Link>
+              </Button>
+            </div>
+          ) : null}
 
           <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-2 xl:items-start">
             <div className="rounded-2xl border bg-background">

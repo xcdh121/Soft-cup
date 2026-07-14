@@ -1,9 +1,9 @@
-import { ApiClientService } from '@/integrations/api/http'
-import { makeAtomRuntime } from '@/lib/make-atom-runtime'
 import { Atom, Registry } from '@effect-atom/atom-react'
 import { HttpBody } from '@effect/platform'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Effect, Layer, Stream } from 'effect'
+import { ApiClientService } from '@/integrations/api/http'
+import { makeAtomRuntime } from '@/lib/make-atom-runtime'
 import { appendSseChunk } from '@/lib/sse'
 
 const runtime = makeAtomRuntime(
@@ -147,10 +147,7 @@ const getAgentProgressKey = (step: AgentProgressStep) => {
   if (step.skillId && step.eventType?.startsWith('skill_')) {
     return `skill:${step.agentName}:${step.skillId}`
   }
-  if (
-    step.eventType === 'agent_step' ||
-    step.eventType === 'agent_skipped'
-  ) {
+  if (step.eventType === 'agent_step' || step.eventType === 'agent_skipped') {
     return `agent:${step.agentName}`
   }
   if (
@@ -177,6 +174,7 @@ export const upsertAgentProgressStep = (
 }
 
 export const resourcePackageProgressAtom = Atom.make<{
+  projectId: string
   status: ResourcePackageStatus
   packageId: string | null
   resources: Array<GeneratedResource>
@@ -235,6 +233,7 @@ export const generateResourcePackageAtom = runtime.fn(
       Record<ResourceType, GeneratedResourceStatus>
     > = Object.fromEntries(requestedTypes.map((type) => [type, 'pending']))
     registry.set(resourcePackageProgressAtom, {
+      projectId: input.projectId,
       status: 'generating',
       packageId: null,
       resources: [],
@@ -275,7 +274,7 @@ export const generateResourcePackageAtom = runtime.fn(
     )
 
     let buffer = ''
-    let packageId: string | null = null
+    let packageId = ''
     let resources: Array<GeneratedResource> = []
     let streamError: string | undefined
     let agentSteps: Array<AgentProgressStep> = []
@@ -355,7 +354,7 @@ export const generateResourcePackageAtom = runtime.fn(
             const now = new Date().toISOString()
             const partialResource: GeneratedResource = {
               id: resourceId,
-              resource_package_id: packageId ?? '',
+              resource_package_id: packageId,
               project_id: input.projectId,
               user_id: existing?.user_id ?? '',
               resource_type: resourceType,
@@ -403,6 +402,7 @@ export const generateResourcePackageAtom = runtime.fn(
             )
           }
           registry.set(resourcePackageProgressAtom, {
+            projectId: input.projectId,
             status:
               event.event === 'package_completed'
                 ? (event.payload.status as ResourcePackageStatus)
@@ -423,7 +423,7 @@ export const generateResourcePackageAtom = runtime.fn(
       Stream.runDrain,
     )
     if (streamError) throw new Error(streamError)
-    if (!packageId)
+    if (packageId.length === 0)
       throw new Error('Resource package stream returned no package ID')
 
     const packageResponse = yield* httpClient.get(
@@ -436,6 +436,7 @@ export const generateResourcePackageAtom = runtime.fn(
       generatedResourcesAtom(`${input.projectId}:${resourcePackage.id}`),
     )
     registry.set(resourcePackageProgressAtom, {
+      projectId: input.projectId,
       status: resourcePackage.status,
       packageId: resourcePackage.id,
       resources: resourcePackage.resources,

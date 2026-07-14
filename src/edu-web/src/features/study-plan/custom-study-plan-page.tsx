@@ -13,11 +13,8 @@ import {
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { StudyPlanHeader } from './components/study-plan-header'
-import {
-  loadCustomStudyPlan,
-  saveCustomStudyPlan,
-  type CustomStudyPlanEntry,
-} from './custom-study-plan'
+import { loadCustomStudyPlan, saveCustomStudyPlan } from './custom-study-plan'
+import type { CustomStudyPlanEntry } from './custom-study-plan'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -133,26 +130,34 @@ export const CustomStudyPlanPage = ({
 
           <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
             <div className="min-w-0 border bg-background">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1050px] border-collapse text-sm">
+              <div className="w-full overflow-hidden">
+                <table className="w-full table-fixed border-collapse text-sm">
+                  <colgroup>
+                    <col className="w-[11%]" />
+                    <col className="w-[16%]" />
+                    <col className="w-[24%]" />
+                    <col className="w-[13%]" />
+                    <col className="w-[13%]" />
+                    <col className="w-[23%]" />
+                  </colgroup>
                   <thead>
                     <tr className="bg-muted/60">
-                      <th className="w-36 border-b border-r px-3 py-3 text-left font-semibold">
+                      <th className="border-b border-r px-2 py-3 text-left font-semibold">
                         日期
                       </th>
-                      <th className="w-44 border-b border-r px-3 py-3 text-left font-semibold">
+                      <th className="border-b border-r px-2 py-3 text-left font-semibold">
                         薄弱项 / 主题
                       </th>
-                      <th className="min-w-64 border-b border-r px-3 py-3 text-left font-semibold">
+                      <th className="border-b border-r px-2 py-3 text-left font-semibold">
                         学习任务
                       </th>
-                      <th className="w-32 border-b border-r px-3 py-3 text-left font-semibold">
+                      <th className="border-b border-r px-2 py-3 text-left font-semibold">
                         开始时间
                       </th>
-                      <th className="w-32 border-b border-r px-3 py-3 text-left font-semibold">
+                      <th className="border-b border-r px-2 py-3 text-left font-semibold">
                         预计时长
                       </th>
-                      <th className="min-w-52 border-b px-3 py-3 text-left font-semibold">
+                      <th className="border-b px-2 py-3 text-left font-semibold">
                         当日目标
                       </th>
                     </tr>
@@ -167,7 +172,7 @@ export const CustomStudyPlanPage = ({
                           key={entry.date}
                           className="group align-top hover:bg-muted/20"
                         >
-                          <td className="border-b border-r px-3 py-3">
+                          <td className="border-b border-r px-2 py-3">
                             <p className="font-semibold">
                               {format(date, 'M月d日', { locale: zhCN })}
                             </p>
@@ -187,7 +192,7 @@ export const CustomStudyPlanPage = ({
                                 updateEntry(index, 'topic', event.target.value)
                               }
                               placeholder="如：动态规划"
-                              className="h-20 rounded-none border-0 bg-transparent px-3 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
+                              className="h-20 min-w-0 rounded-none border-0 bg-transparent px-2 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
                               aria-label={`${entry.date} 学习主题`}
                             />
                           </td>
@@ -198,7 +203,7 @@ export const CustomStudyPlanPage = ({
                                 updateEntry(index, 'task', event.target.value)
                               }
                               placeholder="填写资料阅读、习题练习或复习任务"
-                              className="min-h-20 resize-none rounded-none border-0 bg-transparent px-3 py-3 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
+                              className="min-h-20 min-w-0 resize-none rounded-none border-0 bg-transparent px-2 py-3 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
                               aria-label={`${entry.date} 学习任务`}
                             />
                           </td>
@@ -213,12 +218,12 @@ export const CustomStudyPlanPage = ({
                                   event.target.value,
                                 )
                               }
-                              className="h-20 rounded-none border-0 bg-transparent px-3 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
+                              className="h-20 min-w-0 rounded-none border-0 bg-transparent px-2 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
                               aria-label={`${entry.date} 开始时间`}
                             />
                           </td>
                           <td className="border-b border-r p-0">
-                            <div className="flex h-20 items-center">
+                            <div className="flex h-20 min-w-0 items-center">
                               <Input
                                 type="number"
                                 min="0"
@@ -232,10 +237,10 @@ export const CustomStudyPlanPage = ({
                                   )
                                 }
                                 placeholder="45"
-                                className="h-20 rounded-none border-0 bg-transparent px-3 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
+                                className="h-20 min-w-0 rounded-none border-0 bg-transparent px-2 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
                                 aria-label={`${entry.date} 预计时长（分钟）`}
                               />
-                              <span className="pr-3 text-xs text-muted-foreground">
+                              <span className="pr-2 text-xs text-muted-foreground">
                                 分钟
                               </span>
                             </div>
@@ -247,7 +252,7 @@ export const CustomStudyPlanPage = ({
                                 updateEntry(index, 'goal', event.target.value)
                               }
                               placeholder="完成后应达到什么结果"
-                              className="min-h-20 resize-none rounded-none border-0 bg-transparent px-3 py-3 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
+                              className="min-h-20 min-w-0 resize-none rounded-none border-0 bg-transparent px-2 py-3 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
                               aria-label={`${entry.date} 当日目标`}
                             />
                           </td>

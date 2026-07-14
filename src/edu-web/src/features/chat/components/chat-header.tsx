@@ -45,8 +45,9 @@ const ChatHeaderContent = (props: { projectId: string; chatId: string }) => {
   const atomInput = useMemo(() => `${projectId}:${chatId}`, [projectId, chatId])
   const chatResult = useAtomValue(chatAtom(atomInput))
 
-  return Result.builder(chatResult)
-    .onSuccess((chat) => (
+  if (Result.isSuccess(chatResult)) {
+    const chat = chatResult.value
+    return (
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -56,9 +57,10 @@ const ChatHeaderContent = (props: { projectId: string; chatId: string }) => {
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
-    ))
-    .onInitialOrWaiting(() => <Skeleton className="w-72 h-7" />)
-    .render()
+    )
+  }
+
+  return <Skeleton className="h-7 w-72" />
 }
 
 const ChatHistoryMenu = (props: { projectId: string; chatId: string }) => {

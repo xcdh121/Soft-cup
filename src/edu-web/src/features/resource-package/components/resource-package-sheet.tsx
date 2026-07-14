@@ -366,7 +366,11 @@ const ResourcePackageSheetBody = ({
     mode: 'promise',
   })
   const documentsResult = useAtomValue(indexedDocumentsAtom(projectId))
-  const packageProgress = useAtomValue(resourcePackageProgressAtom)
+  const globalPackageProgress = useAtomValue(resourcePackageProgressAtom)
+  const packageProgress =
+    globalPackageProgress?.projectId === projectId
+      ? globalPackageProgress
+      : null
 
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
@@ -575,7 +579,7 @@ const ResourcePackageSheetBody = ({
                           {document.file_name}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {document.file_type?.toUpperCase()}
+                          {document.file_type.toUpperCase()}
                         </div>
                       </div>
                     </label>
