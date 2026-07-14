@@ -3,6 +3,8 @@ import { Link } from '@tanstack/react-router'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import {
+  CheckCircle2Icon,
+  Clock3Icon,
   FlameIcon,
   FolderIcon,
   HeartIcon,
@@ -11,8 +13,10 @@ import {
   PlusIcon,
   ReplyIcon,
   SendIcon,
+  SquarePenIcon,
   Trash2Icon,
   TrophyIcon,
+  WrenchIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import dashboardSlideOne from '../../../../source/1.png'
@@ -84,8 +88,66 @@ const dashboardSlides = [
   },
 ]
 
+const todayStudyStats = [
+  {
+    label: '学习时长',
+    value: '2.5 小时',
+    icon: Clock3Icon,
+    className:
+      'border-sky-300/70 bg-gradient-to-br from-sky-500 to-cyan-400 text-white shadow-sky-200/60',
+  },
+  {
+    label: '练习题目',
+    value: '18 道',
+    icon: SquarePenIcon,
+    className:
+      'border-violet-300/70 bg-gradient-to-br from-violet-500 to-fuchsia-400 text-white shadow-violet-200/60',
+  },
+  {
+    label: '工具调用',
+    value: '12 次',
+    icon: WrenchIcon,
+    className:
+      'border-amber-300/70 bg-gradient-to-br from-amber-500 to-orange-400 text-white shadow-amber-200/60',
+  },
+  {
+    label: '今日计划',
+    value: '已完成',
+    icon: CheckCircle2Icon,
+    className:
+      'border-emerald-300/70 bg-gradient-to-br from-emerald-500 to-green-400 text-white shadow-emerald-200/60',
+  },
+]
+
 const studyShortcutClassName =
-  'group flex min-h-0 w-full items-center bg-card/85 px-4 py-3 text-left transition-colors hover:bg-muted/60'
+  'group flex min-h-0 w-full items-center bg-card/85 px-3 py-2 text-left transition-colors hover:bg-muted/60'
+
+const TodayStudyStats = () => (
+  <div className="grid w-full grid-cols-2 gap-2">
+    {todayStudyStats.map((stat) => {
+      const Icon = stat.icon
+
+      return (
+        <div
+          key={stat.label}
+          className={`min-w-0 rounded-xl border p-2.5 shadow-md ${stat.className}`}
+        >
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-white/20 ring-1 ring-white/25">
+              <Icon className="size-3.5" aria-hidden="true" />
+            </span>
+            <p className="truncate text-[11px] font-medium text-white/80">
+              {stat.label}
+            </p>
+          </div>
+          <p className="mt-1 truncate text-sm font-bold tracking-tight">
+            {stat.value}
+          </p>
+        </div>
+      )
+    })}
+  </div>
+)
 
 const StudyShortcutContent = ({
   label,
@@ -687,103 +749,105 @@ export const DashboardPage = () => {
           )}
         </div>
 
-        <Card className="rounded-none border-primary/15 bg-gradient-to-br from-primary/8 via-background to-background shadow-sm">
-          <CardHeader className="space-y-2">
-            <CardTitle className="text-xl">今日学习概览</CardTitle>
-            <CardDescription>
-              从常用入口快速进入 AI 指导、题库、课程资料和知识图谱。
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid items-stretch lg:grid-cols-[minmax(0,4fr)_minmax(180px,1fr)]">
-              <StudyOverviewCarousel />
+        <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(270px,1fr)]">
+          <div className="grid items-stretch sm:grid-cols-[minmax(0,4fr)_minmax(130px,1fr)]">
+            <StudyOverviewCarousel />
 
-              <div className="grid grid-cols-2 overflow-hidden border lg:grid-cols-1 lg:grid-rows-4 lg:border-l-0 [&>*:nth-child(even)]:border-l [&>*:nth-child(n+3)]:border-t lg:[&>*:nth-child(even)]:border-l-0 lg:[&>*:nth-child(n+2)]:border-t">
-                {firstProjectId ? (
-                  <Link
-                    to="/dashboard/p/$projectId"
-                    params={{ projectId: firstProjectId }}
-                    className={studyShortcutClassName}
-                  >
-                    <StudyShortcutContent
-                      label="AI 指导"
-                      description="获取个性化学习建议"
-                    />
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => openCreateProjectDialog()}
-                    className={studyShortcutClassName}
-                  >
-                    <StudyShortcutContent
-                      label="AI 指导"
-                      description="创建项目后开始使用"
-                    />
-                  </button>
-                )}
-
-                {firstProjectId ? (
-                  <Link
-                    to="/dashboard/p/$projectId/learning-evaluation/practice"
-                    params={{ projectId: firstProjectId }}
-                    className={studyShortcutClassName}
-                  >
-                    <StudyShortcutContent
-                      label="学习题库"
-                      description="练习并巩固知识点"
-                    />
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => openCreateProjectDialog()}
-                    className={studyShortcutClassName}
-                  >
-                    <StudyShortcutContent
-                      label="学习题库"
-                      description="创建项目后开始练习"
-                    />
-                  </button>
-                )}
-
+            <div className="grid grid-cols-2 overflow-hidden border sm:grid-cols-1 sm:grid-rows-4 sm:border-l-0 [&>*:nth-child(even)]:border-l [&>*:nth-child(n+3)]:border-t sm:[&>*:nth-child(even)]:border-l-0 sm:[&>*:nth-child(n+2)]:border-t">
+              {firstProjectId ? (
                 <Link
-                  to="/dashboard/course-library"
+                  to="/dashboard/p/$projectId"
+                  params={{ projectId: firstProjectId }}
                   className={studyShortcutClassName}
                 >
                   <StudyShortcutContent
-                    label="课程资料"
-                    description="浏览数据结构资料库"
+                    label="AI 指导"
+                    description="获取个性化学习建议"
                   />
                 </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => openCreateProjectDialog()}
+                  className={studyShortcutClassName}
+                >
+                  <StudyShortcutContent
+                    label="AI 指导"
+                    description="创建项目后开始使用"
+                  />
+                </button>
+              )}
 
-                {firstProjectId ? (
-                  <Link
-                    to="/dashboard/p/$projectId/knowledge-graph"
-                    params={{ projectId: firstProjectId }}
-                    className={studyShortcutClassName}
-                  >
-                    <StudyShortcutContent
-                      label="知识图谱"
-                      description="查看知识关联脉络"
-                    />
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => openCreateProjectDialog()}
-                    className={studyShortcutClassName}
-                  >
-                    <StudyShortcutContent
-                      label="知识图谱"
-                      description="创建项目后查看图谱"
-                    />
-                  </button>
-                )}
-              </div>
+              {firstProjectId ? (
+                <Link
+                  to="/dashboard/p/$projectId/learning-evaluation/practice"
+                  params={{ projectId: firstProjectId }}
+                  className={studyShortcutClassName}
+                >
+                  <StudyShortcutContent
+                    label="学习题库"
+                    description="练习并巩固知识点"
+                  />
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => openCreateProjectDialog()}
+                  className={studyShortcutClassName}
+                >
+                  <StudyShortcutContent
+                    label="学习题库"
+                    description="创建项目后开始练习"
+                  />
+                </button>
+              )}
+
+              <Link
+                to="/dashboard/course-library"
+                className={studyShortcutClassName}
+              >
+                <StudyShortcutContent
+                  label="课程资料"
+                  description="浏览数据结构资料库"
+                />
+              </Link>
+
+              {firstProjectId ? (
+                <Link
+                  to="/dashboard/p/$projectId/knowledge-graph"
+                  params={{ projectId: firstProjectId }}
+                  className={studyShortcutClassName}
+                >
+                  <StudyShortcutContent
+                    label="知识图谱"
+                    description="查看知识关联脉络"
+                  />
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => openCreateProjectDialog()}
+                  className={studyShortcutClassName}
+                >
+                  <StudyShortcutContent
+                    label="知识图谱"
+                    description="创建项目后查看图谱"
+                  />
+                </button>
+              )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+
+          <Card className="rounded-none border-primary/15 bg-gradient-to-br from-primary/8 via-background to-background shadow-sm">
+            <CardHeader className="gap-2 px-4">
+              <CardTitle className="text-xl">今日学习概览</CardTitle>
+              <CardDescription>汇总今天的学习投入与计划进度。</CardDescription>
+            </CardHeader>
+            <CardContent className="px-4">
+              <TodayStudyStats />
+            </CardContent>
+          </Card>
+        </div>
 
         <CommunitySection />
 

@@ -232,7 +232,7 @@ const ResourceList = ({
   }
 
   return (
-    <Card className="overflow-hidden rounded-2xl">
+    <div className="overflow-hidden border bg-card shadow-sm">
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -283,7 +283,7 @@ const ResourceList = ({
                         key={starIndex}
                         className={cn(
                           'size-3.5 text-muted-foreground/25',
-                          starIndex < stars && 'fill-[#7DA0CA] text-[#5483B3]',
+                          starIndex < stars && 'fill-amber-400 text-amber-500',
                         )}
                       />
                     ))}
@@ -347,7 +347,7 @@ const ResourceList = ({
           })}
         </TableBody>
       </Table>
-    </Card>
+    </div>
   )
 }
 
@@ -888,31 +888,61 @@ const ExerciseResources = ({
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {(
           [
-            ['generated', Layers3, 'text-[#021024]', 'bg-[#C1E8FF]/70'],
-            ['incomplete', Clock3, 'text-[#052659]', 'bg-[#C1E8FF]/55'],
-            ['completed', CheckCircle2, 'text-[#5483B3]', 'bg-[#C1E8FF]/40'],
-            ['wrong', CircleAlert, 'text-[#7DA0CA]', 'bg-[#C1E8FF]/25'],
+            [
+              'generated',
+              Layers3,
+              '!border-blue-200 !bg-blue-50 dark:!border-blue-900 dark:!bg-blue-950/35',
+              'bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300',
+              '!border-blue-500 ring-blue-500/15',
+            ],
+            [
+              'incomplete',
+              Clock3,
+              '!border-orange-200 !bg-orange-50 dark:!border-orange-900 dark:!bg-orange-950/35',
+              'bg-orange-100 text-orange-700 dark:bg-orange-900/60 dark:text-orange-300',
+              '!border-orange-500 ring-orange-500/15',
+            ],
+            [
+              'completed',
+              CheckCircle2,
+              '!border-emerald-200 !bg-emerald-50 dark:!border-emerald-900 dark:!bg-emerald-950/35',
+              'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300',
+              '!border-emerald-500 ring-emerald-500/15',
+            ],
+            [
+              'wrong',
+              CircleAlert,
+              '!border-rose-200 !bg-rose-50 dark:!border-rose-900 dark:!bg-rose-950/35',
+              'bg-rose-100 text-rose-700 dark:bg-rose-900/60 dark:text-rose-300',
+              '!border-rose-500 ring-rose-500/15',
+            ],
           ] as const
-        ).map(([key, Icon, color, background]) => (
-          <button key={key} type="button" onClick={() => setView(key)}>
+        ).map(([key, Icon, cardTone, iconTone, activeTone]) => (
+          <button
+            key={key}
+            type="button"
+            className="text-left"
+            onClick={() => setView(key)}
+          >
             <Card
               className={cn(
-                'h-full rounded-2xl text-left transition-colors hover:border-primary/40',
-                view === key && 'border-primary ring-2 ring-primary/10',
+                'h-full gap-0 rounded-lg py-0 text-left shadow-none transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-sm',
+                cardTone,
+                view === key && ['ring-2', activeTone],
               )}
             >
-              <CardContent className="flex items-center gap-4 p-5">
-                <div className={cn('rounded-xl p-3', color, background)}>
-                  <Icon className="size-5" />
+              <CardContent className="flex items-center gap-3 p-3.5">
+                <div className={cn('rounded-lg p-2', iconTone)}>
+                  <Icon className="size-4.5" />
                 </div>
                 <div>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-xs font-medium text-muted-foreground">
                     {viewLabels[key]}
                   </div>
-                  <div className="mt-1 text-3xl font-semibold">
+                  <div className="mt-0.5 text-xl font-semibold tabular-nums">
                     {counts[key]}
                   </div>
                 </div>

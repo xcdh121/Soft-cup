@@ -77,11 +77,11 @@ export function MultiAgentCallSequence({ isRunning }: { isRunning: boolean }) {
       : '等待对话'
 
   return (
-    <aside className="hidden min-h-0 overflow-y-auto border-l bg-background xl:flex xl:flex-col">
-      <header className="border-b px-5 py-4">
+    <aside className="hidden min-h-0 overflow-y-auto border-l border-l-[#29496a] bg-[#102a46] text-slate-100 shadow-[-4px_0_18px_rgba(15,42,70,0.08)] xl:flex xl:flex-col">
+      <header className="border-b border-white/10 bg-[#0d243d] px-5 py-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-xs font-medium tracking-[0.16em] text-muted-foreground">
+            <div className="text-xs font-medium tracking-[0.16em] text-sky-200/70">
               AI ORCHESTRATION
             </div>
             <h2 className="mt-1 text-base font-semibold">多智能体调用顺序</h2>
@@ -89,16 +89,16 @@ export function MultiAgentCallSequence({ isRunning }: { isRunning: boolean }) {
           <span
             className={`border px-2 py-1 text-xs font-medium ${
               isRunning
-                ? 'border-primary/40 bg-primary/5 text-primary'
+                ? 'border-sky-300/30 bg-sky-300/10 text-sky-200'
                 : hasCompleted
-                  ? 'border-emerald-600/30 text-emerald-700'
-                  : 'text-muted-foreground'
+                  ? 'border-emerald-300/30 bg-emerald-400/10 text-emerald-300'
+                  : 'border-orange-300/30 bg-orange-400/10 text-orange-300'
             }`}
           >
             {headerStatus}
           </span>
         </div>
-        <p className="mt-3 text-xs leading-5 text-muted-foreground">
+        <p className="mt-3 text-xs leading-5 text-slate-300/75">
           发送问题后，系统将按顺序推进本次协作流程。
         </p>
       </header>
@@ -111,32 +111,32 @@ export function MultiAgentCallSequence({ isRunning }: { isRunning: boolean }) {
           return (
             <section
               key={stage.name}
-              className={`grid grid-cols-[36px_minmax(0,1fr)_56px] items-center border-b py-4 ${
-                isActive ? 'border-l-2 border-l-primary bg-primary/[0.035]' : ''
+              className={`grid grid-cols-[36px_minmax(0,1fr)_56px] items-center border-b border-white/10 py-4 ${
+                isActive ? 'border-l-2 border-l-sky-300 bg-sky-300/[0.08]' : ''
               }`}
             >
-              <span className="font-mono text-xs text-muted-foreground">
+              <span className="font-mono text-xs text-sky-200/55">
                 {String(index + 1).padStart(2, '0')}
               </span>
               <div className="min-w-0 pr-3">
                 <h3 className="text-sm font-medium">{stage.name}</h3>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                <p className="mt-1 text-xs leading-5 text-slate-300/70">
                   {stage.description}
                 </p>
               </div>
               <div className="flex justify-end text-xs">
                 {isActive ? (
-                  <span className="flex items-center gap-1 text-primary">
+                  <span className="flex items-center gap-1 text-sky-300">
                     <Loader2Icon className="size-3.5 animate-spin" />
                     执行中
                   </span>
                 ) : isCompleted ? (
-                  <span className="flex items-center gap-1 text-emerald-700">
+                  <span className="flex items-center gap-1 text-emerald-300">
                     <CheckIcon className="size-3.5" />
                     完成
                   </span>
                 ) : (
-                  <span className="text-muted-foreground">待命</span>
+                  <span className="text-orange-300">待命</span>
                 )}
               </div>
             </section>

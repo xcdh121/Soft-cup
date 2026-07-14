@@ -65,7 +65,7 @@ export const AppBreadcrumbs = () => {
   const trail = getPageTrail(location.pathname)
 
   return (
-    <div className="flex h-10 shrink-0 items-center border-b bg-background px-4">
+    <div className="flex h-10 shrink-0 items-center border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-sm dark:border-border dark:bg-background/90">
       <Breadcrumb className="min-w-0">
         <BreadcrumbList className="flex-nowrap">
           <BreadcrumbItem>

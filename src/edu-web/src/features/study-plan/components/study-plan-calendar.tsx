@@ -7,6 +7,7 @@ import {
   format,
   isSameDay,
   isSameMonth,
+  isToday,
   startOfMonth,
   startOfWeek,
   subMonths,
@@ -93,11 +94,11 @@ export const StudyPlanCalendar = ({
   }
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="border-b pb-4">
+    <Card className="overflow-hidden border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-card">
+      <CardHeader className="border-b bg-gradient-to-r from-[#eaf2f9] via-[#f4f8fb] to-white pb-4 dark:from-[#172b40] dark:via-[#142438] dark:to-card">
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <CalendarDays className="size-5 text-primary" />
+            <CalendarDays className="size-5 text-[#1f5b8f] dark:text-sky-300" />
             学习日历
           </CardTitle>
           <div className="flex items-center gap-1">
@@ -110,7 +111,7 @@ export const StudyPlanCalendar = ({
             >
               <ChevronLeft className="size-4" />
             </Button>
-            <span className="min-w-20 text-center text-sm font-semibold">
+            <span className="min-w-24 rounded-md border border-[#c9d9e7] bg-white/75 px-2 py-1 text-center text-sm font-semibold text-[#173a5e] dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100">
               {format(visibleMonth, 'yyyy年 M月', { locale: zhCN })}
             </span>
             <Button
@@ -127,11 +128,15 @@ export const StudyPlanCalendar = ({
       </CardHeader>
 
       <CardContent className="p-4">
-        <div className="grid grid-cols-7 border-l border-t text-center text-xs">
-          {weekDays.map((day) => (
+        <div className="grid grid-cols-7 border-l border-t border-slate-200 text-center text-xs dark:border-slate-700">
+          {weekDays.map((day, index) => (
             <div
               key={day}
-              className="border-b border-r bg-muted/50 py-2 font-medium text-muted-foreground"
+              className={cn(
+                'border-b border-r border-slate-200 bg-[#edf3f8] py-2 font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300',
+                index >= 5 &&
+                  '!bg-amber-50 text-amber-700 dark:!bg-amber-950/25 dark:text-amber-300',
+              )}
             >
               {day}
             </div>
@@ -141,6 +146,8 @@ export const StudyPlanCalendar = ({
             const hasAiPlan = aiPlansByDate.has(key)
             const hasCustomPlan = customPlansByDate.has(key)
             const isSelected = isSameDay(date, selectedDate)
+            const isCurrentDay = isToday(date)
+            const isWeekend = date.getDay() === 0 || date.getDay() === 6
 
             return (
               <button
@@ -148,23 +155,39 @@ export const StudyPlanCalendar = ({
                 type="button"
                 onClick={() => selectDate(date)}
                 className={cn(
-                  'relative flex aspect-square min-h-10 items-center justify-center border-b border-r text-sm transition-colors hover:bg-muted',
+                  'relative flex aspect-square min-h-10 items-center justify-center border-b border-r border-slate-200 bg-white text-sm transition-colors hover:bg-sky-50 dark:border-slate-700 dark:bg-card dark:hover:bg-slate-800',
+                  isWeekend &&
+                    '!bg-amber-50/40 text-amber-800 dark:!bg-amber-950/10 dark:text-amber-200',
                   !isSameMonth(date, visibleMonth) &&
-                    'text-muted-foreground/40',
+                    '!bg-slate-50/60 text-muted-foreground/35 dark:!bg-slate-900/30',
+                  isCurrentDay &&
+                    !isSelected &&
+                    'font-semibold text-sky-700 ring-1 ring-inset ring-sky-400 dark:text-sky-300',
                   isSelected &&
-                    'bg-primary font-semibold text-primary-foreground hover:bg-primary',
+                    '!bg-[#1f5b8f] font-semibold !text-white hover:!bg-[#194d79] dark:!bg-sky-700 dark:hover:!bg-sky-700',
                 )}
                 aria-label={format(date, 'yyyy年M月d日', { locale: zhCN })}
               >
                 {format(date, 'd')}
                 {(hasAiPlan || hasCustomPlan) && (
-                  <span
-                    className={cn(
-                      'absolute bottom-1.5 size-1.5 rounded-full bg-primary',
-                      isSelected && 'bg-primary-foreground',
-                      hasCustomPlan && !isSelected && 'bg-amber-500',
+                  <span className="absolute bottom-1.5 flex items-center gap-1">
+                    {hasAiPlan && (
+                      <span
+                        className={cn(
+                          'size-1.5 rounded-full bg-sky-500',
+                          isSelected && 'bg-sky-100',
+                        )}
+                      />
                     )}
-                  />
+                    {hasCustomPlan && (
+                      <span
+                        className={cn(
+                          'size-1.5 rounded-full bg-amber-500',
+                          isSelected && 'bg-amber-300',
+                        )}
+                      />
+                    )}
+                  </span>
                 )}
               </button>
             )
@@ -221,7 +244,7 @@ export const StudyPlanCalendar = ({
           )}
 
           {selectedAiPlan && (
-            <div className="border-l-2 border-primary bg-primary/5 px-3 py-2.5">
+            <div className="border-l-2 border-sky-600 bg-sky-50 px-3 py-2.5 dark:border-sky-400 dark:bg-sky-950/25">
               <p className="text-sm font-semibold">
                 {selectedAiPlan.day || 'AI 推荐计划'}
               </p>

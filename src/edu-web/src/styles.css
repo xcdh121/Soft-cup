@@ -27,7 +27,7 @@ code {
 }
 
 :root {
-  --background: #f7fbff;
+  --background: #fbfcfe;
   --foreground: #021024;
   --card: #ffffff;
   --card-foreground: #021024;
@@ -35,32 +35,32 @@ code {
   --popover-foreground: #021024;
   --primary: #052659;
   --primary-foreground: #ffffff;
-  --secondary: #c1e8ff;
+  --secondary: #edf3f8;
   --secondary-foreground: #052659;
-  --muted: #eaf6ff;
-  --muted-foreground: #5483b3;
-  --accent: #c1e8ff;
-  --accent-foreground: #021024;
+  --muted: #f2f5f8;
+  --muted-foreground: #64748b;
+  --accent: #eaf1f7;
+  --accent-foreground: #173a5e;
   --destructive: #b42318;
   --destructive-foreground: #ffffff;
-  --border: #c1e8ff;
-  --input: #7da0ca;
+  --border: #dce5ee;
+  --input: #b7c7d6;
   --ring: #5483b3;
   --chart-1: #021024;
   --chart-2: #052659;
   --chart-3: #5483b3;
   --chart-4: #7da0ca;
   --chart-5: #c1e8ff;
-  --sidebar: #052659;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #c1e8ff;
-  --sidebar-primary-foreground: #021024;
-  --sidebar-accent: #021024;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-active: #5483b3;
-  --sidebar-active-foreground: #ffffff;
-  --sidebar-border: #5483b3;
-  --sidebar-ring: #c1e8ff;
+  --sidebar: #f4f7fb;
+  --sidebar-foreground: #334155;
+  --sidebar-primary: #1f4b73;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e7eef6;
+  --sidebar-accent-foreground: #213b57;
+  --sidebar-active: #d8e6f3;
+  --sidebar-active-foreground: #173a5e;
+  --sidebar-border: #d5dee9;
+  --sidebar-ring: #6f93b5;
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif,
@@ -117,16 +117,16 @@ code {
   --chart-3: #5483b3;
   --chart-4: #052659;
   --chart-5: #ffffff;
-  --sidebar: #052659;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #c1e8ff;
-  --sidebar-primary-foreground: #021024;
-  --sidebar-accent: #021024;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-active: #5483b3;
-  --sidebar-active-foreground: #ffffff;
-  --sidebar-border: #5483b3;
-  --sidebar-ring: #c1e8ff;
+  --sidebar: #111b2b;
+  --sidebar-foreground: #d7e0eb;
+  --sidebar-primary: #8fb2d4;
+  --sidebar-primary-foreground: #0b1524;
+  --sidebar-accent: #1b2b40;
+  --sidebar-accent-foreground: #edf4fb;
+  --sidebar-active: #263d5a;
+  --sidebar-active-foreground: #f3f7fb;
+  --sidebar-border: #2b3d54;
+  --sidebar-ring: #7699bd;
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif,
