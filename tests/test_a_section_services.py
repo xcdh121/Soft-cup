@@ -52,7 +52,12 @@ class ASectionServiceTests(unittest.TestCase):
         with self.session_factory() as db:
             db.add_all(
                 [
-                    User(id="user-1", name="Test", email="test@example.com"),
+                    User(
+                        id="user-1",
+                        username="test-user",
+                        name="Test",
+                        email="test@example.com",
+                    ),
                     Course(id="course-1", owner_id="user-1", name="Databases"),
                     CourseChapter(
                         id="chapter-1",

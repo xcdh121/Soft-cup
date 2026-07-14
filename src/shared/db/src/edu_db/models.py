@@ -23,12 +23,16 @@ from edu_db.base import Base
 
 class User(Base):
     __tablename__ = "users"
-    # Use Supabase user ID as primary key to sync with auth.users
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True
-    )  # Maps to auth.users.id (UUID from Supabase)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    username: Mapped[str] = mapped_column(
+        String, unique=True, index=True, nullable=False
+    )
     name: Mapped[str] = mapped_column(String, nullable=True)
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=True)
+    # Nullable so existing/dev users can be migrated without inventing credentials.
+    password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

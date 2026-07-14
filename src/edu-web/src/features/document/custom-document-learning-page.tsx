@@ -7,7 +7,7 @@ import { currentProjectIdAtom } from '@/data-acess/project'
 import { useUploadDocumentDialog } from '@/features/document/components/upload-document-dialog'
 import { DocumentBookCard } from '@/features/document/components/document-book-card'
 import { useDocumentPolling } from '@/hooks/use-document-polling'
-import { supabase } from '@/lib/supabase'
+import { authClient } from '@/lib/auth-client'
 
 type CustomDocumentLearningPageProps = {
   projectId: string
@@ -29,7 +29,7 @@ export const CustomDocumentLearningPage = ({
   useEffect(() => {
     let cancelled = false
 
-    void supabase.auth.getSession().then(({ data }) => {
+    void authClient.auth.getSession().then(({ data }) => {
       if (!cancelled) setAccessToken(data.session?.access_token ?? null)
     })
 

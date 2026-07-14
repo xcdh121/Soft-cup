@@ -23,9 +23,11 @@ class Settings(BaseSettings):
     # Database
     database_url: str = ""
 
-    # Supabase Auth
-    supabase_url: str = ""
-    supabase_jwt_secret: str = ""
+    # Self-hosted authentication
+    auth_jwt_secret: str = ""
+    auth_access_token_expire_minutes: int = 10080
+    auth_allow_registration: bool = True
+    auth_admin_usernames: str = ""
     allow_dev_auth_bypass: bool = False
 
     # LLM / embedding providers (OpenAI-compatible endpoints or local servers)

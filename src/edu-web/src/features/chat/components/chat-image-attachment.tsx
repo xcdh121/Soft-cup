@@ -2,7 +2,7 @@ import { FileImageIcon, Loader2Icon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FilePartDto } from '@/integrations/api/client'
 import { env } from '@/env'
-import { supabase } from '@/lib/supabase'
+import { authClient } from '@/lib/auth-client'
 
 const isInlineImageUrl = (url: string) =>
   url.startsWith('data:') || url.startsWith('blob:')
@@ -44,7 +44,7 @@ export const ChatImageAttachment = ({ file }: { file: FilePartDto }) => {
       try {
         const {
           data: { session },
-        } = await supabase.auth.getSession()
+        } = await authClient.auth.getSession()
         const headers: Record<string, string> = {}
         if (session?.access_token) {
           headers.Authorization = `Bearer ${session.access_token}`

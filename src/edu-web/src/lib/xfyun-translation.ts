@@ -1,5 +1,5 @@
 import { env } from '@/env'
-import { supabase } from '@/lib/supabase'
+import { authClient } from '@/lib/auth-client'
 
 export type TranslationResult = {
   source_text: string
@@ -32,7 +32,7 @@ export const translateDocument = async ({
 }): Promise<TranslationResult> => {
   const {
     data: { session },
-  } = await supabase.auth.getSession()
+  } = await authClient.auth.getSession()
   const baseUrl = env.VITE_SERVER_URL ?? 'http://localhost:8000'
   const response = await fetch(
     `${baseUrl}/api/v1/projects/${encodeURIComponent(projectId)}/document-translation/translate`,

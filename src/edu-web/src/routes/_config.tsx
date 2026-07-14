@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, redirect } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { Suspense, lazy } from 'react'
 import { z } from 'zod'
+import { authClient } from '@/lib/auth-client'
 import { AppShell } from '@/routes/_app-shell'
 
 const LoadingPage = () => {
@@ -148,18 +149,9 @@ const AgentRuntimeRoute = lazy(() =>
   })),
 )
 const requireAuth = async () => {
-  const { isSupabaseConfigured } = await import('@/lib/supabase')
-
-  if (!isSupabaseConfigured) {
-    return
-  }
-
-  // Check if user is authenticated by checking Supabase session
-  const { supabase } = await import('@/lib/supabase')
-
   const {
     data: { session },
-  } = await supabase.auth.getSession()
+  } = await authClient.auth.getSession()
   const isAuthenticated = !!session
 
   if (!isAuthenticated) {

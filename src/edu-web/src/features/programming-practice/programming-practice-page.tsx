@@ -27,7 +27,7 @@ import { parseProgrammingQuestions } from '@/data-acess/learning-evaluation'
 import { resourcePackagesAtom } from '@/data-acess/resource-package'
 import { ProjectHeader } from '@/features/project/components/project-header'
 import { cn } from '@/lib/utils'
-import { supabase } from '@/lib/supabase'
+import { authClient } from '@/lib/auth-client'
 
 type ProgrammingGrade = {
   score: number
@@ -287,7 +287,7 @@ export const ProgrammingPracticePage = ({
         try {
           const {
             data: { session },
-          } = await supabase.auth.getSession()
+          } = await authClient.auth.getSession()
           const response = await fetch(
             `${serverUrl}/api/v1/projects/${projectId}/generated-resources/${resourceId}/programming-run`,
             {
@@ -349,7 +349,7 @@ export const ProgrammingPracticePage = ({
         try {
           const {
             data: { session },
-          } = await supabase.auth.getSession()
+          } = await authClient.auth.getSession()
           const response = await fetch(
             `${serverUrl}/api/v1/projects/${projectId}/generated-resources/${resourceId}/programming-grade`,
             {

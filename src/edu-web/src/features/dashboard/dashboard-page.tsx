@@ -43,7 +43,7 @@ import {
   CarouselPrevious,
 } from '@/components/ui/carousel'
 import { Textarea } from '@/components/ui/textarea'
-import { supabase } from '@/lib/supabase'
+import { authClient } from '@/lib/auth-client'
 
 type StudyShortcutContentProps = {
   label: string
@@ -241,7 +241,7 @@ const StudyOverviewCarousel = () => {
 const getAuthHeaders = async (): Promise<Record<string, string>> => {
   const {
     data: { session },
-  } = await supabase.auth.getSession()
+  } = await authClient.auth.getSession()
   return session?.access_token
     ? { Authorization: `Bearer ${session.access_token}` }
     : {}

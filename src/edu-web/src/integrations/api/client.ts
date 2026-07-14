@@ -1269,6 +1269,10 @@ export class UserDto extends S.Class<UserDto>('UserDto')({
    */
   id: S.String,
   /**
+   * Unique account name used to sign in
+   */
+  username: S.String,
+  /**
    * Name of the user
    */
   name: S.optionalWith(S.String, { nullable: true }),

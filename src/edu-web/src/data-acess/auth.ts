@@ -1,148 +1,63 @@
 import { Atom } from '@effect-atom/atom-react'
 import { Effect } from 'effect'
-import type { Session, User } from '@supabase/supabase-js'
+import type { AuthSession, AuthUser } from '@/lib/auth-client'
 import { ApiClientService } from '@/integrations/api/http'
-import { isSupabaseConfigured, supabase } from '@/lib/supabase'
-
-const authBypassedAt = '2024-01-01T00:00:00.000Z'
-
-const authBypassedUser = {
-  id: 'local-dev-user',
-  app_metadata: {
-    provider: 'email',
-    providers: ['email'],
-  },
-  email: 'local@dev.test',
-  user_metadata: {
-    name: 'Local Developer',
-  },
-  aud: 'authenticated',
-  created_at: authBypassedAt,
-  confirmed_at: authBypassedAt,
-  email_confirmed_at: authBypassedAt,
-  role: 'authenticated',
-  updated_at: authBypassedAt,
-  identities: [],
-  is_anonymous: false,
-} satisfies User
+import { authClient } from '@/lib/auth-client'
 
 export const currentUserAtom = Atom.make(
   Effect.gen(function* () {
-    if (!isSupabaseConfigured) {
-      return {
-        ...authBypassedUser,
-        name: 'Local Developer',
-        initials: 'LD',
-      }
-    }
-
     const { apiClient } = yield* ApiClientService
     const resp = yield* apiClient.getCurrentUserInfoApiV1AuthMeGet()
-
-    const name = resp.name?.trim() ?? resp.email?.split('@')[0] ?? 'User'
-
+    const name = resp.name?.trim() || resp.username
     const initials = name
       .split(' ')
-      .map((n: string) => n[0])
+      .map((part: string) => part[0])
       .join('')
       .toUpperCase()
       .slice(0, 2)
-
-    return {
-      ...resp,
-      name,
-      initials,
-    }
+    return { ...resp, name, initials }
   }).pipe(Effect.provide(ApiClientService.Default)),
-).pipe(Atom.keepAlive)
+)
 
 export const authAtom: Atom.Atom<{
-  session: Session | null
-  user: User | null
+  session: AuthSession | null
+  user: AuthUser | null
 }> = Atom.make((get) => {
-  if (!isSupabaseConfigured) {
-    return {
-      session: null,
-      user: authBypassedUser,
-    }
-  }
-
-  supabase.auth.getSession().then(({ data: { session } }) => {
+  authClient.auth.getSession().then(({ data: { session } }) => {
     get.setSelf({ session, user: session?.user ?? null })
   })
-
   const {
     data: { subscription },
-  } = supabase.auth.onAuthStateChange((_event, session) => {
+  } = authClient.auth.onAuthStateChange((_event, session) => {
     get.setSelf({ session, user: session?.user ?? null })
   })
-
   get.addFinalizer(() => subscription.unsubscribe())
-
   return { session: null, user: null }
 })
 
 export const isAuthenticatedAtom = Atom.make((get) => {
-  if (!isSupabaseConfigured) {
-    return true
-  }
-
   const auth = get(authAtom)
   return !!auth.session && !!auth.user
 })
 
-type SignInPayload =
-  | {
-      readonly type: 'password'
-      readonly email: string
-      readonly password: string
-    }
-  | { readonly type: 'magic_link'; readonly email: string }
-
 export const signInAtom = Atom.fn(
-  Effect.fn(function* (payload: SignInPayload) {
-    if (!isSupabaseConfigured) {
-      return payload
-    }
-
-    if (payload.type === 'password') {
-      yield* Effect.promise(async () => {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: payload.email,
-          password: payload.password,
-        })
-        if (error) throw error
-        return data
-      })
-    } else {
-      yield* Effect.promise(async () => {
-        const { data, error } = await supabase.auth.signInWithOtp({
-          email: payload.email,
-          options: {
-            emailRedirectTo: window.location.origin,
-          },
-        })
-        if (error) throw error
-        return data
-      })
-    }
+  Effect.fn(function* (payload: { username: string; password: string }) {
+    yield* Effect.promise(async () => {
+      const { data, error } = await authClient.auth.signInWithPassword(payload)
+      if (error) throw error
+      return data
+    })
   }),
 )
 
 export const signUpAtom = Atom.fn(
-  Effect.fn(function* (payload: { email: string; password: string }) {
-    if (!isSupabaseConfigured) {
-      return payload
-    }
-
+  Effect.fn(function* (payload: {
+    username: string
+    password: string
+    name?: string
+  }) {
     yield* Effect.promise(async () => {
-      const { data, error } = await supabase.auth.signUp({
-        email: payload.email,
-        password: payload.password,
-        options: {
-          emailRedirectTo: window.location.origin,
-        },
-      })
+      const { data, error } = await authClient.auth.signUp(payload)
       if (error) throw error
       return data
     })
@@ -151,13 +66,8 @@ export const signUpAtom = Atom.fn(
 
 export const signOutAtom = Atom.fn(
   Effect.fn(function* () {
-    if (!isSupabaseConfigured) {
-      return
-    }
-
     yield* Effect.promise(async () => {
-      const { error } = await supabase.auth.signOut()
-      if (error) throw error
+      await authClient.auth.signOut()
     })
   }),
 )

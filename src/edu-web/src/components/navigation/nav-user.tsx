@@ -100,7 +100,7 @@ export function NavUser() {
 
   return Result.builder(currentUserResult)
     .onFailure(() => <div>用户数据加载失败。</div>)
-    .onSuccess(({ name, initials, email }) => {
+    .onSuccess(({ name, initials, username }) => {
       return (
         <SidebarMenu>
           <SidebarMenuItem>
@@ -118,7 +118,7 @@ export function NavUser() {
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">{name}</span>
-                    <span className="truncate text-xs">{email}</span>
+                    <span className="truncate text-xs">@{username}</span>
                   </div>
                   <ChevronsUpDown className="ml-auto size-4" />
                 </SidebarMenuButton>
@@ -139,7 +139,7 @@ export function NavUser() {
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
                       <span className="truncate font-medium">{name}</span>
-                      <span className="truncate text-xs">{email}</span>
+                      <span className="truncate text-xs">@{username}</span>
                     </div>
                   </div>
                 </DropdownMenuLabel>

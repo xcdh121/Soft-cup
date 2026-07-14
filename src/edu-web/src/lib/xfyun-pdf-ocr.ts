@@ -1,5 +1,5 @@
 import { env } from '@/env'
-import { supabase } from '@/lib/supabase'
+import { authClient } from '@/lib/auth-client'
 
 export type PdfOcrExportFormat = 'word' | 'markdown' | 'json'
 export type PdfOcrStatus =
@@ -31,7 +31,7 @@ export type PdfOcrTask = {
 const getHeaders = async (): Promise<HeadersInit> => {
   const {
     data: { session },
-  } = await supabase.auth.getSession()
+  } = await authClient.auth.getSession()
   return session?.access_token
     ? { Authorization: `Bearer ${session.access_token}` }
     : {}

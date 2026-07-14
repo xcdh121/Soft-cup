@@ -397,7 +397,12 @@ RELATIONS = [
 def upsert_user(db) -> User:
     user = db.query(User).filter(User.id == OWNER_ID).first()
     if user is None:
-        user = User(id=OWNER_ID, email=OWNER_EMAIL, name="Local Dev User")
+        user = User(
+            id=OWNER_ID,
+            username="dev-local-user",
+            email=OWNER_EMAIL,
+            name="Local Dev User",
+        )
         db.add(user)
     else:
         user.email = user.email or OWNER_EMAIL

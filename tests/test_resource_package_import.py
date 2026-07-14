@@ -23,7 +23,14 @@ class ResourcePackageImportTests(unittest.TestCase):
         )
         self.session_patch.start()
         with self.session_factory() as db:
-            db.add(User(id="user-1", name="Test", email="test@example.com"))
+            db.add(
+                User(
+                    id="user-1",
+                    username="test-user",
+                    name="Test",
+                    email="test@example.com",
+                )
+            )
             db.add(Project(id="project-1", owner_id="user-1", name="AI Study"))
             db.commit()
 

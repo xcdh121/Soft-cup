@@ -1,5 +1,5 @@
 import { env } from '@/env'
-import { supabase } from '@/lib/supabase'
+import { authClient } from '@/lib/auth-client'
 
 type XfyunIatUrlDto = {
   url: string
@@ -23,7 +23,7 @@ const FRAME_BYTES = 1280
 const fetchXfyunIatUrl = async (): Promise<XfyunIatUrlDto> => {
   const {
     data: { session },
-  } = await supabase.auth.getSession()
+  } = await authClient.auth.getSession()
   const headers: HeadersInit = {}
   if (session?.access_token) {
     headers.Authorization = `Bearer ${session.access_token}`
@@ -289,11 +289,7 @@ export const startXfyunIat = async ({
   processor.onaudioprocess = (event) => {
     if (stopped) return
     const input = event.inputBuffer.getChannelData(0)
-    const sampled = resample(
-      input,
-      audioContext.sampleRate,
-      TARGET_SAMPLE_RATE,
-    )
+    const sampled = resample(input, audioContext.sampleRate, TARGET_SAMPLE_RATE)
     pending = appendBytes(pending, floatToPcm16(sampled))
     flushAudio()
   }

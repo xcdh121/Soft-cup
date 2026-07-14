@@ -1,3 +1,7 @@
+import { Result, useAtomValue } from '@effect-atom/atom-react'
+import { Loader2Icon, Trash2Icon } from 'lucide-react'
+import { useState } from 'react'
+
 import { useConfirmationDialog } from '@/components/confirmation-dialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -27,9 +31,6 @@ import { SidebarTrigger } from '@/components/ui/sidebar'
 import { currentUserAtom } from '@/data-acess/auth'
 import { usageAtom } from '@/data-acess/usage'
 import { useTheme } from '@/providers/theme-provider'
-import { Result, useAtomValue } from '@effect-atom/atom-react'
-import { Loader2Icon, Trash2Icon } from 'lucide-react'
-import { useState } from 'react'
 
 const UserSection = () => {
   const currentUserResult = useAtomValue(currentUserAtom)
@@ -49,7 +50,9 @@ const UserSection = () => {
               </Avatar>
               <div className="flex-1">
                 <p className="font-semibold">{user.name}</p>
-                <p className="text-sm text-muted-foreground">{user.email}</p>
+                <p className="text-sm text-muted-foreground">
+                  @{user.username}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -90,8 +93,7 @@ export function SettingsPage() {
   const handleDeleteAllChats = async () => {
     const confirmed = await confirmationDialog.open({
       title: '删除所有聊天',
-      description:
-        '这是一个模拟操作。你的聊天不会真的被删除。确定要继续吗？',
+      description: '这是一个模拟操作。你的聊天不会真的被删除。确定要继续吗？',
       confirmLabel: '全部删除',
       cancelLabel: '取消',
       variant: 'destructive',
@@ -111,8 +113,7 @@ export function SettingsPage() {
   const handleDeleteAccount = async () => {
     const confirmed = await confirmationDialog.open({
       title: '删除账号',
-      description:
-        '这是一个模拟操作。你的账号不会真的被删除。确定要继续吗？',
+      description: '这是一个模拟操作。你的账号不会真的被删除。确定要继续吗？',
       confirmLabel: '删除',
       cancelLabel: '取消',
       variant: 'destructive',
@@ -136,9 +137,7 @@ export function SettingsPage() {
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
-                <BreadcrumbPage className="font-medium">
-                  设置
-                </BreadcrumbPage>
+                <BreadcrumbPage className="font-medium">设置</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
@@ -174,9 +173,7 @@ export function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>使用情况</CardTitle>
-              <CardDescription>
-                你的每日使用统计和限制
-              </CardDescription>
+              <CardDescription>你的每日使用统计和限制</CardDescription>
             </CardHeader>
             <CardContent>
               {Result.builder(usageResult)
@@ -211,9 +208,7 @@ export function SettingsPage() {
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">
-                          闪卡生成
-                        </span>
+                        <span className="font-medium">闪卡生成</span>
                         <span className="text-muted-foreground">
                           {usage.flashcard_generations.used} /{' '}
                           {usage.flashcard_generations.limit}
@@ -247,9 +242,7 @@ export function SettingsPage() {
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">
-                          思维导图生成
-                        </span>
+                        <span className="font-medium">思维导图生成</span>
                         <span className="text-muted-foreground">
                           {usage.mindmap_generations.used} /{' '}
                           {usage.mindmap_generations.limit}
@@ -289,9 +282,7 @@ export function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>危险操作</CardTitle>
-              <CardDescription>
-                不可撤销的破坏性操作
-              </CardDescription>
+              <CardDescription>不可撤销的破坏性操作</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">

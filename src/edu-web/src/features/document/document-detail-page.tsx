@@ -23,7 +23,7 @@ import {
 import { env } from '@/env'
 import { useDocumentPolling } from '@/hooks/use-document-polling'
 import type { DocumentDto } from '@/integrations/api'
-import { isSupabaseConfigured, supabase } from '@/lib/supabase'
+import { authClient } from '@/lib/auth-client'
 import { cn } from '@/lib/utils'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Link } from '@tanstack/react-router'
@@ -1483,7 +1483,7 @@ const PdfDocumentContent = ({
   useEffect(() => {
     let cancelled = false
 
-    void supabase.auth.getSession().then(({ data }) => {
+    void authClient.auth.getSession().then(({ data }) => {
       if (cancelled) return
       setAccessToken(data.session?.access_token ?? null)
       setSessionChecked(true)
@@ -1511,7 +1511,7 @@ const PdfDocumentContent = ({
     }
   }, [accessToken, fileUrl])
 
-  if (isSupabaseConfigured && !sessionChecked) {
+  if (!sessionChecked) {
     return <LoadingState label="正在准备 PDF 阅读器..." />
   }
 

@@ -9,7 +9,7 @@ EduAgent is an AI-assisted learning platform built around project documents, cha
 - Task execution: in-process synchronous dispatch
 - Chat / generation models: OpenAI-compatible endpoints or local model servers
 - Vector search: PostgreSQL + `pgvector`
-- Auth / data: Supabase + PostgreSQL
+- Auth / data: self-hosted JWT authentication + PostgreSQL
 
 ## Quick Start
 
@@ -38,9 +38,10 @@ Create a root `.env` file with values like:
 
 ```env
 DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
-SUPABASE_URL=
-SUPABASE_JWT_SECRET=
-ALLOW_DEV_AUTH_BYPASS=true
+AUTH_JWT_SECRET=replace-with-at-least-32-random-characters
+AUTH_ALLOW_REGISTRATION=true
+AUTH_ADMIN_USERNAMES=admin
+ALLOW_DEV_AUTH_BYPASS=false
 
 STORAGE_ROOT=./.localdata
 

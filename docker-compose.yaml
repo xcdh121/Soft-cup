@@ -10,7 +10,11 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
       STORAGE_ROOT: /app/.localdata
-      ALLOW_DEV_AUTH_BYPASS: "true"
+      ALLOW_DEV_AUTH_BYPASS: ${ALLOW_DEV_AUTH_BYPASS:-false}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Set AUTH_JWT_SECRET in .env}
+      AUTH_ACCESS_TOKEN_EXPIRE_MINUTES: ${AUTH_ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+      AUTH_ALLOW_REGISTRATION: ${AUTH_ALLOW_REGISTRATION:-true}
+      AUTH_ADMIN_USERNAMES: ${AUTH_ADMIN_USERNAMES:-}
       TASK_QUEUE_BACKEND: arq
       TASK_QUEUE_NAME: edu-agent:tasks
       REDIS_URL: redis://redis:6379/0

@@ -31,7 +31,7 @@ import {
   resetQuizAtom,
   submitPendingPracticeRecordsAtom,
 } from '@/data-acess/quiz-detail-state'
-import { supabase } from '@/lib/supabase'
+import { authClient } from '@/lib/auth-client'
 
 type QuizAnalysis = {
   total: number
@@ -342,7 +342,7 @@ const AiQuizAnalysis = ({
       try {
         const {
           data: { session },
-        } = await supabase.auth.getSession()
+        } = await authClient.auth.getSession()
         const response = await fetch(
           `${serverUrl}/api/v1/projects/${encodeURIComponent(projectId)}/quizzes/${encodeURIComponent(quizId)}/analysis`,
           {

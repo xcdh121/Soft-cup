@@ -1,9 +1,11 @@
 """CRUD service for managing users."""
 
 from contextlib import contextmanager
+from uuid import uuid4
 
 from edu_db.models import User
 from edu_db.session import get_session_factory
+from sqlalchemy.exc import IntegrityError
 
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.users import UserDto
@@ -53,6 +55,53 @@ class UserService:
             except Exception:
                 raise
 
+    def get_user_auth_record(self, username: str) -> tuple[UserDto, str] | None:
+        """Return the public user data and password hash for authentication."""
+        normalized_username = username.strip().casefold()
+        with self._get_db_session() as db:
+            user = db.query(User).filter(User.username == normalized_username).first()
+            if not user or not user.password_hash:
+                return None
+            return self._model_to_dto(user), user.password_hash
+
+    def create_local_user(
+        self,
+        *,
+        username: str,
+        password_hash: str,
+        name: str | None = None,
+        is_admin: bool = False,
+    ) -> UserDto:
+        """Create a user whose credentials are managed by this application."""
+        normalized_username = username.strip().casefold()
+        with self._get_db_session() as db:
+            try:
+                existing = (
+                    db.query(User).filter(User.username == normalized_username).first()
+                )
+                if existing:
+                    raise ValueError("该账户名已被使用")
+
+                user = User(
+                    id=str(uuid4()),
+                    username=normalized_username,
+                    email=None,
+                    name=(name or normalized_username).strip(),
+                    password_hash=password_hash,
+                    is_active=True,
+                    is_admin=is_admin,
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+                return self._model_to_dto(user)
+            except IntegrityError as exc:
+                db.rollback()
+                raise ValueError("该账户名已被使用") from exc
+            except Exception:
+                db.rollback()
+                raise
+
     def delete_user(self, user_id: str) -> None:
         """Delete a user.
 
@@ -79,6 +128,7 @@ class UserService:
     def get_or_create_user_from_token(
         self,
         user_id: str,
+        username: str | None = None,
         email: str | None = None,
         name: str | None = None,
     ) -> UserDto:
@@ -100,6 +150,9 @@ class UserService:
                 if user:
                     # Update user information if needed
                     updated = False
+                    if username and user.username != username:
+                        user.username = username
+                        updated = True
                     if email and user.email != email:
                         user.email = email
                         updated = True
@@ -113,12 +166,12 @@ class UserService:
 
                     return self._model_to_dto(user)
                 else:
-                    # User should be synced from auth.users via database trigger
-                    # But create it here as fallback if trigger hasn't run yet
+                    # Development-only fallback account used by auth bypass mode.
                     new_user = User(
                         id=user_id,
+                        username=username or f"legacy_{user_id[:16]}",
                         email=email,
-                        name=name or email.split("@")[0] or f"user_{user_id[:8]}",
+                        name=name or username or f"user_{user_id[:8]}",
                     )
                     db.add(new_user)
                     db.commit()
@@ -132,8 +185,11 @@ class UserService:
         """Convert User model to UserDto."""
         return UserDto(
             id=user.id,
+            username=user.username,
             name=user.name,
             email=user.email,
+            is_active=user.is_active,
+            is_admin=user.is_admin,
             created_at=user.created_at,
             updated_at=user.updated_at,
         )

@@ -1,5 +1,5 @@
 import { env } from '@/env'
-import { supabase } from '@/lib/supabase'
+import { authClient } from '@/lib/auth-client'
 
 export type HandwritingRecognitionLine = {
   text: string
@@ -33,7 +33,7 @@ export const recognizeHandwriting = async ({
 }): Promise<HandwritingRecognitionResult> => {
   const {
     data: { session },
-  } = await supabase.auth.getSession()
+  } = await authClient.auth.getSession()
   const headers: HeadersInit = {}
   if (session?.access_token) {
     headers.Authorization = `Bearer ${session.access_token}`
