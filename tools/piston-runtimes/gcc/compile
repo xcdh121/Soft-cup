@@ -1,0 +1,8 @@
+#!/bin/bash
+
+for source_file in "$@"; do
+  mv "$source_file" "$source_file.cpp"
+done
+
+/usr/bin/g++ -std=c++17 ./*.cpp -o a.out
+chmod +x a.out

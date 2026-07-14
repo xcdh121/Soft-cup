@@ -57,9 +57,6 @@ const serverUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8000'
 const programmingLanguages = [
   { value: 'python', label: 'Python' },
   { value: 'cpp', label: 'C++' },
-  { value: 'java', label: 'Java' },
-  { value: 'javascript', label: 'JavaScript' },
-  { value: 'go', label: 'Go' },
 ] as const
 
 type ProgrammingLanguage = (typeof programmingLanguages)[number]['value']
