@@ -361,6 +361,12 @@ class Flashcard(Base):
     project_id: Mapped[str] = mapped_column(
         String, ForeignKey("projects.id", ondelete="CASCADE")
     )
+    knowledge_point_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     question: Mapped[str] = mapped_column(Text)
     answer: Mapped[str] = mapped_column(Text)
@@ -416,6 +422,12 @@ class QuizQuestion(Base):
     )
     project_id: Mapped[str] = mapped_column(
         String, ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    knowledge_point_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     question_text: Mapped[str] = mapped_column(Text)

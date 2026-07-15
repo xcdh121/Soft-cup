@@ -52,6 +52,20 @@ type ProgrammingRunResult = {
   signal: string | null
 }
 
+const getProgrammingRunOutput = (result: ProgrammingRunResult): string => {
+  if (result.output) return result.output
+  if (result.signal) {
+    return `程序被信号 ${result.signal} 终止，且没有产生输出。`
+  }
+  if (result.exit_code === 0) {
+    return '程序运行完成（退出码 0），但没有产生任何标准输出。请确认已调用入口函数，并使用 print 或 cout 输出结果。'
+  }
+  if (result.exit_code !== null) {
+    return `程序已结束（退出码 ${result.exit_code}），但没有产生输出。`
+  }
+  return '代码沙箱已返回运行结果，但程序没有产生输出。'
+}
+
 const serverUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8000'
 
 const programmingLanguages = [
@@ -555,7 +569,9 @@ export const ProgrammingPracticePage = ({
                     {isRunning
                       ? '正在运行...'
                       : runError ||
-                        runResult?.output ||
+                        (runResult
+                          ? getProgrammingRunOutput(runResult)
+                          : null) ||
                         '点击“运行代码”后在这里查看输出。'}
                   </pre>
                 </div>

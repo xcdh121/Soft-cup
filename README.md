@@ -37,7 +37,7 @@ npm start
 Create a root `.env` file with values like:
 
 ```env
-DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
+DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5433/postgres
 AUTH_JWT_SECRET=replace-with-at-least-32-random-characters
 AUTH_ALLOW_REGISTRATION=true
 AUTH_ADMIN_USERNAMES=admin

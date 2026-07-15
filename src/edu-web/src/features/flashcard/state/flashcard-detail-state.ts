@@ -518,6 +518,7 @@ export const gotItRightAtom = runtime.fn(
     const practiceRecord: PracticeRecordCreate = {
       item_type: 'flashcard',
       item_id: currentCard.id,
+      knowledge_point_id: currentCard.knowledge_point_id,
       topic: extractTopic(currentCard.question),
       user_answer: undefined,
       correct_answer: currentCard.answer,
@@ -579,6 +580,7 @@ export const gotItWrongAtom = runtime.fn(
     const practiceRecord: PracticeRecordCreate = {
       item_type: 'flashcard',
       item_id: currentCard.id,
+      knowledge_point_id: currentCard.knowledge_point_id,
       topic: extractTopic(currentCard.question),
       user_answer: undefined,
       correct_answer: currentCard.answer,

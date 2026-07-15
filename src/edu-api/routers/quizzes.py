@@ -198,6 +198,34 @@ def _json_object(text: str) -> dict:
     return payload
 
 
+def _quiz_analysis_attempts(
+    questions: list[QuizQuestionDto], request: QuizAnalysisRequest
+) -> tuple[list[dict], int, int, int]:
+    answers = {answer.question_id: answer.selected_option for answer in request.answers}
+    attempts = []
+    for question in questions:
+        selected = answers.get(question.id)
+        if selected is None:
+            continue
+        correct_option = _correct_option(question)
+        attempts.append(
+            {
+                "question": question.question_text,
+                "selected_option": selected,
+                "correct_option": correct_option or question.correct_option,
+                "is_correct": selected == correct_option,
+                "explanation": question.explanation,
+                "difficulty": question.difficulty_level,
+            }
+        )
+    if not attempts:
+        raise HTTPException(status_code=400, detail="没有可分析的作答记录")
+
+    correct = sum(1 for item in attempts if item["is_correct"])
+    total = len(attempts)
+    return attempts, total, correct, round(correct / total * 100)
+
+
 @router.post("/{quiz_id}/generate", response_model=QuizDto)
 async def generate_quiz(
     project_id: str,
@@ -312,6 +340,7 @@ async def create_quiz_question(
         return service.create_quiz_question(
             quiz_id=quiz_id,
             project_id=project_id,
+            knowledge_point_id=question.knowledge_point_id,
             question_text=question.question_text,
             option_a=question.option_a,
             option_b=question.option_b,
@@ -390,11 +419,14 @@ D. {question.option_d}
 {question_context}
 
 回答必须使用中文、紧扣本题，不要编造题目之外的条件。首次解析应依次包含解题思路、正确选项说明、错误选项分析、相关知识点和记忆提示；追问则直接、有针对性地回答。"""
-        user_prompt = request.question or """请生成这道题的完整解析，依次说明：
+        user_prompt = (
+            request.question
+            or """请生成这道题的完整解析，依次说明：
 1. 解题思路；
 2. 正确选项为什么正确；
 3. 其余选项为什么不正确；
 4. 相关知识点与一个便于记忆的小提示。"""
+        )
         messages = [
             ("system", system_prompt),
             *[(message.role, message.content) for message in request.history],
@@ -443,6 +475,99 @@ D. {question.option_d}
         raise HTTPException(status_code=502, detail=f"AI explanation failed: {e}")
 
 
+@router.post("/{quiz_id}/analysis/stream")
+async def stream_quiz_result_analysis(
+    project_id: str,
+    quiz_id: str,
+    request: QuizAnalysisRequest,
+    current_user: UserDto = Depends(get_current_user),
+    service: QuizService = Depends(get_quiz_service),
+    settings: Settings = Depends(get_settings_dep),
+):
+    """Stream a completed quiz analysis as readable Markdown over SSE."""
+    del current_user
+    if not settings.llm_api_key:
+        raise HTTPException(status_code=503, detail="LLM_API_KEY is not configured")
+    try:
+        questions = service.list_quiz_questions(quiz_id=quiz_id, project_id=project_id)
+        attempts, total, correct, accuracy = _quiz_analysis_attempts(questions, request)
+        prompt = f"""你是一名严谨、鼓励式的中文学习导师。请分析学生本次选择题作答结果，识别掌握较好的方面、需要加强的知识点，并给出可直接执行的复习建议。
+
+要求：
+1. 只根据给出的题目和作答数据分析，不编造课程范围外的信息。
+2. 建议应具体、简短，并优先针对错题所反映的问题。
+3. 直接输出中文 Markdown，不要输出 JSON，不要添加开场白。
+4. 严格使用以下四个三级标题：总体分析、掌握较好、重点加强、学习建议；后三部分使用项目列表。
+
+作答数据：
+{json.dumps(attempts, ensure_ascii=False)}"""
+        model = create_chat_model(
+            LlmProviderConfig(
+                model=settings.llm_model,
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_base_url,
+                temperature=0.2,
+            ),
+            streaming=True,
+        ).bind(max_tokens=1200)
+
+        async def analysis_stream() -> AsyncGenerator[bytes]:
+            initial_events = [
+                {"type": "model", "model": settings.llm_model},
+                {
+                    "type": "meta",
+                    "total": total,
+                    "correct": correct,
+                    "accuracy": accuracy,
+                },
+                {"type": "status", "message": "正在归纳本次作答表现…"},
+            ]
+            for event in initial_events:
+                payload = json.dumps(event, ensure_ascii=False)
+                yield f"data: {payload}\n\n".encode()
+            try:
+                async for chunk in model.astream(prompt):
+                    content = chunk.content
+                    if isinstance(content, str):
+                        text = content
+                    else:
+                        text = "".join(
+                            str(item.get("text", ""))
+                            if isinstance(item, dict)
+                            else str(item)
+                            for item in content
+                        )
+                    if text:
+                        payload = json.dumps(
+                            {"type": "delta", "content": text},
+                            ensure_ascii=False,
+                        )
+                        yield f"data: {payload}\n\n".encode()
+                yield b'data: {"type":"done"}\n\n'
+            except Exception as exc:
+                payload = json.dumps(
+                    {"type": "error", "message": str(exc)},
+                    ensure_ascii=False,
+                )
+                yield f"data: {payload}\n\n".encode()
+
+        return StreamingResponse(
+            analysis_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+    except HTTPException:
+        raise
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="AI 作答分析暂时不可用") from exc
+
+
 @router.post("/{quiz_id}/analysis", response_model=QuizAnalysisDto)
 async def analyze_quiz_result(
     project_id: str,
@@ -458,31 +583,7 @@ async def analyze_quiz_result(
         raise HTTPException(status_code=503, detail="LLM_API_KEY is not configured")
     try:
         questions = service.list_quiz_questions(quiz_id=quiz_id, project_id=project_id)
-        answers = {
-            answer.question_id: answer.selected_option for answer in request.answers
-        }
-        attempts = []
-        for question in questions:
-            selected = answers.get(question.id)
-            if selected is None:
-                continue
-            correct_option = _correct_option(question)
-            attempts.append(
-                {
-                    "question": question.question_text,
-                    "selected_option": selected,
-                    "correct_option": correct_option or question.correct_option,
-                    "is_correct": selected == correct_option,
-                    "explanation": question.explanation,
-                    "difficulty": question.difficulty_level,
-                }
-            )
-        if not attempts:
-            raise HTTPException(status_code=400, detail="没有可分析的作答记录")
-
-        correct = sum(item["is_correct"] for item in attempts)
-        total = len(attempts)
-        accuracy = round(correct / total * 100)
+        attempts, total, correct, accuracy = _quiz_analysis_attempts(questions, request)
         prompt = f"""你是一名严谨、鼓励式的中文学习导师。请分析学生本次选择题作答结果，识别掌握较好的方面、需要加强的知识点，并给出可直接执行的复习建议。
 
 要求：
@@ -540,6 +641,7 @@ async def update_quiz_question(
             question_id=question_id,
             quiz_id=quiz_id,
             project_id=project_id,
+            knowledge_point_id=question.knowledge_point_id,
             question_text=question.question_text,
             option_a=question.option_a,
             option_b=question.option_b,

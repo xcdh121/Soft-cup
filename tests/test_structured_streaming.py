@@ -1,17 +1,22 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
-from pydantic import BaseModel
-
-from edu_ai.agents.utils import generate_stream
 from edu_ai.agents.orchestration.base import BaseOrchestrationAgent
 from edu_ai.agents.orchestration.supervisor import SupervisorAgent
+from edu_ai.agents.quiz_agent import QuizAgent
+from edu_ai.agents.utils import generate_stream
 from edu_core.schemas.agent_orchestration import (
     AgentName,
     AgentResult,
     OrchestrationRunRequest,
     RunStatus,
 )
+from edu_db.models import Base, Project, Quiz, QuizQuestion, User
+from pydantic import BaseModel
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 class _Output(BaseModel):
@@ -48,6 +53,102 @@ class _Agent(BaseOrchestrationAgent):
 
 
 class StructuredStreamingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_quiz_agent_emits_each_stable_question_before_completion(self):
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(engine)
+        session_factory = sessionmaker(bind=engine)
+        with session_factory() as db:
+            db.add_all(
+                [
+                    User(
+                        id="user-quiz-stream",
+                        username="quiz-stream",
+                        name="Quiz Stream",
+                        email="quiz-stream@example.com",
+                    ),
+                    Project(
+                        id="project-quiz-stream",
+                        owner_id="user-quiz-stream",
+                        name="Streaming project",
+                        language_code="en",
+                    ),
+                    Quiz(
+                        id="quiz-stream",
+                        project_id="project-quiz-stream",
+                        name="Pending quiz",
+                    ),
+                ]
+            )
+            db.commit()
+
+        first = {
+            "question_text": "What is a list?",
+            "option_a": "A linear collection",
+            "option_b": "A tree",
+            "option_c": "A graph",
+            "option_d": "A heap",
+            "correct_option": "a",
+            "explanation": "Lists are linear.",
+            "difficulty_level": "easy",
+        }
+        second = {
+            "question_text": "What is an index?",
+            "option_a": "A position",
+            "option_b": "A node",
+            "option_c": "An edge",
+            "option_d": "A hash",
+            "correct_option": "a",
+            "explanation": "An index identifies a position.",
+            "difficulty_level": "easy",
+        }
+
+        async def fake_generate_stream(**_kwargs):
+            yield {"questions": [first, second]}
+            yield {
+                "name": "Lists quiz",
+                "description": "Incremental quiz",
+                "questions": [first, second],
+            }
+
+        events = []
+        with (
+            patch(
+                "edu_ai.agents.utils.get_session_factory",
+                return_value=session_factory,
+            ),
+            patch(
+                "edu_ai.agents.quiz_agent.generate_stream",
+                new=fake_generate_stream,
+            ),
+        ):
+            async for event in QuizAgent(
+                search_service=_SearchService(),
+                llm=_StreamingLlm(),
+            ).generate_and_save_stream(
+                project_id="project-quiz-stream",
+                quiz_id="quiz-stream",
+                topic="lists",
+                count=2,
+            ):
+                events.append(event)
+
+        self.assertEqual(
+            [event["event"] for event in events],
+            ["quiz_question_created", "quiz_question_created", "quiz_completed"],
+        )
+        with session_factory() as db:
+            self.assertEqual(
+                db.query(QuizQuestion)
+                .filter(QuizQuestion.quiz_id == "quiz-stream")
+                .count(),
+                2,
+            )
+        engine.dispose()
+
     async def test_partial_json_is_exposed_before_the_final_document(self):
         updates = []
         async for update in generate_stream(

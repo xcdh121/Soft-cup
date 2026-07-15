@@ -268,11 +268,47 @@ const ResourcePreview = ({
   const resourcesResult = useAtomValue(
     generatedResourcesAtom(`${projectId}:${resourcePackage.id}`),
   )
-  const resources = Result.isSuccess(resourcesResult)
-    ? resourcesResult.value
-    : []
+  const [liveResources, setLiveResources] =
+    useState<Array<GeneratedResource> | null>(null)
 
-  if (resourcesResult.waiting) {
+  useEffect(() => {
+    setLiveResources(null)
+  }, [resourcePackage.id])
+
+  useEffect(() => {
+    if (Result.isSuccess(resourcesResult)) {
+      setLiveResources(resourcesResult.value)
+    }
+  }, [resourcesResult])
+
+  useEffect(() => {
+    if (resourcePackage.status !== 'generating') return
+    let cancelled = false
+    let timerId: number | undefined
+    const poll = async () => {
+      try {
+        const response = await fetch(
+          `/api/v1/projects/${projectId}/resource-packages/${resourcePackage.id}/resources`,
+        )
+        if (response.ok && !cancelled) {
+          setLiveResources((await response.json()) as Array<GeneratedResource>)
+        }
+      } finally {
+        if (!cancelled) timerId = window.setTimeout(poll, 1500)
+      }
+    }
+    void poll()
+    return () => {
+      cancelled = true
+      if (timerId !== undefined) window.clearTimeout(timerId)
+    }
+  }, [projectId, resourcePackage.id, resourcePackage.status])
+
+  const resources =
+    liveResources ??
+    (Result.isSuccess(resourcesResult) ? resourcesResult.value : [])
+
+  if (resourcesResult.waiting && liveResources === null) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
@@ -281,7 +317,7 @@ const ResourcePreview = ({
     )
   }
 
-  if (!Result.isSuccess(resourcesResult)) {
+  if (!Result.isSuccess(resourcesResult) && liveResources === null) {
     return (
       <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
         生成结果加载失败。
@@ -326,8 +362,6 @@ const ResourcePreview = ({
             <div className="mt-3">
               <a
                 href={resource.preview_url}
-                target="_blank"
-                rel="noreferrer"
                 className="text-sm text-primary underline underline-offset-4"
               >
                 打开生成资源
@@ -493,6 +527,34 @@ export const ResourcePackagePage = ({
   const [selectedPackage, setSelectedPackage] =
     useState<ResourcePackage | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (selectedPackage?.status !== 'generating') return
+    let cancelled = false
+    let timerId: number | undefined
+    const poll = async () => {
+      let shouldContinue = true
+      try {
+        const response = await fetch(
+          `/api/v1/projects/${projectId}/resource-packages/${selectedPackage.id}`,
+        )
+        if (response.ok && !cancelled) {
+          const nextPackage = (await response.json()) as ResourcePackage
+          setSelectedPackage(nextPackage)
+          shouldContinue = nextPackage.status === 'generating'
+        }
+      } finally {
+        if (!cancelled && shouldContinue) {
+          timerId = window.setTimeout(poll, 1500)
+        }
+      }
+    }
+    void poll()
+    return () => {
+      cancelled = true
+      if (timerId !== undefined) window.clearTimeout(timerId)
+    }
+  }, [projectId, selectedPackage?.id, selectedPackage?.status])
 
   useEffect(() => {
     if (!initialPackageId || !Result.isSuccess(packagesResult)) return

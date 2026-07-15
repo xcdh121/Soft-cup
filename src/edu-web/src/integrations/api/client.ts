@@ -650,6 +650,10 @@ export class QuizQuestionDto extends S.Class<QuizQuestionDto>(
    */
   project_id: S.String,
   /**
+   * Related course knowledge point
+   */
+  knowledge_point_id: S.optionalWith(S.String, { nullable: true }),
+  /**
    * The quiz question text
    */
   question_text: S.String,
@@ -698,6 +702,7 @@ export class ListQuizQuestionsApiV1ProjectsProjectIdQuizzesQuizIdQuestionsGet200
 export class QuizQuestionCreate extends S.Class<QuizQuestionCreate>(
   'QuizQuestionCreate',
 )({
+  knowledge_point_id: S.optionalWith(S.String, { nullable: true }),
   /**
    * The quiz question text
    */
@@ -742,6 +747,7 @@ export class QuizQuestionCreate extends S.Class<QuizQuestionCreate>(
 export class QuizQuestionUpdate extends S.Class<QuizQuestionUpdate>(
   'QuizQuestionUpdate',
 )({
+  knowledge_point_id: S.optionalWith(S.String, { nullable: true }),
   /**
    * The quiz question text
    */
@@ -887,6 +893,10 @@ export class FlashcardDto extends S.Class<FlashcardDto>('FlashcardDto')({
    */
   project_id: S.String,
   /**
+   * Related course knowledge point
+   */
+  knowledge_point_id: S.optionalWith(S.String, { nullable: true }),
+  /**
    * Question of the flashcard
    */
   question: S.String,
@@ -915,6 +925,7 @@ export class ListFlashcardsApiV1ProjectsProjectIdFlashcardGroupsGroupIdFlashcard
 export class FlashcardCreate extends S.Class<FlashcardCreate>(
   'FlashcardCreate',
 )({
+  knowledge_point_id: S.optionalWith(S.String, { nullable: true }),
   /**
    * Question of the flashcard
    */
@@ -939,6 +950,7 @@ export class FlashcardCreate extends S.Class<FlashcardCreate>(
 export class FlashcardUpdate extends S.Class<FlashcardUpdate>(
   'FlashcardUpdate',
 )({
+  knowledge_point_id: S.optionalWith(S.String, { nullable: true }),
   /**
    * Question of the flashcard
    */
@@ -1020,6 +1032,10 @@ export class PracticeRecordCreate extends S.Class<PracticeRecordCreate>(
    * ID of the study resource (flashcard or quiz question)
    */
   item_id: S.String,
+  /**
+   * Optional related knowledge point ID
+   */
+  knowledge_point_id: S.optionalWith(S.String, { nullable: true }),
   /**
    * Topic extracted from question
    */

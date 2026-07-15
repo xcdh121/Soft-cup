@@ -30,6 +30,9 @@ class FlashcardDto(BaseModel):
     project_id: str = Field(
         ..., description="ID of the project the flashcard belongs to"
     )
+    knowledge_point_id: str | None = Field(
+        None, description="Related course knowledge point"
+    )
     question: str = Field(..., description="Question of the flashcard")
     answer: str = Field(..., description="Answer of the flashcard")
     difficulty_level: str = Field(..., description="Difficulty level of the flashcard")

@@ -152,6 +152,41 @@ class FallbackRulesTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(recommendation["stream_on_client"])
         self.assertFalse(recommendation["stream_in_package"])
 
+    async def test_resource_package_collections_are_left_for_item_streaming(self):
+        quiz_service = MagicMock()
+        quiz_service.create_quiz.return_value = SimpleNamespace(
+            id="quiz_stream", name="Streaming quiz"
+        )
+        flashcard_service = MagicMock()
+        flashcard_service.create_flashcard_group.return_value = SimpleNamespace(
+            id="cards_stream", name="Streaming cards"
+        )
+        context = AgentRunContext(
+            run_id="run_streamed_collections",
+            project_id="project_1",
+            student_id="student_1",
+            goal="recommendations",
+            trigger=AgentTrigger(type="resource_package", id="package_1"),
+            context=AgentContextData(),
+            meta={
+                "requested_topic": "lists",
+                "requested_resource_types": ["quiz", "flashcards"],
+                "stream_quiz_in_package": True,
+                "stream_flashcards_in_package": True,
+            },
+            artifacts={"diagnosis": {"diagnosis": {}}},
+        )
+
+        result = await ResourceAgent(
+            quiz_service=quiz_service,
+            flashcard_group_service=flashcard_service,
+        ).run(context)
+
+        quiz_service.queue_generation.assert_not_called()
+        flashcard_service.queue_generation.assert_not_called()
+        recommendations = result.result["recommendations"]
+        self.assertTrue(all(item["stream_in_package"] for item in recommendations))
+
     async def test_planner_without_llm_uses_rule_fallback(self):
         context = AgentRunContext(
             run_id="run_planner",

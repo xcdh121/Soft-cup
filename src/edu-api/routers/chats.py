@@ -1,12 +1,14 @@
 """Router for chat CRUD operations."""
+# ruff: noqa: RUF001
 
 import asyncio
 import base64
 import binascii
 import mimetypes
 from collections.abc import AsyncGenerator
+from io import BytesIO
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from auth import get_current_user
 from dependencies import (
@@ -21,8 +23,10 @@ from edu_core.schemas.chats import (
 )
 from edu_core.schemas.users import UserDto
 from edu_core.services import ChatService, UsageService
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 from xfyun_image_understanding import (
     XfyunImageUnderstandingClient,
     XfyunImageUnderstandingError,
@@ -39,6 +43,8 @@ from routers.schemas import (
 router = APIRouter(prefix="/api/v1/projects/{project_id}/chats", tags=["chats"])
 
 MAX_VISION_IMAGE_BYTES = 4 * 1024 * 1024
+MAX_CHAT_PDF_BYTES = 100 * 1024 * 1024
+MAX_CHAT_PDF_PAGES = 100
 SUPPORTED_VISION_IMAGE_TYPES = {"image/jpeg", "image/png"}
 VISION_CONTEXT_PREFIX = "[图片理解上下文:"
 
@@ -78,7 +84,7 @@ async def _prepare_chat_parts(
     chat_service: ChatService,
     image_client: XfyunImageUnderstandingClient,
 ) -> list[dict[str, Any]]:
-    """Turn uploaded images into grounded text context for the text-only LLM."""
+    """Turn attachments into persisted files and grounded text-only context."""
     user_question = "\n".join(
         part.text.strip()
         for part in body.parts
@@ -89,6 +95,35 @@ async def _prepare_chat_parts(
     for part in body.parts:
         if isinstance(part, TextPart):
             processed_parts.append(part.model_dump())
+            continue
+
+        media_type = part.media_type.lower().strip()
+        if media_type == "application/pdf":
+            expected_prefix = f"/api/v1/projects/{project_id}/chats/{chat_id}/files/"
+            if not part.url.startswith(expected_prefix):
+                raise HTTPException(
+                    status_code=400,
+                    detail="PDF 附件必须先通过 AI 导师上传接口处理",
+                )
+            file_key = unquote(part.url.removeprefix(expected_prefix))
+            try:
+                storage_path = chat_service.resolve_chat_file(
+                    project_id=project_id,
+                    chat_id=chat_id,
+                    file_key=file_key,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="PDF 附件地址无效") from exc
+            if not storage_path.is_file():
+                raise HTTPException(status_code=400, detail="PDF 附件不存在或已失效")
+            processed_parts.append(
+                {
+                    "type": "file",
+                    "file_name": part.filename or file_key,
+                    "file_type": "application/pdf",
+                    "file_url": part.url,
+                }
+            )
             continue
 
         image = _decode_image_data_url(part)
@@ -140,6 +175,34 @@ async def _prepare_chat_parts(
     return processed_parts
 
 
+def _validate_chat_pdf(content: bytes) -> None:
+    if not content:
+        raise HTTPException(status_code=400, detail="上传的 PDF 文件为空")
+    if len(content) > MAX_CHAT_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="PDF 文件大小不能超过 100MB")
+    try:
+        reader = PdfReader(BytesIO(content))
+        if reader.is_encrypted:
+            raise HTTPException(
+                status_code=400,
+                detail="暂不支持带密码保护或权限加密的 PDF 文件",
+            )
+        page_count = len(reader.pages)
+    except HTTPException:
+        raise
+    except (PdfReadError, ValueError, OSError) as exc:
+        raise HTTPException(status_code=400, detail="PDF 文件损坏或无法读取") from exc
+    if page_count == 0:
+        raise HTTPException(status_code=400, detail="PDF 文件没有可识别的页面")
+    if page_count > MAX_CHAT_PDF_PAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"单个 PDF 最多支持 {MAX_CHAT_PDF_PAGES} 页，当前文件共 {page_count} 页"
+            ),
+        )
+
+
 @router.post("", response_model=ChatDto, status_code=201)
 async def create_chat(
     project_id: str,
@@ -176,6 +239,45 @@ async def get_chat(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/{chat_id}/files", status_code=201)
+async def upload_chat_pdf(
+    project_id: str,
+    chat_id: str,
+    file: UploadFile = File(...),
+    current_user: UserDto = Depends(get_current_user),
+    service: ChatService = Depends(get_chat_service),
+):
+    """Persist a validated PDF before its OCR context is sent to the tutor."""
+    try:
+        chat = service.get_chat(chat_id=chat_id, user_id=current_user.id)
+        if chat.project_id != project_id:
+            raise NotFoundError(f"Chat {chat_id} not found")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    filename = file.filename or "document.pdf"
+    if file.content_type != "application/pdf" and not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=415, detail="AI 导师文档附件仅支持 PDF")
+    content = await file.read(MAX_CHAT_PDF_BYTES + 1)
+    _validate_chat_pdf(content)
+    relative_path = await asyncio.to_thread(
+        service.upload_chat_file,
+        content,
+        filename,
+        project_id,
+        chat_id,
+    )
+    file_key = relative_path.rsplit("/", 1)[-1]
+    return {
+        "file_name": filename,
+        "file_type": "application/pdf",
+        "file_url": (
+            f"/api/v1/projects/{project_id}/chats/{chat_id}/files/"
+            f"{quote(file_key, safe='')}"
+        ),
+    }
+
+
 @router.get("/{chat_id}/files/{file_key}")
 async def get_chat_file(
     project_id: str,
@@ -184,7 +286,7 @@ async def get_chat_file(
     current_user: UserDto = Depends(get_current_user),
     service: ChatService = Depends(get_chat_service),
 ):
-    """Serve a persisted chat image after checking chat ownership."""
+    """Serve a persisted chat attachment after checking chat ownership."""
     try:
         chat = service.get_chat(chat_id=chat_id, user_id=current_user.id)
         if chat.project_id != project_id:

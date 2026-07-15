@@ -28,6 +28,17 @@ export type PdfOcrTask = {
   pages: Array<PdfOcrPage>
 }
 
+export type PdfOcrText = {
+  content_text: string
+  truncated: boolean
+}
+
+export type ChatPdfAttachment = {
+  file_name: string
+  file_type: 'application/pdf'
+  file_url: string
+}
+
 const getHeaders = async (): Promise<HeadersInit> => {
   const {
     data: { session },
@@ -83,6 +94,44 @@ export const getPdfOcrTask = async ({
   const response = await fetch(taskUrl(projectId, taskNo), {
     headers: await getHeaders(),
   })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const getPdfOcrText = async ({
+  projectId,
+  taskNo,
+}: {
+  projectId: string
+  taskNo: string
+}): Promise<PdfOcrText> => {
+  const response = await fetch(`${taskUrl(projectId, taskNo)}/text`, {
+    headers: await getHeaders(),
+  })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const uploadChatPdfAttachment = async ({
+  projectId,
+  chatId,
+  file,
+}: {
+  projectId: string
+  chatId: string
+  file: File
+}): Promise<ChatPdfAttachment> => {
+  const baseUrl = env.VITE_SERVER_URL ?? 'http://localhost:8000'
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await fetch(
+    `${baseUrl}/api/v1/projects/${encodeURIComponent(projectId)}/chats/${encodeURIComponent(chatId)}/files`,
+    {
+      method: 'POST',
+      headers: await getHeaders(),
+      body: formData,
+    },
+  )
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
 }

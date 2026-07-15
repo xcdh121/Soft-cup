@@ -6,6 +6,7 @@ import {
   submitPracticeRecordsBatchAtom,
 } from './practice'
 import { quizQuestionsAtom } from './quiz'
+import { knowledgeGraphAtom } from './knowledge-graph'
 import type { PracticeRecordCreate, QuizQuestionDto } from '@/integrations/api'
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
@@ -303,6 +304,7 @@ export const submitQuizQuestionAtom = runtime.fn(
       {
         item_type: 'quiz',
         item_id: question.id,
+        knowledge_point_id: question.knowledge_point_id,
         topic: extractTopic(question.question_text),
         user_answer: userAnswer,
         correct_answer: correctAnswer,
@@ -315,6 +317,7 @@ export const submitQuizQuestionAtom = runtime.fn(
       QuizDetailAction.MarkQuestionSubmitted({ questionId: question.id }),
     )
     registry.refresh(practiceRecordsRemoteAtom(input.projectId))
+    registry.refresh(knowledgeGraphAtom(input.projectId))
     return true
   }),
 )
@@ -385,6 +388,7 @@ export const submitQuizAtom = runtime.fn(
         practiceRecords[q.id] = {
           item_type: 'quiz',
           item_id: q.id,
+          knowledge_point_id: q.knowledge_point_id,
           topic: extractTopic(q.question_text),
           user_answer: userAnswer,
           correct_answer: correctOption ?? q.correct_option.trim(),

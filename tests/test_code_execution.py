@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from code_execution import execute_code
+from code_execution import CodeExecutionError, execute_code
 
 
 class _FakeResponse:
@@ -52,6 +52,51 @@ class CodeExecutionTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent_request.headers["Authorization"], "Bearer secret")
         self.assertEqual(result.output, "8\n")
         self.assertEqual(result.exit_code, 0)
+
+    async def test_execute_code_preserves_successful_empty_output(self):
+        response = _FakeResponse(
+            {
+                "language": "python",
+                "version": "3.12.0",
+                "run": {
+                    "stdout": "",
+                    "stderr": "",
+                    "output": "",
+                    "code": 0,
+                    "signal": None,
+                },
+            }
+        )
+
+        with patch("code_execution.request.urlopen", return_value=response):
+            result = await execute_code(
+                api_url="http://sandbox.test/api/v2/execute",
+                api_token="",
+                language="python",
+                code="value = 42",
+                stdin="",
+                timeout_seconds=3,
+            )
+
+        self.assertEqual(result.output, "")
+        self.assertEqual(result.exit_code, 0)
+        self.assertIsNone(result.signal)
+
+    async def test_execute_code_rejects_success_response_without_job_result(self):
+        response = _FakeResponse({"message": "runtime unavailable"})
+
+        with (
+            patch("code_execution.request.urlopen", return_value=response),
+            self.assertRaisesRegex(CodeExecutionError, "runtime unavailable"),
+        ):
+            await execute_code(
+                api_url="http://sandbox.test/api/v2/execute",
+                api_token="",
+                language="python",
+                code="print(1)",
+                stdin="",
+                timeout_seconds=3,
+            )
 
 
 if __name__ == "__main__":

@@ -13,15 +13,53 @@ class ProfileAgent(BaseOrchestrationAgent):
     agent_name = AgentName.PROFILE
     artifact_key = "profile"
 
+    canonical_fields = (
+        "major_background",
+        "education_level",
+        "current_course",
+        "learning_goal",
+        "knowledge_background",
+        "learning_progress",
+        "resource_preference",
+        "cognitive_style",
+        "common_error_types",
+        "practical_ability",
+        "available_study_time",
+        "current_learning_state",
+    )
+    recommendation_fields = (
+        "major_background",
+        "current_course",
+        "learning_goal",
+        "knowledge_background",
+        "resource_preference",
+        "cognitive_style",
+        "available_study_time",
+    )
+
     async def run(self, context: AgentRunContext) -> AgentResult:
         profile = context.context.learner_profile or {}
-        profile_data = profile.get("profile_data", profile)
-        completeness = self._score_completeness(profile_data)
+        raw_profile_data = profile.get("profile_data", profile)
+        profile_data = {
+            field: self._field_value(raw_profile_data.get(field))
+            for field in self.canonical_fields
+            if self._has_value(self._field_value(raw_profile_data.get(field)))
+        }
+        stored_completeness = profile.get("completeness_score")
+        completeness = (
+            float(stored_completeness)
+            if isinstance(stored_completeness, int | float)
+            else self._score_completeness(profile_data)
+        )
         missing_fields = [
             field
-            for field in ("learning_style", "preferred_resource_type", "preferred_pace")
-            if not profile_data.get(field)
+            for field in self.recommendation_fields
+            if not self._has_value(profile_data.get(field))
         ]
+
+        cognitive_style = profile_data.get("cognitive_style", "unknown")
+        resource_preference = profile_data.get("resource_preference", [])
+        available_study_time = profile_data.get("available_study_time")
 
         result = {
             "profile_snapshot": {
@@ -33,15 +71,16 @@ class ProfileAgent(BaseOrchestrationAgent):
             "profile_missing_fields": missing_fields,
             "profile_update_suggestions": [],
             "profile_summary": {
-                "learning_style": profile_data.get("learning_style", "unknown"),
-                "preferred_resource_type": profile_data.get(
-                    "preferred_resource_type", []
-                ),
-                "preferred_pace": profile_data.get("preferred_pace"),
+                **profile_data,
+                # Compatibility aliases for consumers not yet migrated to the
+                # canonical learner-profile field names.
+                "learning_style": cognitive_style,
+                "preferred_resource_type": resource_preference,
+                "preferred_pace": available_study_time,
             },
         }
 
-        if profile:
+        if profile_data:
             return AgentResult(
                 agent_name=self.agent_name,
                 status=RunStatus.COMPLETED,
@@ -70,9 +109,22 @@ class ProfileAgent(BaseOrchestrationAgent):
             fallback_reason="profile_missing",
         )
 
+    @staticmethod
+    def _field_value(field_data):
+        if isinstance(field_data, dict) and "value" in field_data:
+            return field_data.get("value")
+        return field_data
+
+    @staticmethod
+    def _has_value(value) -> bool:
+        return value not in (None, "", [], {})
+
     def _score_completeness(self, profile_data: dict) -> float:
-        fields = ("learning_style", "preferred_resource_type", "preferred_pace")
         if not profile_data:
             return 0.0
-        present = sum(1 for field in fields if profile_data.get(field))
-        return round(present / len(fields), 2)
+        present = sum(
+            1
+            for field in self.canonical_fields
+            if self._has_value(profile_data.get(field))
+        )
+        return round(present / len(self.canonical_fields), 2)

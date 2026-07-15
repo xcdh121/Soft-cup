@@ -200,15 +200,31 @@ class ResourceAgent(BaseOrchestrationAgent):
                 description="ResourceAgent queued quiz generation",
             )
             quiz_count = context.meta.get("quiz_count")
-            self.quiz_service.queue_generation(
-                quiz_id=quiz.id,
-                project_id=context.project_id,
-                topic=topic,
-                custom_instructions=self._build_custom_instructions(context),
-                count=quiz_count if isinstance(quiz_count, int) and quiz_count > 0 else 5,
-                user_id=context.student_id,
+            custom_instructions = self._build_custom_instructions(context)
+            stream_in_package = (
+                context.trigger.type == "resource_package"
+                and bool(context.meta.get("stream_quiz_in_package"))
             )
-            return self._queued_resource("quiz", quiz, quiz.id, quiz.name)
+            if not stream_in_package:
+                self.quiz_service.queue_generation(
+                    quiz_id=quiz.id,
+                    project_id=context.project_id,
+                    topic=topic,
+                    custom_instructions=custom_instructions,
+                    count=quiz_count
+                    if isinstance(quiz_count, int) and quiz_count > 0
+                    else 5,
+                    user_id=context.student_id,
+                )
+            return {
+                **self._queued_resource("quiz", quiz, quiz.id, quiz.name),
+                "topic": topic,
+                "custom_instructions": custom_instructions,
+                "count": quiz_count
+                if isinstance(quiz_count, int) and quiz_count > 0
+                else 5,
+                "stream_in_package": stream_in_package,
+            }
 
         if resource_type == "flashcards" and self.flashcard_group_service:
             group = self.flashcard_group_service.create_flashcard_group(
@@ -218,18 +234,36 @@ class ResourceAgent(BaseOrchestrationAgent):
             )
             flashcard_count = context.meta.get("flashcard_count")
             difficulty = context.meta.get("difficulty")
-            self.flashcard_group_service.queue_generation(
-                group_id=group.id,
-                project_id=context.project_id,
-                topic=topic,
-                custom_instructions=self._build_custom_instructions(context),
-                count=flashcard_count
-                if isinstance(flashcard_count, int) and flashcard_count > 0
-                else 8,
-                difficulty=str(difficulty) if difficulty else None,
-                user_id=context.student_id,
+            custom_instructions = self._build_custom_instructions(context)
+            stream_in_package = (
+                context.trigger.type == "resource_package"
+                and bool(context.meta.get("stream_flashcards_in_package"))
             )
-            return self._queued_resource("flashcards", group, group.id, group.name)
+            resolved_count = (
+                flashcard_count
+                if isinstance(flashcard_count, int) and flashcard_count > 0
+                else 8
+            )
+            if not stream_in_package:
+                self.flashcard_group_service.queue_generation(
+                    group_id=group.id,
+                    project_id=context.project_id,
+                    topic=topic,
+                    custom_instructions=custom_instructions,
+                    count=resolved_count,
+                    difficulty=str(difficulty) if difficulty else None,
+                    user_id=context.student_id,
+                )
+            return {
+                **self._queued_resource(
+                    "flashcards", group, group.id, group.name
+                ),
+                "topic": topic,
+                "custom_instructions": custom_instructions,
+                "count": resolved_count,
+                "difficulty": str(difficulty) if difficulty else None,
+                "stream_in_package": stream_in_package,
+            }
 
         if resource_type == "mind_map" and self.mind_map_service:
             mind_map = self.mind_map_service.create_mind_map(
@@ -256,24 +290,45 @@ class ResourceAgent(BaseOrchestrationAgent):
         queued_resources: list[dict[str, Any]],
         context: AgentRunContext,
     ) -> list[dict[str, Any]]:
+        diagnosis = context.artifacts.get("diagnosis", {}).get("diagnosis", {})
+        weak_points = diagnosis.get("related_knowledge_points", [])
+        profile = context.artifacts.get("profile", {}).get("profile_summary", {})
+        preferred_types = set(
+            self._normalize_resource_types(
+                profile.get("resource_preference")
+                or profile.get("preferred_resource_type", [])
+            )
+        )
+        learning_goal = profile.get("learning_goal")
         recommendations = []
         for index, resource in enumerate(queued_resources, start=1):
+            reason_codes = ["generation_queued"]
+            reason_text = [
+                "A new resource was queued through the project generation services."
+            ]
+            if weak_points:
+                reason_codes.append("weak_mastery")
+                reason_text.append(
+                    "The resource targets an evidence-backed weak knowledge point."
+                )
+            if resource["resource_type"] in preferred_types:
+                reason_codes.append("profile_preference_match")
+                reason_text.append(
+                    "The resource type matches the learner's saved resource preference."
+                )
+            if learning_goal:
+                reason_codes.append("learning_goal_alignment")
+                reason_text.append(
+                    f"The recommendation supports the saved learning goal: {learning_goal}."
+                )
             recommendations.append(
                 {
                     "id": f"{context.run_id}_rec_{index:03d}",
                     "recommendation_type": resource["resource_type"],
                     "target_id": resource["id"],
                     "title": resource["title"],
-                    "reason_codes": [
-                        "weak_mastery",
-                        "generation_queued",
-                        "profile_preference_match",
-                    ],
-                    "reason_text": [
-                        "The related knowledge point has low mastery.",
-                        "A new resource was queued through existing generation services.",
-                        "The resource type matches learner preference or default reinforcement strategy.",
-                    ],
+                    "reason_codes": reason_codes,
+                    "reason_text": reason_text,
                     "score": round(0.9 - (index - 1) * 0.05, 2),
                     "recommended_by": self.agent_name.value,
                     "topic": resource.get("topic"),
@@ -352,8 +407,41 @@ class ResourceAgent(BaseOrchestrationAgent):
         normalized = []
         for value in values:
             key = str(value).strip().lower()
-            normalized.append(aliases.get(key, key))
-        return normalized
+            exact = aliases.get(key, key)
+            if exact in {
+                "note",
+                "mind_map",
+                "quiz",
+                "flashcards",
+                "video_recommendations",
+                "programming_questions",
+                "pptx",
+            }:
+                normalized.append(exact)
+                continue
+
+            keyword_aliases = (
+                (("视频", "video"), "video_recommendations"),
+                (("思维导图", "图解", "diagram", "visual", "mind map"), "mind_map"),
+                (("闪卡", "卡片", "flashcard"), "flashcards"),
+                (("刷题", "练习", "题目", "practice", "quiz", "exercise"), "quiz"),
+                (
+                    ("编程", "代码", "实操", "programming", "coding"),
+                    "programming_questions",
+                ),
+                (
+                    ("笔记", "教材", "阅读", "文档", "note", "reading", "document"),
+                    "note",
+                ),
+                (("ppt", "演示"), "pptx"),
+            )
+            matches = [
+                resource_type
+                for keywords, resource_type in keyword_aliases
+                if any(keyword in key for keyword in keywords)
+            ]
+            normalized.extend(matches or [exact])
+        return self._dedupe(normalized)
 
     def _available_resource_types(self) -> set[str]:
         return {"note", "mind_map", "quiz", "flashcards"}

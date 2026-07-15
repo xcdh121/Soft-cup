@@ -14,7 +14,11 @@ from edu_ai.chatbot.factory import make_chatbot
 from edu_db.models import (
     Chat,
     Document,
+    KnowledgePoint,
+    LearnerProfile,
+    PracticeRecord,
     Project,
+    StudentKnowledgeState,
 )
 from edu_db.models import (
     ChatMessage as DBChatMessage,
@@ -76,6 +80,21 @@ class ChatService:
     # the citations useful by counting logical documents, rather than every
     # matching chunk returned by every invocation.
     MAX_SOURCE_DOCUMENTS = 5
+
+    TUTOR_PROFILE_FIELDS = (
+        "major_background",
+        "education_level",
+        "current_course",
+        "learning_goal",
+        "knowledge_background",
+        "learning_progress",
+        "resource_preference",
+        "cognitive_style",
+        "common_error_types",
+        "practical_ability",
+        "available_study_time",
+        "current_learning_state",
+    )
 
     def __init__(
         self,
@@ -435,6 +454,20 @@ class ChatService:
             updated_has_started_generating,
             streaming_message,
         )
+
+    @staticmethod
+    def _non_text_stream_parts(
+        parts: list[
+            Union[TextPartDto, FilePartDto, ToolCallPartDto, SourceDocumentPartDto]
+        ],
+    ) -> list[Union[FilePartDto, ToolCallPartDto, SourceDocumentPartDto]]:
+        """Return snapshot parts that are safe to emit as non-delta updates.
+
+        Text parts in ``current_parts`` contain the full accumulated answer. They
+        must not be emitted in source/tool snapshots because the SSE adapter treats
+        every non-final text part as a delta and the browser would append it again.
+        """
+        return [part for part in parts if not isinstance(part, TextPartDto)]
 
     def _process_user_message_parts(
         self,
@@ -1066,6 +1099,134 @@ class ChatService:
                     done=True,
                 )
 
+    @staticmethod
+    def _profile_field_value(field_data: Any) -> Any:
+        if isinstance(field_data, dict) and "value" in field_data:
+            return field_data.get("value")
+        return field_data
+
+    @classmethod
+    def _load_tutor_personalization_context(
+        cls,
+        *,
+        db_session,
+        project_id: str,
+        user_id: str | None,
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        """Load compact, evidence-backed context for the tutor prompt and tools."""
+        if db_session is None or not user_id:
+            return {}, {}, {}
+
+        try:
+            project = (
+                db_session.query(Project)
+                .filter(Project.id == project_id, Project.owner_id == user_id)
+                .first()
+            )
+            if project is None:
+                return {}, {}, {}
+
+            project_context = {
+                "project_id": project.id,
+                "project_name": project.name,
+                "project_description": project.description,
+                "course_id": project.course_id,
+                "course_name": project.course.name if project.course else project.name,
+                "language_code": project.language_code,
+            }
+
+            profile = (
+                db_session.query(LearnerProfile)
+                .filter(
+                    LearnerProfile.project_id == project_id,
+                    LearnerProfile.user_id == user_id,
+                )
+                .first()
+            )
+            profile_fields: dict[str, Any] = {}
+            if profile is not None:
+                raw_profile = profile.profile_data or {}
+                for field_key in cls.TUTOR_PROFILE_FIELDS:
+                    value = cls._profile_field_value(raw_profile.get(field_key))
+                    if value not in (None, "", [], {}):
+                        profile_fields[field_key] = value
+            learner_profile = (
+                {
+                    "id": profile.id,
+                    "status": profile.status,
+                    "completeness_score": float(profile.completeness_score or 0),
+                    "fields": profile_fields,
+                }
+                if profile is not None
+                else {}
+            )
+
+            state_rows = []
+            if project.course_id:
+                state_rows = (
+                    db_session.query(StudentKnowledgeState, KnowledgePoint)
+                    .join(
+                        KnowledgePoint,
+                        StudentKnowledgeState.knowledge_point_id == KnowledgePoint.id,
+                    )
+                    .filter(
+                        StudentKnowledgeState.user_id == user_id,
+                        StudentKnowledgeState.attempt_count > 0,
+                        KnowledgePoint.course_id == project.course_id,
+                    )
+                    .order_by(StudentKnowledgeState.mastery_score.asc())
+                    .all()
+                )
+
+            weak_points = [
+                {
+                    "id": point.id,
+                    "name": point.name,
+                    "mastery_score": round(float(state.mastery_score), 2),
+                    "confidence": round(float(state.confidence), 2),
+                    "trend": state.trend,
+                    "attempt_count": state.attempt_count,
+                    "correct_count": state.correct_count,
+                }
+                for state, point in state_rows
+                if float(state.mastery_score) < 70
+            ][:5]
+            mastery_scores = [float(state.mastery_score) for state, _ in state_rows]
+
+            recent_records = (
+                db_session.query(PracticeRecord)
+                .filter(
+                    PracticeRecord.project_id == project_id,
+                    PracticeRecord.user_id == user_id,
+                )
+                .order_by(PracticeRecord.created_at.desc())
+                .limit(50)
+                .all()
+            )
+            correct_count = sum(1 for record in recent_records if record.was_correct)
+            learning_evidence = {
+                "tracked_knowledge_point_count": len(state_rows),
+                "overall_mastery": (
+                    round(sum(mastery_scores) / len(mastery_scores), 2)
+                    if mastery_scores
+                    else None
+                ),
+                "weak_points": weak_points,
+                "recent_attempt_count": len(recent_records),
+                "recent_accuracy": (
+                    round(correct_count / len(recent_records), 2)
+                    if recent_records
+                    else None
+                ),
+            }
+            return project_context, learner_profile, learning_evidence
+        except Exception:
+            logger.exception(
+                "Failed to load tutor personalization context for project %s",
+                project_id,
+            )
+            return {}, {}, {}
+
     async def _get_response_stream(
         self,
         query: str,
@@ -1103,6 +1264,13 @@ class ChatService:
         # Track part IDs for streaming (similar to Vercel AI SDK)
         text_part_id: str | None = None
 
+        project_context, learner_profile, learning_evidence = (
+            self._load_tutor_personalization_context(
+                db_session=db_session,
+                project_id=project_id,
+                user_id=user_id,
+            )
+        )
         ctx = ChatbotContext(
             project_id=project_id,
             user_id=user_id or "",
@@ -1112,6 +1280,9 @@ class ChatService:
             language=language_code,
             llm=self.llm_non_streaming,  # Use non-streaming LLM for tools
             resource_packages=self.resource_package_service,
+            project_context=project_context,
+            learner_profile=learner_profile,
+            learning_evidence=learning_evidence,
         )
 
         # Send initial "thinking" status with start message
@@ -1217,7 +1388,7 @@ class ChatService:
                         chat_id=chat_id,
                         role="assistant",
                         created_at=datetime.now(),
-                        parts=current_parts.copy(),
+                        parts=self._non_text_stream_parts(current_parts),
                         done=False,
                     )
 
@@ -1264,7 +1435,7 @@ class ChatService:
                                 chat_id=messages[0].chat_id if messages else "",
                                 role="assistant",
                                 created_at=datetime.now(),
-                                parts=current_parts.copy(),
+                                parts=self._non_text_stream_parts(current_parts),
                                 done=False,
                             )
 
@@ -1334,7 +1505,9 @@ class ChatService:
                                                 chat_id=chat_id,
                                                 role="assistant",
                                                 created_at=datetime.now(),
-                                                parts=current_parts.copy(),
+                                                parts=self._non_text_stream_parts(
+                                                    current_parts
+                                                ),
                                                 done=False,
                                             )
                                 except Exception:
@@ -1363,7 +1536,7 @@ class ChatService:
                                     chat_id=messages[0].chat_id if messages else "",
                                     role="assistant",
                                     created_at=datetime.now(),
-                                    parts=current_parts.copy(),
+                                    parts=self._non_text_stream_parts(current_parts),
                                     done=False,
                                 )
 

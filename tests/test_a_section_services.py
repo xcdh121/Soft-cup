@@ -2,10 +2,12 @@ import unittest
 from contextlib import ExitStack
 from unittest.mock import patch
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
+from edu_core.services.chats import ChatService
+from edu_core.services.course_resources import CourseResourceService
+from edu_core.services.courses import CourseService
+from edu_core.services.knowledge_states import KnowledgeStateService
+from edu_core.services.learner_profiles import LearnerProfileService
+from edu_core.services.practice import PracticeService
 from edu_db.models import (
     Base,
     Course,
@@ -14,18 +16,18 @@ from edu_db.models import (
     KnowledgePoint,
     KnowledgePointRelation,
     KnowledgeStateEvent,
+    LearnerProfile,
     LearnerProfileRevision,
+    PracticeRecord,
     Project,
     Quiz,
     QuizQuestion,
     StudentKnowledgeState,
     User,
 )
-from edu_core.services.course_resources import CourseResourceService
-from edu_core.services.courses import CourseService
-from edu_core.services.knowledge_states import KnowledgeStateService
-from edu_core.services.learner_profiles import LearnerProfileService
-from edu_core.services.practice import PracticeService
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 class ASectionServiceTests(unittest.TestCase):
@@ -45,9 +47,7 @@ class ASectionServiceTests(unittest.TestCase):
             "edu_core.services.knowledge_states.get_session_factory",
             "edu_core.services.practice.get_session_factory",
         ):
-            self.patches.enter_context(
-                patch(target, return_value=self.session_factory)
-            )
+            self.patches.enter_context(patch(target, return_value=self.session_factory))
 
         with self.session_factory() as db:
             db.add_all(
@@ -262,6 +262,65 @@ class ASectionServiceTests(unittest.TestCase):
         self.assertEqual(len(revisions), 2)
         self.assertTrue(all(item.source_type == "chat_message" for item in revisions))
 
+    def test_tutor_context_combines_profile_course_and_learning_evidence(self):
+        with self.session_factory() as db:
+            db.add_all(
+                [
+                    LearnerProfile(
+                        id="profile-1",
+                        user_id="user-1",
+                        project_id="project-1",
+                        status="active",
+                        completeness_score=0.25,
+                        profile_data={
+                            "current_course": {"value": "数据库系统"},
+                            "learning_goal": {"value": "准备期末考试"},
+                            "resource_preference": {"value": ["笔记", "刷题"]},
+                        },
+                    ),
+                    StudentKnowledgeState(
+                        id="state-1",
+                        user_id="user-1",
+                        knowledge_point_id="kp-1",
+                        mastery_score=35,
+                        confidence=0.8,
+                        trend="down",
+                        status="learning",
+                        attempt_count=4,
+                        correct_count=1,
+                        evidence=[],
+                    ),
+                    PracticeRecord(
+                        id="practice-1",
+                        user_id="user-1",
+                        project_id="project-1",
+                        knowledge_point_id="kp-1",
+                        item_type="quiz",
+                        item_id="question-1",
+                        topic="Transactions",
+                        user_answer="b",
+                        correct_answer="a",
+                        was_correct=False,
+                    ),
+                ]
+            )
+            db.commit()
+
+            project, profile, evidence = (
+                ChatService._load_tutor_personalization_context(
+                    db_session=db,
+                    project_id="project-1",
+                    user_id="user-1",
+                )
+            )
+
+        self.assertEqual(project["course_name"], "Databases")
+        self.assertEqual(profile["fields"]["learning_goal"], "准备期末考试")
+        self.assertEqual(profile["fields"]["resource_preference"], ["笔记", "刷题"])
+        self.assertEqual(evidence["weak_points"][0]["name"], "Transactions")
+        self.assertEqual(evidence["overall_mastery"], 35)
+        self.assertEqual(evidence["recent_accuracy"], 0)
+
     def test_chat_inferences_are_idempotent_and_protect_confirmed_values(self):
         service = LearnerProfileService()
         service.replace_profile(
@@ -324,6 +383,97 @@ class ASectionServiceTests(unittest.TestCase):
             self.assertEqual(state.correct_count, 1)
             self.assertEqual(db.query(KnowledgeStateEvent).count(), 1)
 
+    def test_practice_uses_quiz_question_knowledge_point_association(self):
+        with self.session_factory() as db:
+            question = (
+                db.query(QuizQuestion).filter(QuizQuestion.id == "question-1").one()
+            )
+            question.question_text = "Which statement is correct?"
+            question.knowledge_point_id = "kp-1"
+            db.commit()
+
+        record = PracticeService().create_practice_record(
+            user_id="user-1",
+            project_id="project-1",
+            item_type="quiz",
+            item_id="question-1",
+            knowledge_point_id=None,
+            topic="Which statement is correct?",
+            user_answer="a",
+            correct_answer="a",
+            was_correct=True,
+        )
+        result = KnowledgeStateService().refresh_states("project-1", "user-1")
+
+        self.assertEqual(record.knowledge_point_id, "kp-1")
+        self.assertEqual(result.processed_count, 1)
+        self.assertEqual(result.updated_states[0].mastery_score, 30)
+
+    def test_legacy_quiz_question_matches_knowledge_point_from_content(self):
+        with self.session_factory() as db:
+            question = (
+                db.query(QuizQuestion).filter(QuizQuestion.id == "question-1").one()
+            )
+            question.question_text = "Which Transactions property guarantees atomicity?"
+            question.knowledge_point_id = None
+            db.commit()
+
+        record = PracticeService().create_practice_record(
+            user_id="user-1",
+            project_id="project-1",
+            item_type="quiz",
+            item_id="question-1",
+            knowledge_point_id=None,
+            topic="Which Transactions property guarantees atomicity?",
+            user_answer="a",
+            correct_answer="a",
+            was_correct=True,
+        )
+
+        self.assertEqual(record.knowledge_point_id, "kp-1")
+
+    def test_refresh_backfills_unmatched_historical_practice(self):
+        with self.session_factory() as db:
+            db.add_all(
+                [
+                    PracticeRecord(
+                        id="legacy-practice",
+                        user_id="user-1",
+                        project_id="project-1",
+                        knowledge_point_id=None,
+                        item_type="quiz",
+                        item_id="question-1",
+                        topic="Transactions guarantee atomicity",
+                        user_answer="a",
+                        correct_answer="a",
+                        was_correct=True,
+                    ),
+                    PracticeRecord(
+                        id="legacy-practice-2",
+                        user_id="user-1",
+                        project_id="project-1",
+                        knowledge_point_id=None,
+                        item_type="quiz",
+                        item_id="question-1",
+                        topic="Transactions preserve consistency",
+                        user_answer="a",
+                        correct_answer="a",
+                        was_correct=True,
+                    ),
+                ]
+            )
+            db.commit()
+
+        result = KnowledgeStateService().refresh_states("project-1", "user-1")
+
+        with self.session_factory() as db:
+            record = db.query(PracticeRecord).filter_by(id="legacy-practice").one()
+            self.assertEqual(record.knowledge_point_id, "kp-1")
+            self.assertEqual(db.query(StudentKnowledgeState).count(), 1)
+            self.assertEqual(db.query(StudentKnowledgeState).one().mastery_score, 51)
+        self.assertEqual(result.processed_count, 2)
+        self.assertEqual(result.unmatched_count, 0)
+
     def test_topic_tag_fallback_updates_state(self):
         practice_service = PracticeService()
         record = practice_service.create_practice_record(
@@ -337,9 +487,7 @@ class ASectionServiceTests(unittest.TestCase):
             correct_answer="a",
             was_correct=False,
         )
-        result = KnowledgeStateService().refresh_states(
-            "project-1", "user-1"
-        )
+        result = KnowledgeStateService().refresh_states("project-1", "user-1")
 
         self.assertEqual(record.knowledge_point_id, "kp-1")
         self.assertEqual(result.processed_count, 1)
@@ -399,9 +547,13 @@ class ASectionServiceTests(unittest.TestCase):
         self.assertIn("common_error_types", profile.profile_data)
         self.assertIn("current_learning_state", profile.profile_data)
         self.assertEqual(profile.profile_data["current_course"]["value"], "Databases")
-        self.assertEqual(profile.profile_data["learning_progress"]["value"]["attempt_count"], 1)
+        self.assertEqual(
+            profile.profile_data["learning_progress"]["value"]["attempt_count"], 1
+        )
         revisions = LearnerProfileService().list_revisions("project-1", "user-1")
-        self.assertTrue(any(revision.source_type == "auto_refresh" for revision in revisions))
+        self.assertTrue(
+            any(revision.source_type == "auto_refresh" for revision in revisions)
+        )
 
 
 if __name__ == "__main__":

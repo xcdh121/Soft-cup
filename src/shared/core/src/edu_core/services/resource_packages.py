@@ -57,6 +57,12 @@ class ResourcePackageService:
         note_streamer: Callable[
             [dict[str, Any]], AsyncIterator[dict[str, Any]]
         ] | None = None,
+        quiz_streamer: Callable[
+            [dict[str, Any]], AsyncIterator[dict[str, Any]]
+        ] | None = None,
+        flashcard_streamer: Callable[
+            [dict[str, Any]], AsyncIterator[dict[str, Any]]
+        ] | None = None,
     ) -> None:
         self.storage = LocalStorageService(storage_root)
         self.agent_orchestration_service = agent_orchestration_service
@@ -68,6 +74,8 @@ class ResourcePackageService:
         self.baidu_search_client = baidu_search_client
         self.llm_config = llm_config
         self.note_streamer = note_streamer
+        self.quiz_streamer = quiz_streamer
+        self.flashcard_streamer = flashcard_streamer
 
     def list_resource_packages(
         self,
@@ -615,21 +623,80 @@ Problem and answer JSON:
                 {"status": "generating"},
             )
             package.agent_trace = agent_trace
+            recommendation_pool = list(diagnosis.recommendations)
+            resources_to_generate: list[tuple[GeneratedResource, str]] = []
+            for order, resource_type in enumerate(resource_types):
+                orchestration_type = self._to_orchestration_resource_type(
+                    resource_type
+                )
+                recommendation = next(
+                    (
+                        item
+                        for item in recommendation_pool
+                        if item.get("recommendation_type") == orchestration_type
+                    ),
+                    None,
+                )
+                initial = (
+                    self._build_generated_resource_reference(
+                        project_id=project_id,
+                        resource_type=resource_type,
+                        recommendation=recommendation,
+                        difficulty_level=difficulty_level,
+                        custom_instructions=scoped_instructions,
+                    )
+                    if recommendation is not None
+                    else {}
+                )
+                resource = GeneratedResource(
+                    id=str(uuid4()),
+                    resource_package_id=package_id,
+                    project_id=project_id,
+                    user_id=user_id,
+                    resource_type=resource_type,
+                    title=initial.get("title") or f"Generating {resource_type}",
+                    summary=initial.get("summary"),
+                    status="generating",
+                    format=initial.get("format") or "json",
+                    content_json=initial.get("content_json"),
+                    preview_url=initial.get("preview_url"),
+                    source_document_ids=source_document_ids,
+                    knowledge_point_ids=knowledge_point_ids,
+                    difficulty_level=difficulty_level,
+                    estimated_minutes=initial.get("estimated_minutes"),
+                    version=1,
+                    generation_order=order,
+                    generator_agent=initial.get("generator_agent"),
+                    generation_reason=initial.get("generation_reason"),
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(resource)
+                resources_to_generate.append((resource, resource_type))
             db.commit()
             await self._publish_stream_event(
                 event_sink, package_id, "package_started",
-                {"status": "generating", "resource_count": len(resource_types)},
+                {
+                    "status": "generating",
+                    "resource_count": len(resource_types),
+                    "resources": [
+                        {
+                            "id": resource.id,
+                            "resource_type": resource_type,
+                            "preview_url": resource.preview_url,
+                        }
+                        for resource, resource_type in resources_to_generate
+                    ],
+                },
             )
 
             source_context = self._combine_source_context(
                 self._build_document_context(documents), chapter_context
             )
-            recommendation_pool = list(diagnosis.recommendations)
-
             completed = 0
             failed = 0
-            for order, resource_type in enumerate(resource_types):
-                resource_id = str(uuid4())
+            for order, (resource, resource_type) in enumerate(resources_to_generate):
+                resource_id = resource.id
                 self._append_agent_event(
                     agent_trace,
                     package_id,
@@ -680,35 +747,23 @@ Problem and answer JSON:
                     error_message = str(exc)
                     failed += 1
 
-                resource = GeneratedResource(
-                    id=resource_id,
-                    resource_package_id=package_id,
-                    project_id=project_id,
-                    user_id=user_id,
-                    resource_type=resource_type,
-                    title=generated["title"],
-                    summary=generated.get("summary"),
-                    status=resource_status,
-                    format=generated["format"],
-                    content_text=generated.get("content_text"),
-                    content_json=generated.get("content_json"),
-                    file_url=generated.get("file_url"),
-                    preview_url=generated.get("preview_url"),
-                    cover_image_url=generated.get("cover_image_url"),
-                    error_message=error_message,
-                    source_document_ids=source_document_ids,
-                    knowledge_point_ids=knowledge_point_ids,
-                    difficulty_level=difficulty_level,
-                    estimated_minutes=generated.get("estimated_minutes"),
-                    version=1,
-                    generation_order=order,
-                    generator_agent=generated.get("generator_agent"),
-                    generation_reason=generated.get("generation_reason"),
-                    created_at=now,
-                    updated_at=now,
-                    completed_at=now if resource_status == "completed" else None,
+                resource.title = generated["title"]
+                resource.summary = generated.get("summary")
+                resource.status = resource_status
+                resource.format = generated["format"]
+                resource.content_text = generated.get("content_text")
+                resource.content_json = generated.get("content_json")
+                resource.file_url = generated.get("file_url")
+                resource.preview_url = generated.get("preview_url")
+                resource.cover_image_url = generated.get("cover_image_url")
+                resource.error_message = error_message
+                resource.estimated_minutes = generated.get("estimated_minutes")
+                resource.generator_agent = generated.get("generator_agent")
+                resource.generation_reason = generated.get("generation_reason")
+                resource.updated_at = datetime.now(UTC)
+                resource.completed_at = (
+                    resource.updated_at if resource_status == "completed" else None
                 )
-                db.add(resource)
 
                 self._append_agent_event(
                     agent_trace,
@@ -1008,6 +1063,8 @@ Problem and answer JSON:
             "flashcard_count": generation_params.get("flashcard_count"),
             "launch_context": generation_params.get("launch_context"),
             "stream_note_in_package": self.note_streamer is not None,
+            "stream_quiz_in_package": self.quiz_streamer is not None,
+            "stream_flashcards_in_package": self.flashcard_streamer is not None,
         }
         if diagnosis is None:
             diagnosis = await self.agent_orchestration_service.generate_diagnosis(
@@ -1148,6 +1205,19 @@ Problem and answer JSON:
                     event_sink=event_sink,
                 )
                 return generated, "completed"
+            if resource_type in {"practice_set", "flashcards"} and recommendation.get(
+                "stream_in_package"
+            ):
+                generated = await self._stream_recommended_collection(
+                    generated=generated,
+                    recommendation=recommendation,
+                    resource_type=resource_type,
+                    project_id=project_id,
+                    package_id=package_id,
+                    resource_id=resource_id,
+                    event_sink=event_sink,
+                )
+                return generated, "completed"
             return generated, "generating"
 
         generated = await self._generate_resource_content_async(
@@ -1235,6 +1305,156 @@ Problem and answer JSON:
             "content_text": content,
             "content_json": content_json,
         }
+
+    async def _stream_recommended_collection(
+        self,
+        *,
+        generated: dict[str, Any],
+        recommendation: dict[str, Any],
+        resource_type: str,
+        project_id: str,
+        package_id: str,
+        resource_id: str,
+        event_sink: Callable[
+            [ResourcePackageStreamEventDto], Awaitable[None]
+        ] | None,
+    ) -> dict[str, Any]:
+        """Forward complete quiz questions or flashcards as soon as they arrive."""
+        is_quiz = resource_type == "practice_set"
+        streamer = self.quiz_streamer if is_quiz else self.flashcard_streamer
+        if streamer is None:
+            raise RuntimeError(f"Streaming is not configured for {resource_type}")
+
+        target_id = str(recommendation.get("target_id") or "")
+        if not target_id:
+            raise ValueError(f"A streamed {resource_type} requires a target ID")
+
+        item_event = "quiz_question_created" if is_quiz else "flashcard_created"
+        completed_event = "quiz_completed" if is_quiz else "flashcards_completed"
+        item_field = "question" if is_quiz else "flashcard"
+        collection_field = "questions" if is_quiz else "flashcards"
+        target_field = "quiz_id" if is_quiz else "group_id"
+        items: list[dict[str, Any]] = []
+        completed = False
+        title = str(generated.get("title") or "Generated resource")
+
+        stream_payload = {
+            "project_id": project_id,
+            target_field: target_id,
+            "topic": recommendation.get("topic"),
+            "custom_instructions": recommendation.get("custom_instructions"),
+            "count": recommendation.get("count"),
+        }
+        if not is_quiz:
+            stream_payload["difficulty"] = recommendation.get("difficulty")
+
+        initial_content_json = {
+            **(generated.get("content_json") or {}),
+            collection_field: [],
+            "stream_on_client": True,
+        }
+        self._update_partial_generated_resource(
+            resource_id=resource_id,
+            title=title,
+            content_json=initial_content_json,
+            summary=generated.get("summary"),
+            resource_format=generated.get("format"),
+            preview_url=generated.get("preview_url"),
+        )
+        await self._publish_stream_event(
+            event_sink,
+            package_id,
+            "resource_delta",
+            {
+                "resource_id": resource_id,
+                "resource_type": resource_type,
+                "target_id": target_id,
+                "title": title,
+                "content_json": initial_content_json,
+                "preview_url": generated.get("preview_url"),
+                "item_count": 0,
+                "completed": False,
+            },
+        )
+
+        async for event in streamer(stream_payload):
+            event_type = str(event.get("event") or "")
+            if event_type == item_event and isinstance(event.get(item_field), dict):
+                items.append(event[item_field])
+            elif event_type == completed_event:
+                completed = True
+                title = str(event.get("name") or title)
+            else:
+                continue
+
+            content_json = {
+                **(generated.get("content_json") or {}),
+                collection_field: list(items),
+                "stream_on_client": not completed,
+            }
+            self._update_partial_generated_resource(
+                resource_id=resource_id,
+                title=title,
+                content_json=content_json,
+            )
+            await self._publish_stream_event(
+                event_sink,
+                package_id,
+                "resource_delta",
+                {
+                    "resource_id": resource_id,
+                    "resource_type": resource_type,
+                    "target_id": target_id,
+                    "title": title,
+                    "content_json": content_json,
+                    "item_count": len(items),
+                    "completed": completed,
+                },
+            )
+
+        if not completed:
+            raise ValueError(f"The streamed {resource_type} did not complete")
+
+        return {
+            **generated,
+            "title": title,
+            "content_json": {
+                **(generated.get("content_json") or {}),
+                collection_field: items,
+                "stream_on_client": False,
+            },
+        }
+
+    def _update_partial_generated_resource(
+        self,
+        *,
+        resource_id: str,
+        title: str,
+        content_json: dict[str, Any],
+        summary: str | None = None,
+        resource_format: str | None = None,
+        preview_url: str | None = None,
+    ) -> None:
+        """Persist an incremental preview so a newly opened page can poll it."""
+        with self._get_db_session() as db:
+            resource = (
+                db.query(GeneratedResource)
+                .filter(GeneratedResource.id == resource_id)
+                .first()
+            )
+            if resource is None:
+                return
+            resource.title = title
+            resource.status = "generating"
+            resource.content_json = content_json
+            if summary is not None:
+                resource.summary = summary
+            if resource_format is not None:
+                resource.format = resource_format
+            if preview_url is not None:
+                resource.preview_url = preview_url
+            resource.updated_at = datetime.now(UTC)
+            db.commit()
 
     def _take_matching_recommendation(
         self,

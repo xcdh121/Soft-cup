@@ -288,6 +288,18 @@ Student message:
         ):
             yield event
 
+    async def stream_quiz(self, payload: dict[str, Any]):
+        llm, topic_graph_agent = self._make_streaming_agent_dependencies()
+        agent = QuizAgent(self.search_service, llm, topic_graph_agent)
+        async for event in agent.generate_and_save_stream(
+            project_id=payload["project_id"],
+            topic=payload.get("topic"),
+            custom_instructions=payload.get("custom_instructions"),
+            quiz_id=payload["quiz_id"],
+            count=payload.get("count"),
+        ):
+            yield event
+
     async def _run_flashcards(self, payload: dict[str, Any]) -> None:
         llm, topic_graph_agent = self._make_topic_graph_agent()
         agent = FlashcardAgent(self.search_service, llm, topic_graph_agent)

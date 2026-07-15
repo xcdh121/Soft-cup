@@ -4,6 +4,7 @@ from typing import Any
 from uuid import uuid4
 
 from edu_core.exceptions import NotFoundError
+from edu_core.services.knowledge_point_matching import resolve_knowledge_point_id
 from edu_db.models import Flashcard, FlashcardGroup, Project
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel, Field
@@ -61,6 +62,12 @@ class FlashcardAgent:
             ).first()
             if not project or not group:
                 raise NotFoundError("Project or flashcard group not found")
+            requested_knowledge_point_id = resolve_knowledge_point_id(
+                db,
+                project.course_id,
+                texts=[topic],
+                allow_contains=False,
+            )
 
             generation_topic = topic
             if self.topic_graph_agent:
@@ -114,8 +121,14 @@ class FlashcardAgent:
             group.updated_at = datetime.now()
             db.query(Flashcard).filter(Flashcard.group_id == group_id).delete()
             for position, item in enumerate(final_result.flashcards):
+                knowledge_point_id = requested_knowledge_point_id or resolve_knowledge_point_id(
+                    db,
+                    project.course_id,
+                    texts=[item.question, item.answer],
+                )
                 db.add(Flashcard(
                     id=str(uuid4()), group_id=group_id, project_id=project_id,
+                    knowledge_point_id=knowledge_point_id,
                     question=item.question, answer=item.answer,
                     difficulty_level=item.difficulty_level, position=position,
                     created_at=datetime.now(),
@@ -162,6 +175,12 @@ class FlashcardAgent:
                 raise NotFoundError(f"Project {project_id} not found")
 
             language_code = project.language_code
+            requested_knowledge_point_id = resolve_knowledge_point_id(
+                db,
+                project.course_id,
+                texts=[topic],
+                allow_contains=False,
+            )
 
             group = (
                 db.query(FlashcardGroup)
@@ -219,10 +238,16 @@ class FlashcardAgent:
 
             # Save flashcards to database
             for position, flashcard_item in enumerate(result.flashcards):
+                knowledge_point_id = requested_knowledge_point_id or resolve_knowledge_point_id(
+                    db,
+                    project.course_id,
+                    texts=[flashcard_item.question, flashcard_item.answer],
+                )
                 flashcard = Flashcard(
                     id=str(uuid4()),
                     group_id=group_id,
                     project_id=project_id,
+                    knowledge_point_id=knowledge_point_id,
                     question=flashcard_item.question,
                     answer=flashcard_item.answer,
                     difficulty_level=flashcard_item.difficulty_level,

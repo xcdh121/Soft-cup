@@ -5,7 +5,6 @@ from uuid import uuid4
 
 from edu_db.models import (
     Flashcard,
-    KnowledgePoint,
     PracticeRecord,
     Project,
     QuizQuestion,
@@ -13,6 +12,7 @@ from edu_db.models import (
 from edu_db.session import get_session_factory
 
 from edu_core.schemas.practice import PracticeRecordDto
+from edu_core.services.knowledge_point_matching import resolve_knowledge_point_id
 
 
 class PracticeService:
@@ -65,6 +65,8 @@ class PracticeService:
                     project.course_id,
                     knowledge_point_id,
                     topic,
+                    item_type,
+                    item_id,
                 )
 
                 practice_record = PracticeRecord(
@@ -124,6 +126,8 @@ class PracticeService:
                         project.course_id,
                         record_data.get("knowledge_point_id"),
                         record_data.get("topic"),
+                        item_type,
+                        item_id,
                     )
 
                     practice_record = PracticeRecord(
@@ -222,42 +226,28 @@ class PracticeService:
         course_id: str | None,
         knowledge_point_id: str | None,
         topic: str | None,
+        item_type: str | None,
+        item_id: str | None,
     ) -> str | None:
-        if knowledge_point_id:
-            point = (
-                db.query(KnowledgePoint)
-                .filter(
-                    KnowledgePoint.id == knowledge_point_id,
-                    KnowledgePoint.course_id == course_id,
-                )
-                .first()
-            )
-            if not point:
-                raise ValueError(
-                    f"Knowledge point {knowledge_point_id} is not in the project course"
-                )
-            return point.id
+        stored_knowledge_point_id = None
+        content_texts: list[str | None] = [topic]
+        if item_type == "quiz" and item_id:
+            item = db.query(QuizQuestion).filter(QuizQuestion.id == item_id).first()
+            if item:
+                stored_knowledge_point_id = item.knowledge_point_id
+                content_texts.extend([item.question_text, item.explanation])
+        elif item_type == "flashcard" and item_id:
+            item = db.query(Flashcard).filter(Flashcard.id == item_id).first()
+            if item:
+                stored_knowledge_point_id = item.knowledge_point_id
+                content_texts.extend([item.question, item.answer])
 
-        if not course_id or not topic:
-            return None
-
-        normalized_topic = topic.strip().casefold()
-        points = (
-            db.query(KnowledgePoint)
-            .filter(KnowledgePoint.course_id == course_id)
-            .all()
+        return resolve_knowledge_point_id(
+            db,
+            course_id,
+            explicit_id=knowledge_point_id or stored_knowledge_point_id,
+            texts=content_texts,
         )
-        matches = [
-            point
-            for point in points
-            if point.name.strip().casefold() == normalized_topic
-            or normalized_topic
-            in {
-                str(tag).strip().casefold()
-                for tag in (point.tags or [])
-            }
-        ]
-        return matches[0].id if len(matches) == 1 else None
 
     def _model_to_dto(self, record: PracticeRecord) -> PracticeRecordDto:
         """Convert PracticeRecord model to PracticeRecordDto."""

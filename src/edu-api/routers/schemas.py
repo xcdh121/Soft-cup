@@ -274,6 +274,9 @@ class ChatCompletionRequest(BaseModel):
 
 
 class FlashcardCreate(BaseModel):
+    knowledge_point_id: str | None = Field(
+        None, description="Optional related knowledge point ID"
+    )
     question: str = Field(..., description="Question of the flashcard")
     answer: str = Field(..., description="Answer of the flashcard")
     difficulty_level: str = Field(
@@ -285,6 +288,9 @@ class FlashcardCreate(BaseModel):
 
 
 class FlashcardUpdate(BaseModel):
+    knowledge_point_id: str | None = Field(
+        None, description="Optional related knowledge point ID"
+    )
     question: str | None = Field(None, description="Question of the flashcard")
     answer: str | None = Field(None, description="Answer of the flashcard")
     difficulty_level: str | None = Field(
@@ -296,6 +302,9 @@ class FlashcardUpdate(BaseModel):
 
 
 class QuizQuestionCreate(BaseModel):
+    knowledge_point_id: str | None = Field(
+        None, description="Optional related knowledge point ID"
+    )
     question_text: str = Field(..., description="The quiz question text")
     option_a: str = Field(..., description="Option A")
     option_b: str = Field(..., description="Option B")
@@ -314,6 +323,9 @@ class QuizQuestionCreate(BaseModel):
 
 
 class QuizQuestionUpdate(BaseModel):
+    knowledge_point_id: str | None = Field(
+        None, description="Optional related knowledge point ID"
+    )
     question_text: str | None = Field(None, description="The quiz question text")
     option_a: str | None = Field(None, description="Option A")
     option_b: str | None = Field(None, description="Option B")

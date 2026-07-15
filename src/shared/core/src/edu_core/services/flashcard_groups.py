@@ -5,11 +5,12 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from edu_db.models import Flashcard, FlashcardGroup
+from edu_db.models import Flashcard, FlashcardGroup, Project
 from edu_db.session import get_session_factory
 
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.flashcards import FlashcardDto, FlashcardGroupDto
+from edu_core.services.knowledge_point_matching import resolve_knowledge_point_id
 
 if TYPE_CHECKING:
     from edu_queue.service import QueueService
@@ -211,6 +212,7 @@ class FlashcardGroupService:
         self,
         group_id: str,
         project_id: str,
+        knowledge_point_id: str | None,
         question: str,
         answer: str,
         difficulty_level: str = "medium",
@@ -245,6 +247,12 @@ class FlashcardGroupService:
                 )
                 if not group:
                     raise NotFoundError(f"Flashcard group {group_id} not found")
+                project = db.query(Project).filter(Project.id == project_id).first()
+                resolved_knowledge_point_id = resolve_knowledge_point_id(
+                    db,
+                    project.course_id if project else None,
+                    explicit_id=knowledge_point_id,
+                )
 
                 # Auto-assign position if not provided
                 if position is None:
@@ -261,6 +269,7 @@ class FlashcardGroupService:
                     id=str(uuid4()),
                     group_id=group_id,
                     project_id=project_id,
+                    knowledge_point_id=resolved_knowledge_point_id,
                     question=question,
                     answer=answer,
                     difficulty_level=difficulty_level,
@@ -346,6 +355,7 @@ class FlashcardGroupService:
         flashcard_id: str,
         group_id: str,
         project_id: str,
+        knowledge_point_id: str | None = None,
         question: str | None = None,
         answer: str | None = None,
         difficulty_level: str | None = None,
@@ -381,6 +391,14 @@ class FlashcardGroupService:
                 )
                 if not flashcard:
                     raise NotFoundError(f"Flashcard {flashcard_id} not found")
+
+                if knowledge_point_id is not None:
+                    project = db.query(Project).filter(Project.id == project_id).first()
+                    flashcard.knowledge_point_id = resolve_knowledge_point_id(
+                        db,
+                        project.course_id if project else None,
+                        explicit_id=knowledge_point_id,
+                    )
 
                 if question is not None:
                     flashcard.question = question
@@ -442,6 +460,7 @@ class FlashcardGroupService:
             id=flashcard.id,
             group_id=flashcard.group_id,
             project_id=flashcard.project_id,
+            knowledge_point_id=flashcard.knowledge_point_id,
             question=flashcard.question,
             answer=flashcard.answer,
             difficulty_level=flashcard.difficulty_level,

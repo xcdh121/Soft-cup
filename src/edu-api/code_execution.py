@@ -97,6 +97,13 @@ async def execute_code(
     )
     compile_result = payload.get("compile")
     run_result = payload.get("run")
+    if not isinstance(compile_result, dict) and not isinstance(run_result, dict):
+        detail = payload.get("message") or payload.get("error")
+        if isinstance(detail, dict):
+            detail = detail.get("message")
+        raise CodeExecutionError(
+            str(detail) if detail else "代码沙箱未返回编译或运行结果。"
+        )
     compile_result = compile_result if isinstance(compile_result, dict) else {}
     run_result = run_result if isinstance(run_result, dict) else {}
 

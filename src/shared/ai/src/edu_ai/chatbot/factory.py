@@ -2,7 +2,11 @@ import json
 from contextlib import suppress
 from typing import Any
 
-from edu_ai.chatbot.context import ChatbotContext, ChatbotState
+from edu_ai.chatbot.context import (
+    ChatbotContext,
+    ChatbotState,
+    build_tutor_personalization_prompt,
+)
 from edu_ai.prompts.prompts_utils import render_prompt
 from edu_ai.tools.flashcard import tools as flashcard_tools
 from edu_ai.tools.mind_map import tools as mind_map_tools
@@ -110,15 +114,11 @@ async def dynamic_system_prompt(request: ModelRequest) -> str:
     """Generate dynamic system prompt."""
     language = request.runtime.context.language or "English"
 
-    # Return cached prompt if available
-    if language in _prompt_cache:
-        return _prompt_cache[language]
-
-    # Generate and cache the prompt
-    prompt = get_instructions(language)
-
-    _prompt_cache[language] = prompt
-    return prompt
+    if language not in _prompt_cache:
+        _prompt_cache[language] = get_instructions(language)
+    return _prompt_cache[language] + build_tutor_personalization_prompt(
+        request.runtime.context
+    )
 
 
 @after_model(state_schema=ChatbotState)

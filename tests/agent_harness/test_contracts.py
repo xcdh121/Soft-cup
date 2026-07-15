@@ -17,7 +17,22 @@ class AgentContractTest(unittest.IsolatedAsyncioTestCase):
             project_id="project_1",
             student_id="student_1",
             context=AgentContextData(
-                learner_profile={"profile_data": {"learning_style": "visual"}},
+                learner_profile={
+                    "profile_data": {
+                        "learning_goal": {
+                            "value": "prepare for the final exam",
+                            "confidence": 0.9,
+                        },
+                        "resource_preference": {
+                            "value": ["diagrams", "practice"],
+                            "confidence": 0.85,
+                        },
+                        "cognitive_style": {
+                            "value": "visual",
+                            "confidence": 0.8,
+                        },
+                    }
+                },
                 practice_records=[
                     {"id": "p1", "topic": "gradient", "was_correct": False},
                     {"id": "p2", "topic": "gradient", "was_correct": True},
@@ -28,6 +43,15 @@ class AgentContractTest(unittest.IsolatedAsyncioTestCase):
     async def test_agent_results_include_mvp_contract_fields(self):
         context = self._context()
         profile = await ProfileAgent().run(context)
+        self.assertEqual(
+            profile.result["profile_summary"]["learning_goal"],
+            "prepare for the final exam",
+        )
+        self.assertEqual(
+            profile.result["profile_summary"]["resource_preference"],
+            ["diagrams", "practice"],
+        )
+        self.assertEqual(profile.result["profile_summary"]["learning_style"], "visual")
         kt = await KTAgent().run(context)
         context.artifacts["knowledge_state"] = kt.result
         diagnosis = await DiagnosisAgent().run(context)

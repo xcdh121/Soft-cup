@@ -8,8 +8,8 @@ import {
   forceX,
   forceY,
 } from 'd3-force'
-import type { SimulationLinkDatum, SimulationNodeDatum } from 'd3-force'
 import { Maximize2, RotateCcw } from 'lucide-react'
+import type { SimulationLinkDatum, SimulationNodeDatum } from 'd3-force'
 import type {
   KnowledgeGraph,
   KnowledgeGraphNode,
@@ -261,6 +261,27 @@ export function KnowledgeGraphCanvas({
     () => getConnectedNodes(graph, selectedNode),
     [graph, selectedNode],
   )
+  const detailPanelWidth = 440
+  const detailPanelHeight = 340
+  const selectedViewportPoint = selectedPoint
+    ? {
+        x: selectedPoint.x * viewport.zoom + viewport.pan.x,
+        y: selectedPoint.y * viewport.zoom + viewport.pan.y,
+      }
+    : null
+  const detailPanelX = selectedViewportPoint
+    ? selectedViewportPoint.x + detailPanelWidth + 48 <=
+      viewBoxRect.x + viewBoxRect.width
+      ? selectedViewportPoint.x + 32
+      : selectedViewportPoint.x - detailPanelWidth - 32
+    : 0
+  const detailPanelY = selectedViewportPoint
+    ? clamp(
+        selectedViewportPoint.y - 24,
+        viewBoxRect.y + 16,
+        viewBoxRect.y + viewBoxRect.height - detailPanelHeight - 16,
+      )
+    : 0
 
   const clientToSvgPoint = (clientX: number, clientY: number): Point => {
     const svg = svgRef.current
@@ -527,18 +548,18 @@ export function KnowledgeGraphCanvas({
 
         {selectedNode && selectedPoint && (
           <foreignObject
-            height="230"
-            width="300"
-            x={selectedPoint.x * viewport.zoom + viewport.pan.x + 24}
-            y={selectedPoint.y * viewport.zoom + viewport.pan.y - 18}
+            height={detailPanelHeight}
+            width={detailPanelWidth}
+            x={detailPanelX}
+            y={detailPanelY}
           >
-            <div className="pointer-events-auto w-[292px] rounded-md border border-[#7DA0CA]/40 bg-[#052659]/95 p-4 font-sans text-xs text-[#C1E8FF] shadow-2xl shadow-[#021024]/50 backdrop-blur">
-              <div className="mb-2 flex items-start justify-between gap-3">
+            <div className="pointer-events-auto w-[428px] rounded-lg border border-[#7DA0CA]/40 bg-[#052659]/95 p-5 font-sans text-sm text-[#C1E8FF] shadow-2xl shadow-[#021024]/50 backdrop-blur">
+              <div className="mb-4 flex items-start justify-between gap-4">
                 <div>
-                  <div className="text-sm font-semibold text-white">
+                  <div className="text-lg font-semibold leading-6 text-white">
                     {selectedNode.label}
                   </div>
-                  <div className="mt-1 text-[11px] text-[#7DA0CA]">
+                  <div className="mt-1.5 text-sm text-[#7DA0CA]">
                     {difficultyLabel[selectedNode.difficulty_level] ??
                       selectedNode.difficulty_level}{' '}
                     / {statusLabel[selectedNode.status] ?? selectedNode.status}
@@ -546,19 +567,20 @@ export function KnowledgeGraphCanvas({
                 </div>
                 <button
                   type="button"
-                  className="rounded border border-[#7DA0CA]/40 px-1.5 text-[#C1E8FF] transition-colors hover:bg-[#021024] hover:text-white"
+                  className="flex size-7 shrink-0 items-center justify-center rounded border border-[#7DA0CA]/40 text-base text-[#C1E8FF] transition-colors hover:bg-[#021024] hover:text-white"
+                  aria-label="关闭知识点详情"
                   onClick={() => onSelect(null)}
                 >
-                  x
+                  ×
                 </button>
               </div>
 
-              <div className="mb-2">
-                <div className="mb-1 flex justify-between text-[11px] text-[#7DA0CA]">
+              <div className="mb-4">
+                <div className="mb-2 flex justify-between text-sm text-[#7DA0CA]">
                   <span>掌握度</span>
                   <span>{Math.round(selectedNode.mastery_score)}%</span>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
                   <div
                     className="h-full rounded-full bg-[#C1E8FF]"
                     style={{
@@ -568,29 +590,33 @@ export function KnowledgeGraphCanvas({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 text-[11px]">
-                <div className="rounded border border-white/10 bg-white/[0.04] p-2">
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
                   <div className="text-slate-500">置信度</div>
-                  <div>{Math.round(selectedNode.confidence * 100)}%</div>
+                  <div className="mt-1 font-medium text-white">
+                    {Math.round(selectedNode.confidence * 100)}%
+                  </div>
                 </div>
-                <div className="rounded border border-white/10 bg-white/[0.04] p-2">
+                <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
                   <div className="text-slate-500">趋势</div>
-                  <div>
+                  <div className="mt-1 font-medium text-white">
                     {trendLabel[selectedNode.trend] ?? selectedNode.trend}
                   </div>
                 </div>
-                <div className="rounded border border-white/10 bg-white/[0.04] p-2">
+                <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
                   <div className="text-slate-500">关系</div>
-                  <div>{predecessors.length + successors.length}</div>
+                  <div className="mt-1 font-medium text-white">
+                    {predecessors.length + successors.length}
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-3 space-y-1.5 text-[11px]">
-                <div className="truncate text-[#7DA0CA]">
+              <div className="mt-4 space-y-2 text-sm leading-6">
+                <div className="line-clamp-2 text-[#7DA0CA]">
                   前置：
                   {predecessors.map((node) => node.label).join('、') || '无'}
                 </div>
-                <div className="truncate text-[#7DA0CA]">
+                <div className="line-clamp-2 text-[#7DA0CA]">
                   后续：
                   {successors.map((node) => node.label).join('、') || '无'}
                 </div>

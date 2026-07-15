@@ -32,6 +32,7 @@ from xfyun_image_understanding import (
     XfyunImageUnderstandingClient,
     XfyunImageUnderstandingConfig,
 )
+from xfyun_pdf_ocr import XfyunPdfOcrClient, XfyunPdfOcrConfig
 
 
 def get_settings_dep() -> Settings:
@@ -142,6 +143,21 @@ def get_xfyun_image_understanding_client(
     )
 
 
+def get_xfyun_pdf_ocr_client(
+    settings: Settings = Depends(get_settings_dep),
+) -> XfyunPdfOcrClient:
+    """Build the shared server-side XFYun PDF OCR client."""
+    return XfyunPdfOcrClient(
+        XfyunPdfOcrConfig(
+            enabled=settings.xfyun_pdf_ocr_enabled,
+            app_id=settings.xfyun_pdf_ocr_app_id,
+            secret=settings.xfyun_pdf_ocr_secret,
+            base_url=settings.xfyun_pdf_ocr_base_url,
+            timeout_seconds=settings.xfyun_pdf_ocr_timeout_seconds,
+        )
+    )
+
+
 def get_course_service() -> CourseService:
     """Get CourseService instance."""
     return CourseService()
@@ -234,6 +250,8 @@ def get_resource_package_service(
             temperature=0.3,
         ),
         note_streamer=task_runner.stream_note,
+        quiz_streamer=task_runner.stream_quiz,
+        flashcard_streamer=task_runner.stream_flashcards,
     )
 
 

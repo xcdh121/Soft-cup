@@ -1,11 +1,11 @@
 """Project-scoped XFYun PDF OCR endpoints."""
+# ruff: noqa: RUF001
 
 from io import BytesIO
 from typing import Literal
 
 from auth import get_current_user
-from config import Settings
-from dependencies import get_project_service, get_settings_dep
+from dependencies import get_project_service, get_xfyun_pdf_ocr_client
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.users import UserDto
 from edu_core.services import ProjectService
@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 from xfyun_pdf_ocr import (
+    MAX_OCR_TEXT_CHARS,
     XfyunPdfOcrClient,
-    XfyunPdfOcrConfig,
     XfyunPdfOcrError,
 )
 
@@ -45,16 +45,9 @@ class PdfOcrTaskDto(BaseModel):
     pages: list[PdfOcrPageDto] = Field(default_factory=list)
 
 
-def _client(settings: Settings) -> XfyunPdfOcrClient:
-    return XfyunPdfOcrClient(
-        XfyunPdfOcrConfig(
-            enabled=settings.xfyun_pdf_ocr_enabled,
-            app_id=settings.xfyun_pdf_ocr_app_id,
-            secret=settings.xfyun_pdf_ocr_secret,
-            base_url=settings.xfyun_pdf_ocr_base_url,
-            timeout_seconds=settings.xfyun_pdf_ocr_timeout_seconds,
-        )
-    )
+class PdfOcrTextDto(BaseModel):
+    content_text: str
+    truncated: bool = False
 
 
 def _ensure_project_access(
@@ -73,7 +66,7 @@ async def start_pdf_ocr_task(
     export_format: Literal["word", "markdown", "json"] = Form("word"),
     current_user: UserDto = Depends(get_current_user),
     project_service: ProjectService = Depends(get_project_service),
-    settings: Settings = Depends(get_settings_dep),
+    client: XfyunPdfOcrClient = Depends(get_xfyun_pdf_ocr_client),
 ) -> PdfOcrTaskDto:
     """Validate a PDF and submit it to XFYun for asynchronous recognition."""
     _ensure_project_access(
@@ -112,7 +105,6 @@ async def start_pdf_ocr_task(
             detail=f"单个 PDF 最多支持 {MAX_PDF_PAGES} 页，当前文件共 {page_count} 页",
         )
 
-    client = _client(settings)
     try:
         result = await client.start_task(
             content,
@@ -133,7 +125,7 @@ async def get_pdf_ocr_task(
     task_no: str,
     current_user: UserDto = Depends(get_current_user),
     project_service: ProjectService = Depends(get_project_service),
-    settings: Settings = Depends(get_settings_dep),
+    client: XfyunPdfOcrClient = Depends(get_xfyun_pdf_ocr_client),
 ) -> PdfOcrTaskDto:
     """Query one XFYun PDF OCR task. Clients should call no more than every 5s."""
     _ensure_project_access(
@@ -141,7 +133,6 @@ async def get_pdf_ocr_task(
         current_user=current_user,
         project_service=project_service,
     )
-    client = _client(settings)
     try:
         result = await client.get_status(task_no)
     except XfyunPdfOcrError as exc:
@@ -150,3 +141,58 @@ async def get_pdf_ocr_task(
             detail=str(exc),
         ) from exc
     return PdfOcrTaskDto.model_validate(result)
+
+
+@router.get("/tasks/{task_no}/text", response_model=PdfOcrTextDto)
+async def get_pdf_ocr_text(
+    project_id: str,
+    task_no: str,
+    current_user: UserDto = Depends(get_current_user),
+    project_service: ProjectService = Depends(get_project_service),
+    client: XfyunPdfOcrClient = Depends(get_xfyun_pdf_ocr_client),
+) -> PdfOcrTextDto:
+    """Return recognized Markdown/text for use as grounded AI tutor context."""
+    _ensure_project_access(
+        project_id=project_id,
+        current_user=current_user,
+        project_service=project_service,
+    )
+    try:
+        result = await client.get_status(task_no)
+        status = result["status"]
+        if status not in {"FINISH", "ANY_FAILED"}:
+            if status in {"FAILED", "STOP"}:
+                raise HTTPException(
+                    status_code=409,
+                    detail=result.get("tip") or "PDF 文档识别失败",
+                )
+            raise HTTPException(status_code=409, detail="PDF 文档仍在识别中")
+
+        urls = [result.get("download_url")]
+        if not result.get("download_url"):
+            urls.extend(page.get("download_url") for page in result.get("pages", []))
+        download_urls = list(dict.fromkeys(url for url in urls if url))
+        if not download_urls:
+            raise XfyunPdfOcrError("PDF 识别完成，但没有可下载的文字结果")
+
+        chunks: list[str] = []
+        truncated = False
+        for download_url in download_urls:
+            text, was_truncated = await client.download_text(download_url)
+            chunks.append(text)
+            truncated = truncated or was_truncated
+        content_text = "\n\n".join(chunks)
+        if len(content_text) > MAX_OCR_TEXT_CHARS:
+            content_text = (
+                content_text[:MAX_OCR_TEXT_CHARS].rstrip()
+                + "\n\n[文档内容较长，AI 导师上下文已截断]"
+            )
+            truncated = True
+        return PdfOcrTextDto(content_text=content_text, truncated=truncated)
+    except HTTPException:
+        raise
+    except XfyunPdfOcrError as exc:
+        raise HTTPException(
+            status_code=503 if not client.is_enabled else 502,
+            detail=str(exc),
+        ) from exc

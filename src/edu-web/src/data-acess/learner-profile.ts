@@ -1,6 +1,7 @@
 import { Atom, Registry } from '@effect-atom/atom-react'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Effect, Layer } from 'effect'
+import { knowledgeGraphAtom } from './knowledge-graph'
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
 import { withToast } from '@/lib/with-toast'
@@ -99,6 +100,7 @@ export const refreshLearnerProfileAtom = runtime.fn(
 
       registry.refresh(learnerProfileAtom(projectId))
       registry.refresh(learnerProfileRevisionsAtom(projectId))
+      registry.refresh(knowledgeGraphAtom(projectId))
 
       return profile
     },

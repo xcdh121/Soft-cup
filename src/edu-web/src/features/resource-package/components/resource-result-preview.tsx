@@ -262,6 +262,79 @@ const Empty = ({ label }: { label: string }) => (
   <div className="text-sm text-muted-foreground">{label}</div>
 )
 
+const IncrementalQuizPreview = ({
+  resource,
+}: {
+  resource: GeneratedResource
+}) => {
+  const questions = resource.content_json?.questions
+  if (!Array.isArray(questions) || questions.length === 0) return null
+
+  return (
+    <div className="space-y-3">
+      {resource.status === 'generating' ? (
+        <Loading label={`已生成 ${questions.length} 道题，后续题目正在生成…`} />
+      ) : null}
+      {questions.slice(0, 5).flatMap((item, index) => {
+        if (!item || typeof item !== 'object') return []
+        const question = item as Record<string, unknown>
+        if (typeof question.question_text !== 'string') return []
+        return [
+          <div
+            key={`${String(question.question_text)}-${index}`}
+            className="rounded-lg border bg-background p-3 text-sm"
+          >
+            <div className="font-medium">
+              {index + 1}. {question.question_text}
+            </div>
+            <div className="mt-2 grid gap-1 text-muted-foreground sm:grid-cols-2">
+              <span>A. {String(question.option_a ?? '')}</span>
+              <span>B. {String(question.option_b ?? '')}</span>
+              <span>C. {String(question.option_c ?? '')}</span>
+              <span>D. {String(question.option_d ?? '')}</span>
+            </div>
+          </div>,
+        ]
+      })}
+    </div>
+  )
+}
+
+const IncrementalFlashcardsPreview = ({
+  resource,
+}: {
+  resource: GeneratedResource
+}) => {
+  const flashcards = resource.content_json?.flashcards
+  if (!Array.isArray(flashcards) || flashcards.length === 0) return null
+
+  return (
+    <div className="space-y-3">
+      {resource.status === 'generating' ? (
+        <Loading label={`已生成 ${flashcards.length} 张，后续闪卡正在生成…`} />
+      ) : null}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {flashcards.slice(0, 6).flatMap((item, index) => {
+          if (!item || typeof item !== 'object') return []
+          const card = item as Record<string, unknown>
+          if (typeof card.question !== 'string') return []
+          return [
+            <div
+              key={`${String(card.question)}-${index}`}
+              className="rounded-lg border bg-background p-3 text-sm"
+            >
+              <div className="font-medium">{card.question}</div>
+              <div className="mt-2 text-muted-foreground">
+                {String(card.answer ?? '')}
+              </div>
+            </div>,
+          ]
+        })}
+      </div>
+    </div>
+  )
+}
+
 const QuizPreview = ({
   projectId,
   quizId,
@@ -395,6 +468,22 @@ export const ResourceResultPreview = ({
   projectId: string
   resource: GeneratedResource
 }) => {
+  if (
+    resource.resource_type === 'practice_set' &&
+    Array.isArray(resource.content_json?.questions) &&
+    resource.content_json.questions.length > 0
+  ) {
+    return <IncrementalQuizPreview resource={resource} />
+  }
+
+  if (
+    resource.resource_type === 'flashcards' &&
+    Array.isArray(resource.content_json?.flashcards) &&
+    resource.content_json.flashcards.length > 0
+  ) {
+    return <IncrementalFlashcardsPreview resource={resource} />
+  }
+
   if (resource.resource_type === 'programming_questions') {
     return (
       <ProgrammingQuestionsPreview

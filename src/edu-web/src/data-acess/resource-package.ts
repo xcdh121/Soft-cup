@@ -367,9 +367,16 @@ export const generateResourcePackageAtom = runtime.fn(
               content_text: String(
                 event.payload.content ?? existing?.content_text ?? '',
               ),
-              content_json: existing?.content_json ?? null,
+              content_json:
+                event.payload.content_json &&
+                typeof event.payload.content_json === 'object'
+                  ? (event.payload.content_json as Record<string, unknown>)
+                  : (existing?.content_json ?? null),
               file_url: existing?.file_url ?? null,
-              preview_url: existing?.preview_url ?? null,
+              preview_url:
+                typeof event.payload.preview_url === 'string'
+                  ? event.payload.preview_url
+                  : (existing?.preview_url ?? null),
               cover_image_url: existing?.cover_image_url ?? null,
               source_document_ids: existing?.source_document_ids ?? [],
               knowledge_point_ids: existing?.knowledge_point_ids ?? [],

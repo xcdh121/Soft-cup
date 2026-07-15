@@ -11,13 +11,19 @@ import {
   submitQuizQuestionAtom,
 } from '@/data-acess/quiz-detail-state'
 import { quizQuestionsAtom } from '@/data-acess/quiz'
+import { cn } from '@/lib/utils'
 
 type Props = React.ComponentProps<'div'> & {
   quizId: string
   projectId: string
 }
 
-export const QuizDetail = ({ quizId, projectId, ...props }: Props) => {
+export const QuizDetail = ({
+  quizId,
+  projectId,
+  className,
+  ...props
+}: Props) => {
   const questionsResult = useAtomValue(
     quizQuestionsAtom(`${projectId}:${quizId}`),
   )
@@ -112,7 +118,7 @@ export const QuizDetail = ({ quizId, projectId, ...props }: Props) => {
   }, [quizId, resetQuiz])
 
   return (
-    <div className="flex flex-col flex-1 min-h-0" {...props}>
+    <div {...props} className={cn('flex min-h-0 flex-1 flex-col', className)}>
       <QuizContent quizId={quizId} projectId={projectId} />
     </div>
   )

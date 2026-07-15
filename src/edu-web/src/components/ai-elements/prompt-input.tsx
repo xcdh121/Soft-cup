@@ -448,6 +448,7 @@ export type PromptInputProps = Omit<
   // Minimal constraints
   maxFiles?: number
   maxFileSize?: number // bytes
+  convertAttachmentsToDataUrls?: boolean
   onError?: (err: {
     code: 'max_files' | 'max_file_size' | 'accept'
     message: string
@@ -466,6 +467,7 @@ export const PromptInput = ({
   syncHiddenInput,
   maxFiles,
   maxFileSize,
+  convertAttachmentsToDataUrls = true,
   onError,
   onSubmit,
   children,
@@ -503,6 +505,9 @@ export const PromptInput = ({
         .filter(Boolean)
 
       return patterns.some((pattern) => {
+        if (pattern.startsWith('.')) {
+          return f.name.toLowerCase().endsWith(pattern.toLowerCase())
+        }
         if (pattern.endsWith('/*')) {
           const prefix = pattern.slice(0, -1) // e.g: image/* -> image/
           return f.type.startsWith(prefix)
@@ -730,7 +735,11 @@ export const PromptInput = ({
     // Convert blob URLs to data URLs asynchronously
     Promise.all(
       files.map(async ({ id, ...item }) => {
-        if (item.url && item.url.startsWith('blob:')) {
+        if (
+          convertAttachmentsToDataUrls &&
+          item.url &&
+          item.url.startsWith('blob:')
+        ) {
           const dataUrl = await convertBlobUrlToDataUrl(item.url)
           // If conversion failed, keep the original blob URL
           return {

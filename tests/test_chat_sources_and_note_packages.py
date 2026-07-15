@@ -2,6 +2,7 @@ import unittest
 from contextlib import ExitStack
 from unittest.mock import patch
 
+from edu_core.schemas.chats import TextPartDto, ToolCallPartDto
 from edu_core.services.chats import ChatService
 from edu_core.services.resource_packages import ResourcePackageService
 from edu_core.services.search import SearchService
@@ -35,9 +36,7 @@ class ChatSourcesAndNotePackagesTests(unittest.TestCase):
             "edu_core.services.search.get_session_factory",
             "edu_core.services.resource_packages.get_session_factory",
         ):
-            self.patches.enter_context(
-                patch(target, return_value=self.session_factory)
-            )
+            self.patches.enter_context(patch(target, return_value=self.session_factory))
 
         with self.session_factory() as db:
             db.add_all(
@@ -181,6 +180,24 @@ class ChatSourcesAndNotePackagesTests(unittest.TestCase):
             )
 
         self.assertIsNone(duplicate_part)
+
+    def test_tool_snapshot_does_not_resend_accumulated_text_as_delta(self):
+        parts = [
+            TextPartDto(id="text-1", text_content="Already streamed"),
+            ToolCallPartDto(
+                id="tool-part-1",
+                tool_call_id="tool-call-1",
+                tool_name="resource_package_generate",
+                tool_input={},
+                tool_state="input-available",
+            ),
+        ]
+
+        snapshot_parts = ChatService._non_text_stream_parts(parts)
+
+        self.assertEqual(len(snapshot_parts), 1)
+        self.assertEqual(snapshot_parts[0].id, "tool-part-1")
+        self.assertFalse(any(part.type == "text" for part in snapshot_parts))
 
 
 if __name__ == "__main__":

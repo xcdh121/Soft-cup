@@ -220,6 +220,7 @@ async def create_flashcard(
         return service.create_flashcard(
             group_id=group_id,
             project_id=project_id,
+            knowledge_point_id=flashcard.knowledge_point_id,
             question=flashcard.question,
             answer=flashcard.answer,
             difficulty_level=flashcard.difficulty_level,
@@ -281,6 +282,7 @@ async def update_flashcard(
             flashcard_id=flashcard_id,
             group_id=group_id,
             project_id=project_id,
+            knowledge_point_id=flashcard.knowledge_point_id,
             question=flashcard.question,
             answer=flashcard.answer,
             difficulty_level=flashcard.difficulty_level,

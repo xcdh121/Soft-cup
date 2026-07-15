@@ -5,11 +5,12 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from edu_db.models import Quiz, QuizQuestion
+from edu_db.models import Project, Quiz, QuizQuestion
 from edu_db.session import get_session_factory
 
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.quizzes import QuizDto, QuizQuestionDto
+from edu_core.services.knowledge_point_matching import resolve_knowledge_point_id
 
 if TYPE_CHECKING:
     from edu_queue.service import QueueService
@@ -201,6 +202,7 @@ class QuizService:
         self,
         quiz_id: str,
         project_id: str,
+        knowledge_point_id: str | None,
         question_text: str,
         option_a: str,
         option_b: str,
@@ -242,6 +244,12 @@ class QuizService:
                 )
                 if not quiz:
                     raise NotFoundError(f"Quiz {quiz_id} not found")
+                project = db.query(Project).filter(Project.id == project_id).first()
+                resolved_knowledge_point_id = resolve_knowledge_point_id(
+                    db,
+                    project.course_id if project else None,
+                    explicit_id=knowledge_point_id,
+                )
 
                 # Auto-assign position if not provided
                 if position is None:
@@ -258,6 +266,7 @@ class QuizService:
                     id=str(uuid4()),
                     quiz_id=quiz_id,
                     project_id=project_id,
+                    knowledge_point_id=resolved_knowledge_point_id,
                     question_text=question_text,
                     option_a=option_a,
                     option_b=option_b,
@@ -348,6 +357,7 @@ class QuizService:
         question_id: str,
         quiz_id: str,
         project_id: str,
+        knowledge_point_id: str | None = None,
         question_text: str | None = None,
         option_a: str | None = None,
         option_b: str | None = None,
@@ -393,6 +403,14 @@ class QuizService:
                 )
                 if not question:
                     raise NotFoundError(f"Quiz question {question_id} not found")
+
+                if knowledge_point_id is not None:
+                    project = db.query(Project).filter(Project.id == project_id).first()
+                    question.knowledge_point_id = resolve_knowledge_point_id(
+                        db,
+                        project.course_id if project else None,
+                        explicit_id=knowledge_point_id,
+                    )
 
                 if question_text is not None:
                     question.question_text = question_text
@@ -519,6 +537,7 @@ class QuizService:
             id=question.id,
             quiz_id=question.quiz_id,
             project_id=question.project_id,
+            knowledge_point_id=question.knowledge_point_id,
             question_text=question.question_text,
             option_a=question.option_a,
             option_b=question.option_b,

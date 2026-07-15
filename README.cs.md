@@ -116,7 +116,7 @@ docker-compose up --build api worker db azurite
 
 # V samostatném terminálu spusťte DB migrace (jednorázově)
 # Ujistěte se, že DATABASE_URL je správně nastavena pro váš lokální Postgres
-export DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/postgres"
+export DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:5433/postgres"
 alembic upgrade head
 
 # V novém terminálu spusťte webový frontend
@@ -143,7 +143,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync
 
 # Spuštění databázových migrací (DATABASE_URL musí být nastaveno)
-export DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/postgres"
+export DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:5433/postgres"
 alembic upgrade head
 
 # Spuštění API lokálně (bez Dockeru)

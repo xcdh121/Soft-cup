@@ -195,7 +195,7 @@ class XfyunImageUnderstandingTests(unittest.IsolatedAsyncioTestCase):
             image_client.understand.await_args.kwargs["question"],
         )
 
-    async def test_chat_rejects_unsupported_attachment_type(self):
+    async def test_chat_rejects_pdf_that_bypasses_upload_endpoint(self):
         body = ChatCompletionRequest.model_validate(
             {
                 "parts": [
@@ -219,7 +219,47 @@ class XfyunImageUnderstandingTests(unittest.IsolatedAsyncioTestCase):
                 image_client=SimpleNamespace(is_enabled=True),
             )
 
-        self.assertEqual(context.exception.status_code, 415)
+        self.assertEqual(context.exception.status_code, 400)
+
+    async def test_chat_accepts_a_persisted_pdf_with_ocr_context(self):
+        file_path = SimpleNamespace(is_file=Mock(return_value=True))
+        chat_service = SimpleNamespace(resolve_chat_file=Mock(return_value=file_path))
+        body = ChatCompletionRequest.model_validate(
+            {
+                "parts": [
+                    {
+                        "type": "file",
+                        "mediaType": "application/pdf",
+                        "filename": "notes.pdf",
+                        "url": (
+                            "/api/v1/projects/project-1/chats/chat-1/files/"
+                            "file-id-notes.pdf"
+                        ),
+                    },
+                    {
+                        "type": "text",
+                        "text": "[PDF识别上下文:notes.pdf]\n第一章 函数",
+                    },
+                ]
+            }
+        )
+
+        parts = await _prepare_chat_parts(
+            body,
+            project_id="project-1",
+            chat_id="chat-1",
+            user_id="user-1",
+            chat_service=chat_service,
+            image_client=SimpleNamespace(is_enabled=True),
+        )
+
+        self.assertEqual(parts[0]["file_type"], "application/pdf")
+        self.assertIn("第一章 函数", parts[1]["text"])
+        chat_service.resolve_chat_file.assert_called_once_with(
+            project_id="project-1",
+            chat_id="chat-1",
+            file_key="file-id-notes.pdf",
+        )
 
     def test_chat_service_persists_lightweight_image_metadata(self):
         service = ChatService.__new__(ChatService)

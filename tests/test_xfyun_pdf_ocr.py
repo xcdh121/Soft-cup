@@ -1,9 +1,12 @@
 import base64
 import hashlib
 import hmac
+import io
 import unittest
+import zipfile
 
 import httpx
+from routers.pdf_ocr import router as pdf_ocr_router
 from xfyun_pdf_ocr import (
     XfyunPdfOcrClient,
     XfyunPdfOcrConfig,
@@ -13,6 +16,13 @@ from xfyun_pdf_ocr import (
 
 
 class XfyunPdfOcrClientTests(unittest.IsolatedAsyncioTestCase):
+    def test_router_exposes_tutor_text_result_endpoint(self):
+        paths = {route.path for route in pdf_ocr_router.routes}
+        self.assertIn(
+            "/api/v1/projects/{project_id}/pdf-ocr/tasks/{task_no}/text",
+            paths,
+        )
+
     def test_auth_headers_match_documented_algorithm(self):
         headers = _build_auth_headers(
             app_id="app-1", secret="secret-key", current_time=1_500_000_000
@@ -117,6 +127,36 @@ class XfyunPdfOcrClientTests(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaisesRegex(XfyunPdfOcrError, "10001"):
             await client.get_status("task-1")
+
+    async def test_download_text_reads_markdown_result(self):
+        async def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/result.md")
+            return httpx.Response(200, content="# 第一章\n函数与导数".encode())
+
+        client = XfyunPdfOcrClient(
+            XfyunPdfOcrConfig(enabled=True, app_id="app", secret="secret"),
+            transport=httpx.MockTransport(handler),
+        )
+        text, truncated = await client.download_text("https://example.test/result.md")
+
+        self.assertIn("函数与导数", text)
+        self.assertFalse(truncated)
+
+    async def test_download_text_reads_markdown_from_zip_bundle(self):
+        bundle = io.BytesIO()
+        with zipfile.ZipFile(bundle, "w") as archive:
+            archive.writestr("result/content.md", "# 扫描讲义\n牛顿第二定律")
+
+        async def handler(_: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=bundle.getvalue())
+
+        client = XfyunPdfOcrClient(
+            XfyunPdfOcrConfig(enabled=True, app_id="app", secret="secret"),
+            transport=httpx.MockTransport(handler),
+        )
+        text, _ = await client.download_text("https://example.test/result.zip")
+
+        self.assertIn("牛顿第二定律", text)
 
 
 if __name__ == "__main__":

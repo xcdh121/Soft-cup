@@ -7,7 +7,6 @@ import {
   ChevronDown,
   Loader2,
   RotateCcw,
-  Sparkles,
   TriangleAlert,
   Trophy,
   Upload,
@@ -16,6 +15,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { QuizQuestionDto } from '@/integrations/api/client'
+import { Response } from '@/components/ai-elements/response'
 import { Button } from '@/components/ui/button'
 import {
   Collapsible,
@@ -33,15 +33,19 @@ import {
 } from '@/data-acess/quiz-detail-state'
 import { authClient } from '@/lib/auth-client'
 
-type QuizAnalysis = {
+type QuizAnalysisMeta = {
   total: number
   correct: number
   accuracy: number
-  summary: string
-  strengths: Array<string>
-  focus_areas: Array<string>
-  suggestions: Array<string>
 }
+
+type QuizAnalysisStreamEvent =
+  | { type: 'model'; model: string }
+  | { type: 'meta'; total: number; correct: number; accuracy: number }
+  | { type: 'status'; message: string }
+  | { type: 'delta'; content: string }
+  | { type: 'error'; message: string }
+  | { type: 'done' }
 
 const serverUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8000'
 
@@ -331,7 +335,10 @@ const AiQuizAnalysis = ({
   answers: Array<{ question_id: string; selected_option: string }>
 }) => {
   const navigate = useNavigate()
-  const [analysis, setAnalysis] = useState<QuizAnalysis | null>(null)
+  const [analysisText, setAnalysisText] = useState('')
+  const [meta, setMeta] = useState<QuizAnalysisMeta | null>(null)
+  const [modelName, setModelName] = useState('')
+  const [streamStatus, setStreamStatus] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -339,12 +346,16 @@ const AiQuizAnalysis = ({
     async (signal?: AbortSignal) => {
       setIsLoading(true)
       setError(null)
+      setAnalysisText('')
+      setMeta(null)
+      setModelName('')
+      setStreamStatus('正在连接 AI 分析服务…')
       try {
         const {
           data: { session },
         } = await authClient.auth.getSession()
         const response = await fetch(
-          `${serverUrl}/api/v1/projects/${encodeURIComponent(projectId)}/quizzes/${encodeURIComponent(quizId)}/analysis`,
+          `${serverUrl}/api/v1/projects/${encodeURIComponent(projectId)}/quizzes/${encodeURIComponent(quizId)}/analysis/stream`,
           {
             method: 'POST',
             signal,
@@ -357,8 +368,8 @@ const AiQuizAnalysis = ({
             body: JSON.stringify({ answers }),
           },
         )
-        const payload: unknown = await response.json().catch(() => null)
         if (!response.ok) {
+          const payload: unknown = await response.json().catch(() => null)
           const detail =
             payload &&
             typeof payload === 'object' &&
@@ -368,7 +379,53 @@ const AiQuizAnalysis = ({
               : 'AI 分析生成失败'
           throw new Error(detail)
         }
-        setAnalysis(payload as QuizAnalysis)
+        if (!response.body) throw new Error('AI 分析服务未返回可读取的数据流')
+
+        const decoder = new TextDecoder()
+        const reader = response.body.getReader()
+        let buffer = ''
+        const streamState: { error?: string } = {}
+
+        const processEvent = (block: string) => {
+          const data = block
+            .split(/\r?\n/)
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart())
+            .join('\n')
+          if (!data) return
+
+          const event = JSON.parse(data) as QuizAnalysisStreamEvent
+          if (event.type === 'model') setModelName(event.model)
+          if (event.type === 'status') setStreamStatus(event.message)
+          if (event.type === 'meta') {
+            setMeta({
+              total: event.total,
+              correct: event.correct,
+              accuracy: event.accuracy,
+            })
+          }
+          if (event.type === 'delta') {
+            setStreamStatus('')
+            setAnalysisText((current) => current + event.content)
+          }
+          if (event.type === 'error') streamState.error = event.message
+        }
+
+        let streamEnded = false
+        while (!streamEnded) {
+          const { done, value } = await reader.read()
+          if (done) {
+            streamEnded = true
+            continue
+          }
+          buffer += decoder.decode(value, { stream: true })
+          const blocks = buffer.split(/\r?\n\r?\n/)
+          buffer = blocks.pop() ?? ''
+          blocks.forEach(processEvent)
+        }
+        buffer += decoder.decode()
+        if (buffer.trim()) processEvent(buffer)
+        if (streamState.error) throw new Error(streamState.error)
       } catch (requestError) {
         if (
           requestError instanceof DOMException &&
@@ -382,7 +439,10 @@ const AiQuizAnalysis = ({
             : 'AI 分析生成失败，请稍后重试。',
         )
       } finally {
-        if (!signal?.aborted) setIsLoading(false)
+        if (!signal?.aborted) {
+          setIsLoading(false)
+          setStreamStatus('')
+        }
       }
     },
     [answers, projectId, quizId],
@@ -394,26 +454,26 @@ const AiQuizAnalysis = ({
     return () => controller.abort()
   }, [loadAnalysis])
 
-  if (isLoading) {
+  if (isLoading && !analysisText) {
     return (
       <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-5">
         <Loader2 className="size-5 animate-spin text-primary" />
         <div>
           <div className="font-semibold">AI 正在分析本次作答</div>
           <div className="mt-1 text-sm text-muted-foreground">
-            正在归纳掌握情况、薄弱点和下一步建议…
+            {streamStatus || '正在归纳掌握情况、薄弱点和下一步建议…'}
           </div>
         </div>
       </div>
     )
   }
 
-  if (error || !analysis) {
+  if (error && !analysisText) {
     return (
       <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
         <div className="flex gap-2 text-sm text-destructive">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-          <span>{error ?? 'AI 分析生成失败，请稍后重试。'}</span>
+          <span>{error}</span>
         </div>
         <Button
           className="mt-4"
@@ -429,43 +489,47 @@ const AiQuizAnalysis = ({
   return (
     <div className="space-y-5 rounded-2xl border border-primary/20 bg-primary/5 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 font-semibold">
-          <BrainCircuit className="size-5 text-primary" />
-          AI 作答分析已完成
-        </div>
-        <span className="rounded-full bg-background px-3 py-1 text-sm font-medium">
-          正确率 {analysis.accuracy}%（{analysis.correct}/{analysis.total}）
-        </span>
-      </div>
-      <p className="text-sm leading-7">{analysis.summary}</p>
-      <div className="grid gap-4 md:grid-cols-3">
-        {[
-          ['掌握较好', analysis.strengths],
-          ['重点加强', analysis.focus_areas],
-          ['学习建议', analysis.suggestions],
-        ].map(([title, items]) => (
-          <div
-            key={title as string}
-            className="rounded-xl bg-background/80 p-4"
-          >
-            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
-              <Sparkles className="size-4 text-primary" />
-              {title as string}
-            </div>
-            {(items as Array<string>).length ? (
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                {(items as Array<string>).map((item) => (
-                  <li key={item} className="leading-6">
-                    · {item}
-                  </li>
-                ))}
-              </ul>
+        <div>
+          <div className="flex items-center gap-2 font-semibold">
+            {isLoading ? (
+              <Loader2 className="size-5 animate-spin text-primary" />
             ) : (
-              <p className="text-sm text-muted-foreground">暂无</p>
+              <BrainCircuit className="size-5 text-primary" />
             )}
+            {isLoading ? 'AI 正在流式分析本次作答' : 'AI 作答分析已完成'}
           </div>
-        ))}
+          {modelName ? (
+            <div className="mt-1 text-xs text-muted-foreground">
+              模型：{modelName}
+            </div>
+          ) : null}
+        </div>
+        {meta ? (
+          <span className="rounded-full bg-background px-3 py-1 text-sm font-medium">
+            正确率 {meta.accuracy}%（{meta.correct}/{meta.total}）
+          </span>
+        ) : null}
       </div>
+      <div className="min-h-28 rounded-xl bg-background/80 p-4">
+        <Response className="text-sm leading-7">{analysisText}</Response>
+        {isLoading ? (
+          <span
+            className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-primary align-middle"
+            aria-label="AI 正在输出"
+          />
+        ) : null}
+      </div>
+      {error ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          <span className="flex gap-2">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+            流式输出中断：{error}
+          </span>
+          <Button variant="outline" onClick={() => void loadAnalysis()}>
+            重新分析
+          </Button>
+        </div>
+      ) : null}
       <Button
         className="w-full"
         size="lg"
