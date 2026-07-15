@@ -18,7 +18,7 @@ from edu_core.schemas.resource_packages import (
 )
 from edu_core.services.resource_packages import ResourcePackageService
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from routers.schemas import (
     GenerateResourcePackageRequest,
@@ -305,6 +305,29 @@ def get_generated_resource(
     service: ResourcePackageService = Depends(get_resource_package_service),
 ):
     return service.get_generated_resource(user.id, project_id, resource_id)
+
+
+@generated_resources_router.get("/{resource_id}/file")
+def get_generated_resource_file(
+    project_id: str,
+    resource_id: str,
+    user=Depends(get_current_user),
+    service: ResourcePackageService = Depends(get_resource_package_service),
+):
+    """Serve an owned generated image while preserving its original bytes."""
+    path = service.resolve_generated_resource_file(user.id, project_id, resource_id)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Generated image not found")
+    return FileResponse(
+        path=path,
+        media_type="image/png",
+        content_disposition_type="inline",
+        filename=f"{resource_id}.png",
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @generated_resources_router.patch("/{resource_id}", response_model=GeneratedResourceDto)

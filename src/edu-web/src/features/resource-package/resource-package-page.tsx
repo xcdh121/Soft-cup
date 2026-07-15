@@ -70,6 +70,11 @@ const RESOURCE_TYPE_OPTIONS: Array<{
     description: '演示大纲',
   },
   {
+    value: 'image',
+    label: 'AI 图片',
+    description: '讯飞文生图',
+  },
+  {
     value: 'pptx',
     label: 'PPTX',
     description: '演示文件',
@@ -363,7 +368,7 @@ const ResourcePreview = ({
             <Badge variant="outline">{resource.difficulty_level}</Badge>
           </div>
 
-          {resource.preview_url ? (
+          {resource.preview_url && resource.resource_type !== 'image' ? (
             <div className="mt-3">
               <a
                 href={resource.preview_url}
@@ -374,7 +379,7 @@ const ResourcePreview = ({
             </div>
           ) : null}
 
-          {resource.file_url ? (
+          {resource.file_url && resource.resource_type !== 'image' ? (
             <div className="mt-3">
               <a
                 href={resource.file_url}
@@ -750,7 +755,7 @@ export const ResourcePackagePage = ({
 
                 <div className="space-y-3">
                   <Label>资源类型</Label>
-                  <div className="grid auto-rows-fr grid-cols-2 gap-1.5 xl:grid-cols-4">
+                  <div className="grid auto-rows-fr grid-cols-3 gap-1.5">
                     {RESOURCE_TYPE_OPTIONS.map((option) => {
                       const checked = selectedTypes.includes(option.value)
                       return (

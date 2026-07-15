@@ -58,6 +58,18 @@ class Settings(BaseSettings):
     xfyun_ppt_poll_interval_seconds: float = 3.0
     xfyun_ppt_poll_timeout_seconds: float = 180.0
 
+    # XFYun Spark text-to-image generation
+    xfyun_image_generation_enabled: bool = False
+    xfyun_image_generation_app_id: str = ""
+    xfyun_image_generation_api_key: str = ""
+    xfyun_image_generation_api_secret: str = ""
+    xfyun_image_generation_base_url: str = (
+        "https://spark-api.cn-huabei-1.xf-yun.com/v2.1/tti"
+    )
+    xfyun_image_generation_timeout_seconds: float = 120.0
+    xfyun_image_generation_default_width: int = 512
+    xfyun_image_generation_default_height: int = 512
+
     # XFYun Chinese speech recognition (IAT)
     xfyun_iat_enabled: bool = False
     xfyun_iat_app_id: str = ""

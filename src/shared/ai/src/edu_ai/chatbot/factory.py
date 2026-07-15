@@ -73,8 +73,6 @@ _NOTE_TOOLS_BLOCKED_AFTER_CREATION = {
     "note_list",
     "note_get",
 }
-
-
 def _note_created_since_last_user_message(messages: list[Any]) -> bool:
     """Return whether this agent turn has already queued a note creation."""
     for message in reversed(messages):

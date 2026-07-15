@@ -24,6 +24,10 @@ from edu_core.services import (
     UserService,
 )
 from edu_core.services.baidu_search import BaiduSearchClient, BaiduSearchConfig
+from edu_core.services.xfyun_image_generation import (
+    XfyunImageGenerationClient,
+    XfyunImageGenerationConfig,
+)
 from edu_core.services.xfyun_ppt import XfyunPptClient, XfyunPptConfig
 from edu_queue.service import ArqQueueService, QueueService
 from fastapi import Depends
@@ -213,6 +217,18 @@ def get_resource_package_service(
         quiz_service=QuizService(queue_service=queue_service),
         flashcard_group_service=FlashcardGroupService(queue_service=queue_service),
         mind_map_service=MindMapService(queue_service=queue_service),
+        xfyun_image_generation_client=XfyunImageGenerationClient(
+            XfyunImageGenerationConfig(
+                enabled=settings.xfyun_image_generation_enabled,
+                app_id=settings.xfyun_image_generation_app_id,
+                api_key=settings.xfyun_image_generation_api_key,
+                api_secret=settings.xfyun_image_generation_api_secret,
+                base_url=settings.xfyun_image_generation_base_url,
+                timeout_seconds=settings.xfyun_image_generation_timeout_seconds,
+                default_width=settings.xfyun_image_generation_default_width,
+                default_height=settings.xfyun_image_generation_default_height,
+            )
+        ),
         xfyun_ppt_client=XfyunPptClient(
             XfyunPptConfig(
                 enabled=settings.xfyun_ppt_enabled,

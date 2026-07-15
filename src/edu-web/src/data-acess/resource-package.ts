@@ -33,6 +33,7 @@ export type ResourceType =
   | 'practice_set'
   | 'flashcards'
   | 'ppt_outline'
+  | 'image'
   | 'pptx'
   | 'programming_questions'
   | 'code_lab'

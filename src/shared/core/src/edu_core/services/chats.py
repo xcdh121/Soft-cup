@@ -6,11 +6,16 @@ from collections.abc import AsyncGenerator
 from contextlib import contextmanager, suppress
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Union
 from uuid import uuid4
 
 from edu_ai.chatbot.context import ChatbotContext
 from edu_ai.chatbot.factory import make_chatbot
+from edu_ai.chatbot.image_generation_routing import (
+    extract_image_topic,
+    should_force_image_generation,
+)
 from edu_db.models import (
     Chat,
     Document,
@@ -1302,6 +1307,15 @@ class ChatService:
             status="thinking",
         )
 
+        if should_force_image_generation(llm_chat_history):
+            yield await self._create_direct_image_package_response(
+                messages=llm_chat_history,
+                context=ctx,
+                assistant_message_id=assistant_message_id,
+                chat_id=messages[0].chat_id if messages else "",
+            )
+            return
+
         # --- process stream chunks ----------------------------------------------
         async for chunk in self.chatbot.astream(
             {"messages": llm_chat_history, "sources": []},  # Pass llm_chat_history
@@ -1552,6 +1566,72 @@ class ChatService:
             role="assistant",
             created_at=datetime.now(),
             parts=final_parts,
+            done=True,
+        )
+
+    async def _create_direct_image_package_response(
+        self,
+        *,
+        messages: list[BaseMessage],
+        context: ChatbotContext,
+        assistant_message_id: str | None,
+        chat_id: str,
+    ) -> StreamingChatMessage:
+        """Create an image package without relying on model tool-choice support."""
+        from edu_ai.tools.resource_package import generate_resource_package
+
+        topic = extract_image_topic(messages)
+        tool_call_id = str(uuid4())
+        tool_input: dict[str, Any] = {"resource_types": ["image"]}
+        if topic:
+            tool_input["topic"] = topic
+
+        try:
+            output_text = await generate_resource_package.coroutine(
+                runtime=SimpleNamespace(context=context),
+                topic=topic,
+                resource_types=["image"],
+            )
+            output = json.loads(output_text)
+            resolved_topic = str(output.get("target_topic") or topic or "当前学习主题")
+            status = str(output.get("status") or "generating")
+            answer = (
+                f"已为你创建“{resolved_topic}”AI 图片资源包, "
+                + (
+                    "图片正在后台生成, 可通过下方按钮查看进度。"
+                    if status == "generating"
+                    else "图片已生成, 可通过下方按钮查看资源包。"
+                )
+            )
+            tool_state = ToolState.OUTPUT_AVAILABLE
+            tool_output: Any = output_text
+        except Exception as exc:
+            logger.exception("Direct image resource-package generation failed")
+            answer = "图片资源包创建失败, 请稍后重试或检查讯飞图片生成配置。"
+            tool_state = ToolState.OUTPUT_ERROR
+            tool_output = {"error": str(exc)}
+
+        return StreamingChatMessage(
+            id=assistant_message_id,
+            chat_id=chat_id,
+            role="assistant",
+            created_at=datetime.now(),
+            parts=[
+                TextPartDto(
+                    id=str(uuid4()),
+                    text_content=answer,
+                    order=0,
+                ),
+                ToolCallPartDto(
+                    id=str(uuid4()),
+                    tool_call_id=tool_call_id,
+                    tool_name="resource_package_generate",
+                    tool_input=tool_input,
+                    tool_output=tool_output,
+                    tool_state=tool_state,
+                    order=1,
+                ),
+            ],
             done=True,
         )
 
