@@ -1,5 +1,4 @@
 import { createRootRoute, createRoute, redirect } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { Suspense, lazy } from 'react'
 import { z } from 'zod'
 import { authClient } from '@/lib/auth-client'
@@ -16,9 +15,6 @@ const ProjectDetailRoute = lazy(() =>
   import('./project-detail-route').then((m) => ({
     default: m.ProjectDetailRoute,
   })),
-)
-const HomePage = lazy(() =>
-  import('@/features/home/home-page').then((m) => ({ default: m.HomePage })),
 )
 const SignInPage = lazy(() =>
   import('@/features/auth/sign-in-page').then((m) => ({
@@ -167,12 +163,7 @@ const requireAuth = async () => {
 }
 
 export const rootRoute = createRootRoute({
-  component: () => (
-    <>
-      <AppShell />
-      <TanStackRouterDevtools />
-    </>
-  ),
+  component: AppShell,
 })
 
 // Dashboard layout route - parent for all authenticated routes
@@ -191,11 +182,9 @@ export const indexRoute = createRoute({
   path: '/',
   getParentRoute: () => rootRoute,
   validateSearch: z.object({ redirect: z.string().optional() }).optional(),
-  component: () => (
-    <Suspense fallback={<LoadingPage />}>
-      <HomePage />
-    </Suspense>
-  ),
+  beforeLoad: () => {
+    throw redirect({ to: '/sign-in' })
+  },
 })
 
 export const signInRoute = createRoute({

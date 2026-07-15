@@ -455,9 +455,6 @@ const CourseBrowser = ({
             <section className="space-y-5 border-t pt-6">
               <div>
                 <h2 className="font-semibold">相关资料/题目</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  资料链接来自队长提供的数据库内容建议文档。
-                </p>
               </div>
               <section className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
