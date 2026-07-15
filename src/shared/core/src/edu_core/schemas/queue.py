@@ -46,6 +46,7 @@ class NoteGenerationData(TypedDict):
     topic: NotRequired[str]
     custom_instructions: NotRequired[str]
     user_id: NotRequired[str]
+    generated_resource_id: NotRequired[str]
 
 
 class MindMapGenerationData(TypedDict):

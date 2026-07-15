@@ -89,11 +89,11 @@ class ChatDetailDto(ChatDto):
     )
 
 
-
 class StreamingChatMessage(ChatMessageDto):
     """Response model for streaming chat message chunks"""
 
     done: bool = Field(default=False, description="Whether this is the final chunk")
+    status: str | None = Field(None, description="Current streaming status")
 
 
 class StreamEventDto(BaseModel):

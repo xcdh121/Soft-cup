@@ -1,15 +1,23 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { Link, useNavigate } from '@tanstack/react-router'
 import {
-  FileTextIcon,
+  ExternalLinkIcon,
   Loader2Icon,
-  MapIcon,
-  PresentationIcon,
   SparklesIcon,
+  TagsIcon,
 } from 'lucide-react'
+import type {
+  DifficultyLevel,
+  GeneratedResource,
+  GeneratedResourceStatus,
+  ResourcePackage,
+  ResourceType,
+} from '@/data-acess/resource-package'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -18,56 +26,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
-import { indexedDocumentsAtom } from '@/data-acess/document'
+import { projectCourseOutlineAtom } from '@/data-acess/course-library'
 import {
-  type DifficultyLevel,
-  type GeneratedResource,
-  type ResourcePackage,
-  type ResourceType,
   generateResourcePackageAtom,
   generatedResourcesAtom,
+  refreshResourcePackagesAtom,
+  resourcePackageProgressAtom,
   resourcePackagesAtom,
 } from '@/data-acess/resource-package'
 import { ProjectHeader } from '@/features/project/components/project-header'
+import { ResourceResultPreview } from '@/features/resource-package/components/resource-result-preview'
 import { cn } from '@/lib/utils'
-
-type MindMapJson = {
-  root?: string
-  nodes?: Array<{ id?: string; label?: string }>
-  edges?: Array<{ source?: string; target?: string }>
-  notes?: {
-    goal?: string
-    weak_points?: Array<string>
-    knowledge_points?: Array<string>
-  }
-}
-
-type PracticeSetJson = {
-  topic?: string
-  difficulty_level?: string
-  questions?: Array<{ level?: string; question?: string }>
-}
-
-type PptxJson = {
-  provider?: string
-  sid?: string
-  title?: string
-  subTitle?: string
-  theme?: string
-  export_status?: string
-  notes?: string
-  pptStatus?: string
-  totalPages?: number
-  donePages?: number
-  pptUrl?: string
-  coverImgSrc?: string
-  slides?: Array<{
-    page?: number
-    title?: string
-    bullets?: Array<string>
-  }>
-}
+import { useResourcePackageStream } from '@/hooks/use-resource-package-stream'
 
 const RESOURCE_TYPE_OPTIONS: Array<{
   value: ResourceType
@@ -76,53 +46,87 @@ const RESOURCE_TYPE_OPTIONS: Array<{
 }> = [
   {
     value: 'lecture_note',
-    label: '讲解文档',
-    description: '结构化知识讲解材料',
+    label: '笔记',
+    description: '结构化笔记',
   },
   {
     value: 'mind_map',
     label: '思维导图',
-    description: '可视化知识结构梳理',
+    description: '知识结构图',
   },
   {
     value: 'practice_set',
-    label: '分层练习题',
-    description: '按难度分层的练习内容',
+    label: '题库',
+    description: '分层练习题',
+  },
+  {
+    value: 'flashcards',
+    label: '闪卡',
+    description: '记忆卡片',
   },
   {
     value: 'ppt_outline',
     label: 'PPT 大纲',
-    description: '逐页演示讲稿提纲',
+    description: '演示大纲',
+  },
+  {
+    value: 'image',
+    label: 'AI 图片',
+    description: '讯飞文生图',
   },
   {
     value: 'pptx',
     label: 'PPTX',
-    description: '可导出的演示文稿结构',
+    description: '演示文件',
   },
   {
-    value: 'code_lab',
-    label: '代码实操',
-    description: '动手实践的编程任务',
+    value: 'programming_questions',
+    label: '编程练习',
+    description: '编程练习题',
   },
   {
-    value: 'reading_material',
-    label: '拓展阅读',
-    description: '延伸阅读与补充材料',
-  },
-  {
-    value: 'video_script',
-    label: '视频脚本',
-    description: '短视频/分镜讲解脚本',
+    value: 'video_recommendations',
+    label: '视频推荐',
+    description: '学习视频',
   },
 ]
 
-const difficultyOptions: Array<{
+const DIFFICULTY_STAGES: Array<{
   value: DifficultyLevel
   label: string
+  color: string
+  animationDuration: string
 }> = [
-  { value: 'beginner', label: '入门' },
-  { value: 'intermediate', label: '进阶' },
-  { value: 'advanced', label: '高级' },
+  {
+    value: 'beginner',
+    label: '基础',
+    color: '#93c5fd',
+    animationDuration: '2.4s',
+  },
+  {
+    value: 'beginner',
+    label: '入门',
+    color: '#60a5fa',
+    animationDuration: '2s',
+  },
+  {
+    value: 'intermediate',
+    label: '进阶',
+    color: '#3b82f6',
+    animationDuration: '1.5s',
+  },
+  {
+    value: 'advanced',
+    label: '熟练',
+    color: '#2563eb',
+    animationDuration: '1s',
+  },
+  {
+    value: 'advanced',
+    label: '挑战',
+    color: '#1d4ed8',
+    animationDuration: '0.45s',
+  },
 ]
 
 const resourceTypeLabelMap = new Map(
@@ -140,261 +144,38 @@ const statusToneMap: Record<
   pending: 'outline',
 }
 
-const splitMarkdownSections = (content: string) =>
-  content
-    .split(/\n(?=## )/g)
-    .map((section) => section.trim())
-    .filter(Boolean)
-
-const parsePptOutline = (content: string) =>
-  content
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => /^\d+\./.test(line))
-
-const renderLectureNote = (resource: GeneratedResource) => {
-  const sections = splitMarkdownSections(resource.content_text ?? '')
-
-  return (
-    <div className="mt-4 space-y-3">
-      {sections.map((section) => {
-        const [heading, ...bodyLines] = section.split('\n')
-        const title = heading.replace(/^##\s*/, '').replace(/^#\s*/, '')
-
-        return (
-          <section key={heading} className="rounded-xl border bg-muted/20 p-4">
-            <h4 className="font-medium">{title}</h4>
-            <div className="mt-2 space-y-2 text-sm text-muted-foreground whitespace-pre-wrap">
-              {bodyLines.join('\n').trim()}
-            </div>
-          </section>
-        )
-      })}
-    </div>
-  )
-}
-
-const renderMindMap = (resource: GeneratedResource) => {
-  const content = (resource.content_json ?? {}) as MindMapJson
-  const nodes = content.nodes ?? []
-  const notes = content.notes
-
-  return (
-    <div className="mt-4 space-y-4">
-      <div className="rounded-xl border bg-muted/20 p-4">
-        <div className="flex items-center gap-2 font-medium">
-          <MapIcon className="size-4" />
-          <span>{content.root ?? resource.title}</span>
-        </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          {nodes.map((node, index) => (
-            <div key={`${node.id ?? index}-${node.label ?? ''}`} className="rounded-lg border bg-background p-3 text-sm">
-              {node.label ?? `节点 ${index + 1}`}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {notes ? (
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-xl border p-4">
-            <div className="text-sm font-medium">学习目标</div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              {notes.goal ?? '暂无'}
-            </div>
-          </div>
-          <div className="rounded-xl border p-4">
-            <div className="text-sm font-medium">薄弱点</div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              {(notes.weak_points ?? []).join('、') || '暂无'}
-            </div>
-          </div>
-          <div className="rounded-xl border p-4">
-            <div className="text-sm font-medium">知识点</div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              {(notes.knowledge_points ?? []).join('、') || '暂无'}
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-const renderPracticeSet = (resource: GeneratedResource) => {
-  const content = (resource.content_json ?? {}) as PracticeSetJson
-  const questions = content.questions ?? []
-
-  return (
-    <div className="mt-4 space-y-3">
-      {questions.map((question, index) => (
-        <div key={`${question.level ?? index}-${question.question ?? ''}`} className="rounded-xl border p-4">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">{question.level ?? `题目 ${index + 1}`}</Badge>
-            {content.difficulty_level ? (
-              <span className="text-xs text-muted-foreground">
-                难度：{content.difficulty_level}
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-3 text-sm leading-6">
-            {question.question ?? '暂无题目内容'}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-const renderPptOutline = (resource: GeneratedResource) => {
-  const slides = parsePptOutline(resource.content_text ?? '')
-  const outline =
-    ((resource.content_json ?? {}) as { outline?: { title?: string } }).outline ?? {}
-
-  return (
-    <div className="mt-4 rounded-xl border bg-muted/20 p-4">
-      <div className="flex items-center gap-2 font-medium">
-        <PresentationIcon className="size-4" />
-        <span>{outline.title ?? '演示结构'}</span>
-      </div>
-      {slides.length > 0 ? (
-        <ol className="mt-3 space-y-2 text-sm leading-6">
-          {slides.map((slide) => (
-            <li key={slide} className="rounded-lg border bg-background px-3 py-2">
-              {slide}
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <div className="mt-3 text-sm text-muted-foreground">
-          暂无可展示的大纲内容。
-        </div>
-      )}
-    </div>
-  )
-}
-
-const renderPptx = (resource: GeneratedResource) => {
-  const content = (resource.content_json ?? {}) as PptxJson
-  const slides = content.slides ?? []
-  const isExternalPpt = Boolean(resource.file_url ?? content.pptUrl)
-  const downloadUrl = resource.file_url ?? content.pptUrl
-
-  return (
-    <div className="mt-4 space-y-3">
-      <div className="rounded-xl border bg-muted/20 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="font-medium">{content.title ?? resource.title}</div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              主题：{content.theme ?? '默认'} | 导出状态：{content.export_status ?? '未知'}
-            </div>
-          </div>
-          <Badge variant="outline">PPTX 结构</Badge>
-        </div>
-        {content.subTitle ? (
-          <div className="mt-2 text-sm text-muted-foreground">{content.subTitle}</div>
-        ) : null}
-        {content.coverImgSrc || resource.cover_image_url ? (
-          <img
-            src={resource.cover_image_url ?? content.coverImgSrc}
-            alt={content.title ?? resource.title}
-            className="mt-3 max-h-56 rounded-lg border object-cover"
-          />
-        ) : null}
-        {isExternalPpt ? (
-          <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-            <div>
-              状态：{content.pptStatus ?? resource.status}
-              {content.totalPages
-                ? ` | 页数：${content.donePages ?? content.totalPages}/${content.totalPages}`
-                : ''}
-            </div>
-            {downloadUrl ? (
-              <a
-                href={downloadUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-primary underline underline-offset-4"
-              >
-                下载生成的 PPT
-              </a>
-            ) : null}
-          </div>
-        ) : null}
-        {content.notes ? (
-          <div className="mt-3 text-sm text-muted-foreground">{content.notes}</div>
-        ) : null}
-      </div>
-
-      {!isExternalPpt
-        ? slides.map((slide, index) => (
-            <div key={`${slide.page ?? index}-${slide.title ?? ''}`} className="rounded-xl border p-4">
-              <div className="font-medium">
-                第 {slide.page ?? index + 1} 页：{slide.title ?? '未命名页'}
-              </div>
-              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                {(slide.bullets ?? []).map((bullet) => (
-                  <li key={bullet}>{bullet}</li>
-                ))}
-              </ul>
-            </div>
-          ))
-        : null}
-    </div>
-  )
-}
-
-const renderFallback = (resource: GeneratedResource) => {
-  if (resource.content_text) {
-    return (
-      <div className="mt-4 rounded-lg bg-muted/40 p-3 text-sm whitespace-pre-wrap">
-        {resource.content_text}
-      </div>
-    )
-  }
-
-  if (resource.content_json) {
-    return (
-      <pre className="mt-4 overflow-x-auto rounded-lg bg-muted/40 p-3 text-xs">
-        {JSON.stringify(resource.content_json, null, 2)}
-      </pre>
-    )
-  }
-
-  return null
-}
-
-const ResourceContent = ({ resource }: { resource: GeneratedResource }) => {
-  switch (resource.resource_type) {
-    case 'lecture_note':
-      return renderLectureNote(resource)
-    case 'mind_map':
-      return renderMindMap(resource)
-    case 'practice_set':
-      return renderPracticeSet(resource)
-    case 'ppt_outline':
-      return renderPptOutline(resource)
-    case 'pptx':
-      return renderPptx(resource)
-    default:
-      return renderFallback(resource)
-  }
-}
-
-const ResourcePackageList = ({
+const ResourcePackageSelector = ({
   projectId,
   selectedPackageId,
+  livePackage,
   onSelect,
 }: {
   projectId: string
   selectedPackageId: string | null
-  onSelect: (resourcePackage: ResourcePackage) => void
+  livePackage?: ResourcePackage
+  onSelect: (resourcePackage: ResourcePackage | null) => void
 }) => {
   const packagesResult = useAtomValue(resourcePackagesAtom(projectId))
-  const packages = Result.isSuccess(packagesResult) ? packagesResult.value : []
+  const persistedPackages = Result.isSuccess(packagesResult)
+    ? packagesResult.value
+    : []
+  const packages = livePackage
+    ? [
+        livePackage,
+        ...persistedPackages.filter((item) => item.id !== livePackage.id),
+      ]
+    : persistedPackages
+  const [category, setCategory] = useState<'all' | ResourceType>('all')
+  const filteredPackages = packages.filter(
+    (resourcePackage) =>
+      category === 'all' ||
+      resourcePackage.preferred_resource_types.includes(category) ||
+      resourcePackage.resources.some(
+        (resource) => resource.resource_type === category,
+      ),
+  )
 
-  if (packagesResult.waiting) {
+  if (packagesResult.waiting && !livePackage) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
@@ -403,7 +184,7 @@ const ResourcePackageList = ({
     )
   }
 
-  if (!Result.isSuccess(packagesResult)) {
+  if (!Result.isSuccess(packagesResult) && !livePackage) {
     return (
       <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
         资源包加载失败。
@@ -420,45 +201,69 @@ const ResourcePackageList = ({
   }
 
   return (
-    <div className="space-y-2">
-      {packages.map((resourcePackage) => {
-        const isActive = resourcePackage.id === selectedPackageId
-        return (
-          <button
-            key={resourcePackage.id}
-            type="button"
-            onClick={() => onSelect(resourcePackage)}
-            className={cn(
-              'w-full rounded-xl border p-3 text-left transition-colors',
-              isActive
-                ? 'border-primary bg-primary/5'
-                : 'hover:bg-muted/40 hover:border-muted-foreground/30',
-            )}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <div className="font-medium">{resourcePackage.title}</div>
-                <div className="text-sm text-muted-foreground">
-                  {resourcePackage.target_topic}
-                </div>
-              </div>
-              <Badge variant={statusToneMap[resourcePackage.status]}>
-                {resourcePackage.status}
-              </Badge>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <span>
+    <div className="flex flex-col gap-2 md:flex-row">
+      <Select
+        value={category}
+        onValueChange={(value) => {
+          const nextCategory = value as 'all' | ResourceType
+          setCategory(nextCategory)
+          const selectedPackage = packages.find(
+            (item) => item.id === selectedPackageId,
+          )
+          if (
+            selectedPackage &&
+            nextCategory !== 'all' &&
+            !selectedPackage.preferred_resource_types.includes(nextCategory) &&
+            !selectedPackage.resources.some(
+              (resource) => resource.resource_type === nextCategory,
+            )
+          ) {
+            onSelect(null)
+          }
+        }}
+      >
+        <SelectTrigger className="w-full md:w-40" aria-label="资源包分类">
+          <TagsIcon className="size-4" />
+          <SelectValue placeholder="资源分类" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">全部类型</SelectItem>
+          {RESOURCE_TYPE_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {filteredPackages.length > 0 ? (
+        <Select
+          value={selectedPackageId ?? undefined}
+          onValueChange={(packageId) => {
+            const resourcePackage = packages.find(
+              (item) => item.id === packageId,
+            )
+            if (resourcePackage) onSelect(resourcePackage)
+          }}
+        >
+          <SelectTrigger className="w-full min-w-0 md:flex-1">
+            <SelectValue placeholder="选择一个资源包" />
+          </SelectTrigger>
+          <SelectContent>
+            {filteredPackages.map((resourcePackage) => (
+              <SelectItem key={resourcePackage.id} value={resourcePackage.id}>
+                {resourcePackage.title} ·{' '}
                 {resourcePackage.completed_resource_count}/
-                {resourcePackage.resource_count} 项
-              </span>
-              {resourcePackage.estimated_minutes ? (
-                <span>{resourcePackage.estimated_minutes} 分钟</span>
-              ) : null}
-              <span>{resourcePackage.difficulty_level}</span>
-            </div>
-          </button>
-        )
-      })}
+                {resourcePackage.resource_count}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <div className="flex h-9 flex-1 items-center rounded-md border border-dashed px-3 text-sm text-muted-foreground">
+          当前分类暂无资源包
+        </div>
+      )}
     </div>
   )
 }
@@ -473,34 +278,80 @@ const ResourcePreview = ({
   const resourcesResult = useAtomValue(
     generatedResourcesAtom(`${projectId}:${resourcePackage.id}`),
   )
-  const resources = Result.isSuccess(resourcesResult) ? resourcesResult.value : []
+  const [liveResources, setLiveResources] =
+    useState<Array<GeneratedResource> | null>(null)
 
-  if (resourcesResult.waiting) {
+  useEffect(() => {
+    setLiveResources(null)
+  }, [resourcePackage.id])
+
+  useEffect(() => {
+    if (Result.isSuccess(resourcesResult)) {
+      setLiveResources(resourcesResult.value)
+    }
+  }, [resourcesResult])
+
+  useEffect(() => {
+    if (resourcePackage.status !== 'generating') return
+    let cancelled = false
+    let timerId: number | undefined
+    const poll = async () => {
+      try {
+        const response = await fetch(
+          `/api/v1/projects/${projectId}/resource-packages/${resourcePackage.id}/resources`,
+        )
+        if (response.ok && !cancelled) {
+          setLiveResources((await response.json()) as Array<GeneratedResource>)
+        }
+      } finally {
+        if (!cancelled) timerId = window.setTimeout(poll, 1500)
+      }
+    }
+    void poll()
+    return () => {
+      cancelled = true
+      if (timerId !== undefined) window.clearTimeout(timerId)
+    }
+  }, [projectId, resourcePackage.id, resourcePackage.status])
+
+  const resources =
+    liveResources ??
+    (Result.isSuccess(resourcesResult) ? resourcesResult.value : [])
+
+  if (resourcesResult.waiting && liveResources === null) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        <span>正在加载资源内容...</span>
+        <span>正在加载生成结果...</span>
       </div>
     )
   }
 
-  if (!Result.isSuccess(resourcesResult)) {
+  if (!Result.isSuccess(resourcesResult) && liveResources === null) {
     return (
       <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
-        资源内容加载失败。
+        生成结果加载失败。
+      </div>
+    )
+  }
+
+  if (resources.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+        这个资源包暂时还没有可预览的生成结果。
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {resources.map((resource) => (
-        <div key={resource.id} className="rounded-2xl border p-4">
+        <div key={resource.id} className="rounded-xl border p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="font-medium">{resource.title}</div>
               <div className="mt-1 text-sm text-muted-foreground">
-                {resource.summary ?? '暂无摘要。'}
+                {resource.summary ?? '暂无摘要'}
               </div>
             </div>
             <Badge variant={statusToneMap[resource.status]}>
@@ -517,48 +368,203 @@ const ResourcePreview = ({
             <Badge variant="outline">{resource.difficulty_level}</Badge>
           </div>
 
-          <ResourceContent resource={resource} />
+          {resource.preview_url && resource.resource_type !== 'image' ? (
+            <div className="mt-3">
+              <a
+                href={resource.preview_url}
+                className="text-sm text-primary underline underline-offset-4"
+              >
+                打开生成资源
+              </a>
+            </div>
+          ) : null}
+
+          {resource.file_url && resource.resource_type !== 'image' ? (
+            <div className="mt-3">
+              <a
+                href={resource.file_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm text-primary underline underline-offset-4"
+              >
+                打开导出文件
+              </a>
+            </div>
+          ) : null}
+
+          <div className="mt-3 rounded-lg bg-muted/40 p-3">
+            <ResourceResultPreview projectId={projectId} resource={resource} />
+          </div>
         </div>
       ))}
     </div>
   )
 }
 
-export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
+const ResourcePreviewPanel = ({
+  projectId,
+  resourcePackage,
+  streamingResources,
+  streamingStatuses,
+}: {
+  projectId: string
+  resourcePackage: ResourcePackage | null
+  streamingResources: Array<GeneratedResource>
+  streamingStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>>
+}) => {
+  const hasStreamingResources = Object.values(streamingStatuses).some(
+    (status) => status === 'pending' || status === 'generating',
+  )
+  if (
+    hasStreamingResources ||
+    (!resourcePackage && Object.keys(streamingStatuses).length > 0)
+  ) {
+    return (
+      <div className="space-y-3">
+        {Object.entries(streamingStatuses)
+          .filter(
+            ([type]) =>
+              !streamingResources.some((item) => item.resource_type === type),
+          )
+          .map(([type, status]) => (
+            <div
+              key={type}
+              className="flex items-center justify-between rounded-xl border p-4"
+            >
+              <div className="font-medium">
+                {resourceTypeLabelMap.get(type as ResourceType) ?? type}
+              </div>
+              <Badge variant={statusToneMap[status]}>{status}</Badge>
+            </div>
+          ))}
+        {streamingResources.map((resource) => (
+          <div key={resource.id} className="rounded-xl border p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-medium">{resource.title}</div>
+              <Badge variant={statusToneMap[resource.status]}>
+                {resource.status}
+              </Badge>
+            </div>
+            {resource.preview_url && resource.resource_type !== 'image' ? (
+              <div className="mt-3">
+                <a
+                  href={resource.preview_url}
+                  className="inline-flex items-center gap-1 text-sm text-primary underline underline-offset-4"
+                >
+                  打开生成资源
+                  <ExternalLinkIcon className="size-3.5" />
+                </a>
+              </div>
+            ) : null}
+            <div className="mt-3 rounded-lg bg-muted/40 p-3">
+              <ResourceResultPreview
+                projectId={projectId}
+                resource={resource}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (!resourcePackage) {
+    return (
+      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+        选择一个资源包以查看生成结果。
+      </div>
+    )
+  }
+
+  return (
+    <ResourcePreview projectId={projectId} resourcePackage={resourcePackage} />
+  )
+}
+
+export const ResourcePackagePage = ({
+  projectId,
+  initialPackageId,
+}: {
+  projectId: string
+  initialPackageId?: string
+}) => {
   const generateResourcePackage = useAtomSet(generateResourcePackageAtom, {
     mode: 'promise',
   })
-  const documentsResult = useAtomValue(indexedDocumentsAtom(projectId))
+  const navigate = useNavigate()
+  const courseOutlineResult = useAtomValue(projectCourseOutlineAtom(projectId))
+  const globalPackageProgress = useAtomValue(resourcePackageProgressAtom)
+  const packageProgress =
+    globalPackageProgress?.projectId === projectId &&
+    (!initialPackageId ||
+      !globalPackageProgress.packageId ||
+      globalPackageProgress.packageId === initialPackageId)
+      ? globalPackageProgress
+      : null
+  useResourcePackageStream({ projectId, packageId: initialPackageId })
+  const packagesResult = useAtomValue(resourcePackagesAtom(projectId))
+  const refreshResourcePackages = useAtomSet(refreshResourcePackagesAtom, {
+    mode: 'promise',
+  })
+
+  useEffect(() => {
+    void refreshResourcePackages(projectId)
+  }, [projectId, refreshResourcePackages])
+
+  useEffect(() => {
+    const progressPackageId = packageProgress?.packageId
+    if (!progressPackageId || progressPackageId === initialPackageId) {
+      return
+    }
+    void navigate({
+      to: '/dashboard/p/$projectId/resource-packages',
+      params: { projectId },
+      search: { packageId: progressPackageId },
+      replace: true,
+    })
+  }, [initialPackageId, navigate, packageProgress?.packageId, projectId])
 
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
-  const [goal, setGoal] = useState('')
   const [instructions, setInstructions] = useState('')
-  const [difficulty, setDifficulty] =
-    useState<DifficultyLevel>('intermediate')
-  const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(
+  const [difficultyStage, setDifficultyStage] = useState(2)
+  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(
     new Set(),
   )
   const [selectedTypes, setSelectedTypes] = useState<Array<ResourceType>>([
     'lecture_note',
     'mind_map',
     'practice_set',
+    'flashcards',
     'ppt_outline',
     'pptx',
+    'programming_questions',
+    'video_recommendations',
   ])
-  const [selectedPackage, setSelectedPackage] = useState<ResourcePackage | null>(
-    null,
-  )
+  const [selectedPackage, setSelectedPackage] =
+    useState<ResourcePackage | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const indexedDocuments =
-    documentsResult._tag === 'Success' ? documentsResult.value : []
+  useEffect(() => {
+    if (!initialPackageId || !Result.isSuccess(packagesResult)) return
+    const requestedPackage = packagesResult.value.find(
+      (resourcePackage) => resourcePackage.id === initialPackageId,
+    )
+    if (requestedPackage) setSelectedPackage(requestedPackage)
+  }, [initialPackageId, packagesResult])
+
+  const courseOutline =
+    courseOutlineResult._tag === 'Success' ? courseOutlineResult.value : null
+  const selectedDifficultyStage =
+    DIFFICULTY_STAGES[difficultyStage] ?? DIFFICULTY_STAGES[2]
+  const difficulty = selectedDifficultyStage.value
+  const difficultyProgress =
+    (difficultyStage / (DIFFICULTY_STAGES.length - 1)) * 100
 
   const isGenerateDisabled =
     !topic.trim() || selectedTypes.length === 0 || isSubmitting
 
   const helperText = useMemo(
-    () => '围绕当前项目生成讲解、导图、练习和演示材料等资源包。',
+    () => '提交后会立即创建资源包并进入结果页，生成内容会持续实时更新。',
     [],
   )
 
@@ -570,11 +576,11 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
     )
   }
 
-  const toggleDocument = (documentId: string) => {
-    setSelectedDocumentIds((current) => {
+  const toggleChapter = (chapterId: string) => {
+    setSelectedChapterIds((current) => {
       const next = new Set(current)
-      if (next.has(documentId)) next.delete(documentId)
-      else next.add(documentId)
+      if (next.has(chapterId)) next.delete(chapterId)
+      else next.add(chapterId)
       return next
     })
   }
@@ -582,32 +588,50 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
   const handleGenerate = async () => {
     if (!topic.trim() || selectedTypes.length === 0) return
 
+    const knowledgePointIds =
+      courseOutline?.knowledgePoints
+        .filter(
+          (point) =>
+            point.chapter_id && selectedChapterIds.has(point.chapter_id),
+        )
+        .map((point) => point.id) ?? []
+
     setIsSubmitting(true)
+    setSelectedPackage(null)
     try {
       const resourcePackage = await generateResourcePackage({
         projectId,
         title: title.trim() || undefined,
         target_topic: topic.trim(),
-        target_goal: goal.trim() || undefined,
         custom_instructions: instructions.trim() || undefined,
-        source_document_ids: Array.from(selectedDocumentIds),
+        chapter_ids: Array.from(selectedChapterIds),
+        knowledge_point_ids: knowledgePointIds,
         resource_types: selectedTypes,
         difficulty_level: difficulty,
-        generation_params: { launch_context: 'resource package page' },
+        generation_params: {
+          launch_context: 'resource package page',
+          quiz_count: selectedTypes.includes('practice_set') ? 10 : undefined,
+        },
       })
 
       setSelectedPackage(resourcePackage)
+      await navigate({
+        to: '/dashboard/p/$projectId/resource-packages',
+        params: { projectId },
+        search: { packageId: resourcePackage.id },
+        replace: true,
+      })
     } finally {
       setIsSubmitting(false)
     }
   }
 
   return (
-    <div className="flex h-full flex-col max-h-screen">
+    <div className="flex h-full max-h-screen flex-col">
       <ProjectHeader projectId={projectId} />
 
-      <div className="flex flex-1 flex-col min-h-0 overflow-y-auto">
-        <div className="container mx-auto flex max-w-7xl flex-1 flex-col gap-6 px-4 py-6">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="flex w-full max-w-none flex-1 flex-col gap-6 px-4 py-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <SparklesIcon className="size-5 text-primary" />
@@ -616,80 +640,142 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
             <p className="text-sm text-muted-foreground">{helperText}</p>
           </div>
 
-          <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          {packageProgress?.status === 'generating' &&
+          packageProgress.packageId ? (
+            <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-medium">
+                  已进入新资源包，内容正在生成
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  该链接从任务开始阶段即可打开，生成进度会持续更新。
+                </div>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link
+                  to="/dashboard/p/$projectId/resource-packages"
+                  params={{ projectId }}
+                  search={{ packageId: packageProgress.packageId }}
+                >
+                  打开对应资源包
+                  <ExternalLinkIcon className="size-4" />
+                </Link>
+              </Button>
+            </div>
+          ) : null}
+
+          <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-2 xl:items-start">
             <div className="rounded-2xl border bg-background">
               <div className="border-b px-5 py-4">
                 <div className="text-base font-medium">生成资源包</div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  为当前项目配置一组聚焦主题的学习资源。
+                  可选资源类型与项目概览里的 AI 生成保持一致。
                 </div>
               </div>
 
               <div className="space-y-5 p-5">
-                <div className="space-y-2">
-                  <Label htmlFor="resource-package-title">资源包标题</Label>
-                  <Textarea
-                    id="resource-package-title"
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    placeholder="可选：为这组资源填写一个标题"
-                    className="min-h-20 resize-none"
-                  />
-                </div>
+                <div className="overflow-hidden rounded-lg border">
+                  <div className="grid gap-2 border-b p-3 md:grid-cols-[7rem_minmax(0,1fr)] md:items-center">
+                    <Label htmlFor="resource-package-title">资源包标题</Label>
+                    <Input
+                      id="resource-package-title"
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      placeholder="可选：给这组资源起一个标题"
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="resource-package-topic">目标主题</Label>
-                  <Textarea
-                    id="resource-package-topic"
-                    value={topic}
-                    onChange={(event) => setTopic(event.target.value)}
-                    placeholder="这组资源要重点围绕什么内容？"
-                    className="min-h-24 resize-none"
-                  />
-                </div>
+                  <div className="grid gap-2 border-b p-3 md:grid-cols-[7rem_minmax(0,1fr)] md:items-center">
+                    <Label htmlFor="resource-package-topic">目标主题</Label>
+                    <Input
+                      id="resource-package-topic"
+                      value={topic}
+                      onChange={(event) => setTopic(event.target.value)}
+                      placeholder="这组资源希望重点围绕什么内容生成？"
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="resource-package-goal">学习目标</Label>
-                  <Textarea
-                    id="resource-package-goal"
-                    value={goal}
-                    onChange={(event) => setGoal(event.target.value)}
-                    placeholder="可选：例如用于考前复习、补齐薄弱点"
-                    className="min-h-20 resize-none"
-                  />
-                </div>
+                  <div className="grid gap-2 border-b p-3 md:grid-cols-[7rem_minmax(0,1fr)] md:items-center">
+                    <Label htmlFor="resource-package-instructions">
+                      自定义要求
+                    </Label>
+                    <Input
+                      id="resource-package-instructions"
+                      value={instructions}
+                      onChange={(event) => setInstructions(event.target.value)}
+                      placeholder="可选：补充这次多 Agent 生成的风格、重点或限制"
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="resource-package-difficulty">难度等级</Label>
-                  <Select
-                    value={difficulty}
-                    onValueChange={(value) =>
-                      setDifficulty(value as DifficultyLevel)
-                    }
-                  >
-                    <SelectTrigger id="resource-package-difficulty">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {difficultyOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="grid gap-2 p-3 md:grid-cols-[7rem_minmax(0,1fr)] md:items-center">
+                    <Label htmlFor="resource-package-difficulty">
+                      难度等级
+                    </Label>
+                    <div className="space-y-2">
+                      <div className="relative flex h-8 items-center">
+                        <div className="absolute inset-x-0 h-6 overflow-hidden rounded-[3px] border border-blue-200/60 bg-muted">
+                          <div
+                            className="difficulty-slider-exhaust relative h-full overflow-hidden transition-[width] duration-200 ease-out"
+                            style={{
+                              width: `${Math.max(difficultyProgress, 4)}%`,
+                              backgroundImage: `linear-gradient(90deg, #93c5fd 0%, ${selectedDifficultyStage.color} 72%, #dbeafe 94%, #ffffff 100%)`,
+                            }}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="difficulty-slider-stars"
+                              style={{
+                                animationDuration:
+                                  selectedDifficultyStage.animationDuration,
+                              }}
+                            >
+                              ✦ · ✧ · ✦ · ✶ · ✧ · ✦ · ✧ · ✶
+                            </span>
+                          </div>
+                        </div>
+                        <input
+                          id="resource-package-difficulty"
+                          type="range"
+                          min={0}
+                          max={DIFFICULTY_STAGES.length - 1}
+                          step={1}
+                          value={difficultyStage}
+                          aria-valuetext={selectedDifficultyStage.label}
+                          onChange={(event) =>
+                            setDifficultyStage(Number(event.target.value))
+                          }
+                          className="absolute inset-0 h-8 w-full cursor-grab appearance-none bg-transparent outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-[2px] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-blue-700 [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-md [&::-moz-range-track]:h-6 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-runnable-track]:h-6 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-[2px] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-blue-700 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md"
+                        />
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        {DIFFICULTY_STAGES.map((option, index) => (
+                          <span
+                            key={option.label}
+                            className={cn(
+                              'transition-colors',
+                              difficultyStage === index
+                                ? 'font-medium text-blue-700 dark:text-blue-300'
+                                : 'text-muted-foreground',
+                            )}
+                          >
+                            {option.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
                   <Label>资源类型</Label>
-                  <div className="grid gap-2 md:grid-cols-2">
+                  <div className="grid auto-rows-fr grid-cols-3 gap-1.5">
                     {RESOURCE_TYPE_OPTIONS.map((option) => {
                       const checked = selectedTypes.includes(option.value)
                       return (
                         <label
                           key={option.value}
                           className={cn(
-                            'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors',
+                            'flex h-full w-full min-w-0 cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 transition-colors',
                             checked
                               ? 'border-primary bg-primary/5'
                               : 'hover:bg-muted/40',
@@ -699,9 +785,11 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                             checked={checked}
                             onCheckedChange={() => toggleType(option.value)}
                           />
-                          <div className="space-y-1">
-                            <div className="font-medium">{option.label}</div>
-                            <div className="text-sm text-muted-foreground">
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="text-sm font-medium">
+                              {option.label}
+                            </div>
+                            <div className="text-xs leading-4 text-muted-foreground">
                               {option.description}
                             </div>
                           </div>
@@ -712,114 +800,123 @@ export const ResourcePackagePage = ({ projectId }: { projectId: string }) => {
                 </div>
 
                 <div className="space-y-3">
-                  <Label>来源文档</Label>
-                  <div className="space-y-2 rounded-xl border p-3">
-                    {documentsResult.waiting ? (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2Icon className="size-4 animate-spin" />
-                        <span>正在加载已索引文档...</span>
-                      </div>
-                    ) : indexedDocuments.length === 0 ? (
-                      <div className="text-sm text-muted-foreground">
-                        目前还没有可用的索引文档。
-                      </div>
-                    ) : (
-                      indexedDocuments.map((document) => (
-                        <label
-                          key={document.id}
-                          className="flex cursor-pointer items-start gap-3 rounded-lg p-2 hover:bg-muted/40"
-                        >
-                          <Checkbox
-                            checked={selectedDocumentIds.has(document.id)}
-                            onCheckedChange={() => toggleDocument(document.id)}
-                          />
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium">
-                              {document.file_name}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {document.file_type?.toUpperCase()}
-                            </div>
-                          </div>
-                        </label>
-                      ))
-                    )}
+                  <div className="flex items-center justify-between">
+                    <Label>课程章节</Label>
+                    <div className="text-xs text-muted-foreground">
+                      已选择 {selectedChapterIds.size} 个
+                    </div>
                   </div>
+
+                  {courseOutlineResult.waiting ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2Icon className="size-4 animate-spin" />
+                      <span>正在加载课程章节...</span>
+                    </div>
+                  ) : !Result.isSuccess(courseOutlineResult) ? (
+                    <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
+                      课程章节加载失败。
+                    </div>
+                  ) : !courseOutline?.courseId ? (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                      当前项目尚未绑定课程，请先编辑项目并选择所属课程。
+                    </div>
+                  ) : courseOutline.chapters.length === 0 ? (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                      当前课程暂无可选章节。
+                    </div>
+                  ) : (
+                    <div className="max-h-60 space-y-2 overflow-y-auto rounded-xl border p-3">
+                      {courseOutline.chapters.map((chapter) => {
+                        const checked = selectedChapterIds.has(chapter.id)
+                        const knowledgePointCount =
+                          courseOutline.knowledgePoints.filter(
+                            (point) => point.chapter_id === chapter.id,
+                          ).length
+                        return (
+                          <label
+                            key={chapter.id}
+                            className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40"
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() => toggleChapter(chapter.id)}
+                            />
+                            <div className="space-y-1 text-sm">
+                              <div className="font-medium">{chapter.title}</div>
+                              <div className="text-muted-foreground">
+                                {knowledgePointCount} 个知识点
+                                {chapter.estimated_minutes
+                                  ? ` · 预计 ${chapter.estimated_minutes} 分钟`
+                                  : ''}
+                              </div>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="resource-package-instructions">
-                    补充要求
-                  </Label>
-                  <Textarea
-                    id="resource-package-instructions"
-                    value={instructions}
-                    onChange={(event) => setInstructions(event.target.value)}
-                    placeholder="可选：补充生成风格、重点、表达方式等要求"
-                    className="min-h-28 resize-none"
-                  />
-                </div>
-
-                <div className="flex justify-end">
-                  <Button
-                    onClick={handleGenerate}
-                    disabled={isGenerateDisabled}
-                    size="lg"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2Icon className="size-4 animate-spin" />
-                        生成中
-                      </>
-                    ) : (
-                      <>
-                        <SparklesIcon className="size-4" />
-                        生成资源包
-                      </>
-                    )}
-                  </Button>
-                </div>
+                <Button
+                  onClick={handleGenerate}
+                  disabled={isGenerateDisabled}
+                  className="w-full"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2Icon className="mr-2 size-4 animate-spin" />
+                      生成中...
+                    </>
+                  ) : (
+                    '生成资源包'
+                  )}
+                </Button>
               </div>
             </div>
 
-            <div className="grid min-h-0 gap-6">
-              <div className="rounded-2xl border bg-background">
-                <div className="border-b px-5 py-4">
-                  <div className="text-base font-medium">最近生成</div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    选择一个资源包查看其中的生成结果。
+            <div className="flex min-h-0 flex-col gap-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)]">
+              <div className="rounded-xl border bg-background p-4">
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <div className="text-base font-medium">资源包列表</div>
+                    <div className="text-sm text-muted-foreground">
+                      查看当前项目下已生成的资源包。
+                    </div>
                   </div>
-                </div>
-                <div className="max-h-[320px] overflow-y-auto p-5">
-                  <ResourcePackageList
+                  <ResourcePackageSelector
                     projectId={projectId}
-                    selectedPackageId={selectedPackage?.id ?? null}
-                    onSelect={setSelectedPackage}
+                    selectedPackageId={
+                      selectedPackage?.id ?? packageProgress?.packageId ?? null
+                    }
+                    livePackage={packageProgress?.package}
+                    onSelect={(resourcePackage) => {
+                      setSelectedPackage(resourcePackage)
+                      if (!resourcePackage) return
+                      void navigate({
+                        to: '/dashboard/p/$projectId/resource-packages',
+                        params: { projectId },
+                        search: { packageId: resourcePackage.id },
+                        replace: true,
+                      })
+                    }}
                   />
                 </div>
               </div>
 
-              <div className="min-h-0 rounded-2xl border bg-background">
-                <div className="border-b px-5 py-4">
-                  <div className="flex items-center gap-2 text-base font-medium">
-                    <FileTextIcon className="size-4" />
-                    <span>资源预览</span>
-                  </div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    预览当前选中资源包中的内容。
+              <div className="min-h-0 overflow-y-auto rounded-xl border bg-background p-4">
+                <div className="mb-4">
+                  <div className="text-base font-medium">生成结果</div>
+                  <div className="text-sm text-muted-foreground">
+                    预览统一 AI 生成链路产出的资源内容。
                   </div>
                 </div>
-                <div className="max-h-[640px] overflow-y-auto p-5">
-                  {selectedPackage ? (
-                    <ResourcePreview
-                      projectId={projectId}
-                      resourcePackage={selectedPackage}
-                    />
-                  ) : (
-                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                      请选择一个资源包查看生成内容。
-                    </div>
-                  )}
+                <div>
+                  <ResourcePreviewPanel
+                    projectId={projectId}
+                    resourcePackage={selectedPackage}
+                    streamingResources={packageProgress?.resources ?? []}
+                    streamingStatuses={packageProgress?.resourceStatuses ?? {}}
+                  />
                 </div>
               </div>
             </div>

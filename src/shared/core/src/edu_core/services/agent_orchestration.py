@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from edu_ai.agents.orchestration import SupervisorAgent
+from edu_ai.agents.orchestration.resource_agent import ResourceAgent
 from edu_core.exceptions import NotFoundError
 from edu_core.model_providers import LlmProviderConfig
 from edu_core.schemas.agent_orchestration import (
     AgentContextData,
     AgentEvent,
+    AgentRunDetail,
     AgentTrigger,
     DiagnosisResponse,
     LearningPathResponse,
@@ -22,18 +25,23 @@ from edu_db.models import (
     AgentArtifact as AgentArtifactModel,
     AgentEvent as AgentEventModel,
     AgentRun,
+    AgentToolCall,
     Diagnosis,
     Document,
     GeneratedResource,
+    KnowledgePoint,
+    KnowledgePointRelation,
+    LearnerProfile,
     LearningPath,
     PracticeRecord,
     Project,
     Recommendation,
     ResourcePackage,
+    StudentKnowledgeState,
+    SkillExecution,
 )
 from edu_db.session import get_session_factory
 from pydantic import BaseModel
-
 
 ARTIFACT_AGENT_NAMES = {
     "profile": "ProfileAgent",
@@ -146,6 +154,65 @@ class DatabaseOrchestrationStore:
                         artifact=self._to_json(artifact),
                     )
                 )
+
+            for agent_result in result.agent_results:
+                for skill in agent_result.skill_executions:
+                    completed_at = self._now()
+                    started_at = completed_at
+                    if skill.duration_ms:
+                        started_at = completed_at - timedelta(milliseconds=skill.duration_ms)
+                    db.add(
+                        SkillExecution(
+                            id=skill.id,
+                            run_id=result.run_id,
+                            agent_name=skill.agent_name.value,
+                            skill_id=skill.skill_id,
+                            skill_version=skill.version,
+                            status=skill.status,
+                            input_summary=self._to_json(skill.input_summary),
+                            output_summary=self._to_json(skill.output_summary),
+                            output_artifact_key=skill.output_artifact_key,
+                            confidence=skill.confidence,
+                            fallback_used=skill.fallback_used,
+                            fallback_reason=skill.fallback_reason,
+                            error_code=skill.error_code,
+                            error_message=skill.error_message,
+                            started_at=started_at,
+                            completed_at=completed_at,
+                            duration_ms=skill.duration_ms,
+                        )
+                    )
+                for audit in agent_result.tool_call_audits:
+                    db.add(
+                        AgentToolCall(
+                            id=audit.id,
+                            run_id=result.run_id,
+                            skill_execution_id=next(
+                                (
+                                    skill.id
+                                    for skill in agent_result.skill_executions
+                                    if skill.skill_id == audit.skill_id
+                                ),
+                                None,
+                            ),
+                            agent_name=audit.agent_name.value,
+                            skill_id=audit.skill_id,
+                            tool_name=audit.tool_name,
+                            tool_version=audit.tool_version,
+                            status=audit.status,
+                            risk_level=audit.risk_level,
+                            approval_status=audit.approval_status,
+                            arguments=self._to_json(audit.arguments),
+                            result_summary=self._to_json(audit.result_summary),
+                            evidence_refs=self._to_json(audit.evidence_refs),
+                            idempotency_key=audit.idempotency_key,
+                            error_code=audit.error_code,
+                            error_message=audit.error_message,
+                            started_at=audit.started_at,
+                            completed_at=audit.completed_at,
+                            duration_ms=audit.duration_ms,
+                        )
+                    )
 
             db.commit()
 
@@ -367,7 +434,7 @@ class DatabaseOrchestrationStore:
                 .order_by(LearningPath.created_at.desc())
                 .first()
             )
-            return self._learning_path_to_response(path) if path else None
+            return self._learning_path_to_response(path, db) if path else None
 
     def list_learning_paths(self, project_id: str) -> list[LearningPathResponse]:
         with self._get_db_session() as db:
@@ -377,7 +444,7 @@ class DatabaseOrchestrationStore:
                 .order_by(LearningPath.created_at.desc())
                 .all()
             )
-            return [self._learning_path_to_response(path) for path in paths]
+            return [self._learning_path_to_response(path, db) for path in paths]
 
     def _recommendation_to_dict(self, recommendation: Recommendation) -> dict:
         return {
@@ -391,16 +458,42 @@ class DatabaseOrchestrationStore:
             "recommended_by": recommendation.recommended_by,
         }
 
-    def _learning_path_to_response(self, path: LearningPath) -> LearningPathResponse:
+    def _learning_path_to_response(
+        self, path: LearningPath, db=None
+    ) -> LearningPathResponse:
+        content = self._resolve_knowledge_point_labels(path.content, db)
         return LearningPathResponse(
             path_id=path.id,
             run_id=path.run_id,
             project_id=path.project_id,
-            learning_path=path.content,
+            learning_path=content,
             based_on_diagnosis_id=path.diagnosis_id,
             based_on_recommendation_ids=path.based_on_recommendation_ids,
             created_at=path.created_at,
         )
+
+    @staticmethod
+    def _resolve_knowledge_point_labels(content: dict, db) -> dict:
+        """Resolve legacy knowledge point IDs when reading persisted paths."""
+        resolved = dict(content or {})
+        values = [
+            value
+            for value in resolved.get("based_on_knowledge_points", [])
+            if isinstance(value, str) and value
+        ]
+        if not db or not values:
+            return resolved
+
+        name_by_id = {
+            point.id: point.name
+            for point in db.query(KnowledgePoint)
+            .filter(KnowledgePoint.id.in_(values))
+            .all()
+        }
+        resolved["based_on_knowledge_points"] = [
+            name_by_id.get(value, value) for value in values
+        ]
+        return resolved
 
     def _to_json(self, value):
         if isinstance(value, BaseModel):
@@ -435,8 +528,20 @@ class AgentOrchestrationService:
         supervisor: SupervisorAgent | None = None,
         store: InMemoryOrchestrationStore | DatabaseOrchestrationStore | None = None,
         llm_config: LlmProviderConfig | None = None,
+        flashcard_group_service=None,
+        quiz_service=None,
+        note_service=None,
+        mind_map_service=None,
     ) -> None:
-        self.supervisor = supervisor or SupervisorAgent(llm_config=llm_config)
+        self.supervisor = supervisor or SupervisorAgent(
+            llm_config=llm_config,
+            resource_agent=ResourceAgent(
+                flashcard_group_service=flashcard_group_service,
+                quiz_service=quiz_service,
+                note_service=note_service,
+                mind_map_service=mind_map_service,
+            )
+        )
         self.store = store or DatabaseOrchestrationStore()
 
     async def generate_diagnosis(
@@ -444,12 +549,16 @@ class AgentOrchestrationService:
         user_id: str,
         project_id: str,
         trigger: AgentTrigger | None = None,
+        meta: dict | None = None,
+        event_sink: Callable[[AgentEvent], Awaitable[None]] | None = None,
     ) -> DiagnosisResponse:
         result = await self._run_supervisor(
             user_id=user_id,
             project_id=project_id,
             goal="diagnosis",
             trigger=trigger,
+            meta=meta,
+            event_sink=event_sink,
         )
         self.store.save_run_events(result)
 
@@ -482,6 +591,72 @@ class AgentOrchestrationService:
             raise NotFoundError(f"Diagnosis {diagnosis_id} not found")
         return events
 
+    def get_agent_run(self, user_id: str, run_id: str) -> AgentRunDetail:
+        with self._get_db_session() as db:
+            run = db.query(AgentRun).filter(
+                AgentRun.id == run_id, AgentRun.user_id == user_id
+            ).first()
+            if not run:
+                raise NotFoundError(f"Agent run {run_id} not found")
+            return AgentRunDetail(
+                run_id=run.id,
+                project_id=run.project_id,
+                goal=run.goal,
+                status=run.status,
+                final_result=run.final_result or {},
+                started_at=run.started_at,
+                completed_at=run.completed_at,
+                created_at=run.created_at,
+            )
+
+    def get_agent_run_events(self, user_id: str, run_id: str) -> list[AgentEvent]:
+        self.get_agent_run(user_id, run_id)
+        with self._get_db_session() as db:
+            rows = db.query(AgentEventModel).filter(
+                AgentEventModel.run_id == run_id
+            ).order_by(AgentEventModel.created_at).all()
+            return [AgentEvent(
+                event_type=row.event_type, run_id=row.run_id,
+                agent_name=row.agent_name, status=row.status,
+                summary=row.summary, timestamp=row.created_at,
+                payload=row.payload or {},
+            ) for row in rows]
+
+    def get_skill_executions(self, user_id: str, run_id: str) -> list[dict]:
+        self.get_agent_run(user_id, run_id)
+        with self._get_db_session() as db:
+            rows = db.query(SkillExecution).filter(
+                SkillExecution.run_id == run_id
+            ).order_by(SkillExecution.started_at).all()
+            return [{
+                "id": row.id, "run_id": row.run_id,
+                "agent_name": row.agent_name, "skill_id": row.skill_id,
+                "version": row.skill_version, "status": row.status,
+                "input_summary": row.input_summary or {},
+                "output_summary": row.output_summary or {},
+                "confidence": row.confidence, "fallback_used": row.fallback_used,
+                "fallback_reason": row.fallback_reason,
+                "duration_ms": row.duration_ms,
+            } for row in rows]
+
+    def get_tool_calls(self, user_id: str, run_id: str) -> list[dict]:
+        self.get_agent_run(user_id, run_id)
+        with self._get_db_session() as db:
+            rows = db.query(AgentToolCall).filter(
+                AgentToolCall.run_id == run_id
+            ).order_by(AgentToolCall.started_at).all()
+            return [{
+                "id": row.id, "run_id": row.run_id,
+                "skill_execution_id": row.skill_execution_id,
+                "agent_name": row.agent_name, "skill_id": row.skill_id,
+                "tool_name": row.tool_name, "version": row.tool_version,
+                "status": row.status, "risk_level": row.risk_level,
+                "approval_status": row.approval_status,
+                "result_summary": row.result_summary or {},
+                "evidence_refs": row.evidence_refs or [],
+                "error_code": row.error_code, "duration_ms": row.duration_ms,
+            } for row in rows]
+
     def list_recommendations(self, user_id: str, project_id: str) -> list[dict]:
         self._ensure_project_access(user_id, project_id)
         return self.store.list_recommendations(project_id)
@@ -492,26 +667,32 @@ class AgentOrchestrationService:
         project_id: str,
         diagnosis_id: str | None = None,
         trigger: AgentTrigger | None = None,
+        meta: dict | None = None,
+        event_sink: Callable[[AgentEvent], Awaitable[None]] | None = None,
     ) -> RecommendationsResponse:
         if diagnosis_id:
             diagnosis = self.get_diagnosis(diagnosis_id)
             self._ensure_diagnosis_access(diagnosis, user_id, project_id)
-            response = RecommendationsResponse(
-                run_id=diagnosis.run_id,
-                project_id=project_id,
-                recommendations=diagnosis.recommendations,
-                based_on_diagnosis_id=diagnosis_id,
-                created_at=self._now(),
-            )
         else:
             diagnosis = await self.generate_diagnosis(user_id, project_id, trigger)
-            response = RecommendationsResponse(
-                run_id=diagnosis.run_id,
-                project_id=project_id,
-                recommendations=diagnosis.recommendations,
-                based_on_diagnosis_id=diagnosis.diagnosis_id,
-                created_at=self._now(),
-            )
+
+        result = await self._run_supervisor(
+            user_id=user_id,
+            project_id=project_id,
+            goal="recommendations",
+            trigger=trigger,
+            meta=meta,
+            event_sink=event_sink,
+            artifacts={"diagnosis": {"diagnosis": diagnosis.diagnosis}},
+        )
+        self.store.save_run_events(result)
+        response = RecommendationsResponse(
+            run_id=result.run_id,
+            project_id=project_id,
+            recommendations=result.final_result.get("recommendations", []),
+            based_on_diagnosis_id=diagnosis.diagnosis_id,
+            created_at=self._now(),
+        )
 
         self.store.save_recommendations(response)
         return response
@@ -522,21 +703,54 @@ class AgentOrchestrationService:
         project_id: str,
         diagnosis_id: str | None = None,
         trigger: AgentTrigger | None = None,
+        event_sink: Callable[[AgentEvent], Awaitable[None]] | None = None,
     ) -> LearningPathResponse:
+        diagnosis = None
         if diagnosis_id:
             diagnosis = self.get_diagnosis(diagnosis_id)
             self._ensure_diagnosis_access(diagnosis, user_id, project_id)
-        else:
-            diagnosis = await self.generate_diagnosis(user_id, project_id, trigger)
+
+        result = await self._run_supervisor(
+            user_id=user_id,
+            project_id=project_id,
+            goal="learning_path",
+            trigger=trigger,
+            meta={"based_on_diagnosis_id": diagnosis.diagnosis_id}
+            if diagnosis
+            else None,
+            event_sink=event_sink,
+        )
+        self.store.save_run_events(result)
+
+        learning_path = result.final_result.get("learning_path")
+        if result.status != RunStatus.COMPLETED or not learning_path:
+            error = result.final_result.get("error", "Planner returned no learning path")
+            raise RuntimeError(f"Learning path generation failed: {error}")
+
+        if diagnosis is None:
+            diagnosis = DiagnosisResponse(
+                diagnosis_id=f"diag_{uuid4().hex}",
+                run_id=result.run_id,
+                project_id=project_id,
+                student_id=user_id,
+                status=result.status,
+                diagnosis=result.final_result.get("diagnosis", {}),
+                recommendations=result.final_result.get("recommendations", []),
+                learning_path=learning_path,
+                next_actions=[],
+                created_at=self._now(),
+            )
+            self.store.save_diagnosis(diagnosis)
 
         recommendation_ids = [
             recommendation["id"] for recommendation in diagnosis.recommendations
+            if recommendation.get("id")
         ]
         response = LearningPathResponse(
             path_id=f"path_{uuid4().hex}",
-            run_id=diagnosis.run_id,
+            run_id=result.run_id,
             project_id=project_id,
-            learning_path=diagnosis.learning_path or {},
+            learning_path=learning_path,
             based_on_diagnosis_id=diagnosis.diagnosis_id,
             based_on_recommendation_ids=recommendation_ids,
             created_at=self._now(),
@@ -562,6 +776,9 @@ class AgentOrchestrationService:
         project_id: str,
         goal: str,
         trigger: AgentTrigger | None,
+        meta: dict | None = None,
+        event_sink: Callable[[AgentEvent], Awaitable[None]] | None = None,
+        artifacts: dict | None = None,
     ) -> SupervisorRunResult:
         context = self._load_context(user_id, project_id)
         return await self.supervisor.run(
@@ -571,7 +788,10 @@ class AgentOrchestrationService:
                 goal=goal,
                 trigger=trigger or AgentTrigger(),
                 context=context,
-            )
+                artifacts=artifacts or {},
+                meta=meta or {},
+            ),
+            event_sink=event_sink,
         )
 
     def _load_context(self, user_id: str, project_id: str) -> AgentContextData:
@@ -622,11 +842,103 @@ class AgentOrchestrationService:
                 .limit(20)
                 .all()
             )
+            recommendation_feedback = (
+                db.query(Recommendation)
+                .filter(
+                    Recommendation.user_id == user_id,
+                    Recommendation.project_id == project_id,
+                    Recommendation.feedback.isnot(None),
+                )
+                .order_by(Recommendation.created_at.desc())
+                .limit(50)
+                .all()
+            )
+            learner_profile = (
+                db.query(LearnerProfile)
+                .filter(
+                    LearnerProfile.user_id == user_id,
+                    LearnerProfile.project_id == project_id,
+                )
+                .first()
+            )
+            knowledge_points = []
+            knowledge_states = []
+            if project.course_id:
+                points = (
+                    db.query(KnowledgePoint)
+                    .filter(KnowledgePoint.course_id == project.course_id)
+                    .order_by(KnowledgePoint.position, KnowledgePoint.created_at)
+                    .all()
+                )
+                relations = (
+                    db.query(KnowledgePointRelation)
+                    .filter(KnowledgePointRelation.course_id == project.course_id)
+                    .all()
+                )
+                prerequisites: dict[str, list[str]] = {}
+                for relation in relations:
+                    if relation.relation_type == "prerequisite":
+                        prerequisites.setdefault(
+                            relation.target_knowledge_point_id, []
+                        ).append(relation.source_knowledge_point_id)
+                state_by_point = {
+                    state.knowledge_point_id: state
+                    for state in db.query(StudentKnowledgeState)
+                    .filter(
+                        StudentKnowledgeState.user_id == user_id,
+                        StudentKnowledgeState.knowledge_point_id.in_(
+                            [point.id for point in points]
+                        ),
+                    )
+                    .all()
+                }
+                for point in points:
+                    state = state_by_point.get(point.id)
+                    knowledge_points.append(
+                        {
+                            "id": point.id,
+                            "name": point.name,
+                            "description": point.description,
+                            "difficulty_level": point.difficulty_level,
+                            "tags": point.tags or [],
+                            "prerequisite_ids": prerequisites.get(point.id, []),
+                        }
+                    )
+                    knowledge_states.append(
+                        {
+                            "id": state.id if state else f"state:{point.id}",
+                            "knowledge_point_id": point.id,
+                            "topic": point.name,
+                            "mastery_score": float(state.mastery_score) if state else 0.0,
+                            "confidence": float(state.confidence) if state else 0.0,
+                            "trend": state.trend if state else "stable",
+                            "status": state.status if state else "not_started",
+                            "attempt_count": state.attempt_count if state else 0,
+                            "correct_count": state.correct_count if state else 0,
+                            "last_practiced_at": state.last_practiced_at.isoformat()
+                            if state and state.last_practiced_at
+                            else None,
+                        }
+                    )
 
             return AgentContextData(
-                learner_profile=None,
+                learner_profile=(
+                    {
+                        "id": learner_profile.id,
+                        "status": learner_profile.status,
+                        "completeness_score": learner_profile.completeness_score,
+                        "last_refreshed_at": learner_profile.last_refreshed_at.isoformat()
+                        if learner_profile.last_refreshed_at
+                        else None,
+                        **(learner_profile.profile_data or {}),
+                    }
+                    if learner_profile
+                    else None
+                ),
+                knowledge_states=knowledge_states,
+                knowledge_points=knowledge_points,
                 course={
-                    "id": project.id,
+                    "id": project.course_id,
                     "name": project.name,
                     "description": project.description,
                     "language_code": project.language_code,
@@ -634,6 +946,7 @@ class AgentOrchestrationService:
                 practice_records=[
                     {
                         "id": record.id,
+                        "knowledge_point_id": record.knowledge_point_id,
                         "item_type": record.item_type,
                         "item_id": record.item_id,
                         "topic": record.topic,
@@ -676,7 +989,75 @@ class AgentOrchestrationService:
                     }
                     for resource in generated_resources
                 ],
+                recent_feedback_summary=self._build_recent_feedback_summary(
+                    practice_records=practice_records,
+                    recommendation_feedback=recommendation_feedback,
+                ),
             )
+
+    def _build_recent_feedback_summary(
+        self,
+        practice_records: list[PracticeRecord],
+        recommendation_feedback: list[Recommendation],
+    ) -> dict:
+        completed_resources = 0
+        abandoned_resources = 0
+        clicked_resources = 0
+        incorrect_by_topic: dict[str, int] = {}
+
+        for recommendation in recommendation_feedback:
+            feedback = recommendation.feedback or {}
+            signal = str(
+                feedback.get("event")
+                or feedback.get("action")
+                or feedback.get("status")
+                or feedback.get("type")
+                or ""
+            ).lower()
+            if signal in {"completed", "complete", "finished"}:
+                completed_resources += 1
+            elif signal in {"abandoned", "skipped", "dismissed"}:
+                abandoned_resources += 1
+            elif signal in {"clicked", "opened", "viewed"}:
+                clicked_resources += 1
+
+        for record in practice_records:
+            if record.was_correct:
+                continue
+            topic = record.topic or "general"
+            incorrect_by_topic[topic] = incorrect_by_topic.get(topic, 0) + 1
+
+        struggled_knowledge_points = [
+            self._topic_to_point_id(topic)
+            for topic, count in incorrect_by_topic.items()
+            if count >= 2
+        ]
+        rerun_triggers = []
+        if struggled_knowledge_points:
+            rerun_triggers.append("diagnosis")
+        if abandoned_resources >= 2:
+            rerun_triggers.append("recommendations")
+
+        attempted = len(practice_records)
+        completed = sum(1 for record in practice_records if record.was_correct)
+        last_path_completion_rate = round(completed / attempted, 2) if attempted else None
+        if last_path_completion_rate is not None and last_path_completion_rate < 0.4:
+            rerun_triggers.append("planner")
+
+        return {
+            "completed_resources": completed_resources,
+            "abandoned_resources": abandoned_resources,
+            "clicked_resources": clicked_resources,
+            "struggled_knowledge_points": struggled_knowledge_points,
+            "last_path_completion_rate": last_path_completion_rate,
+            "rerun_triggers": sorted(set(rerun_triggers)),
+        }
+
+    def _topic_to_point_id(self, topic: str) -> str:
+        normalized = "".join(
+            char.lower() if char.isalnum() else "_" for char in topic.strip()
+        ).strip("_")
+        return f"kp_{normalized or 'general'}"
 
     def _ensure_project_access(self, user_id: str, project_id: str) -> None:
         with self._get_db_session() as db:

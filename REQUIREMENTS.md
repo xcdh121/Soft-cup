@@ -318,6 +318,13 @@ SupervisorAgent
 5. `knowledge_point_relations`
    - 知识点依赖、包含、并列、应用关系
 
+课程与现有项目体系的关系：
+
+1. 一个 `course` 可以包含多个 `project`，一个 `project` 最多归属于一个 `course`。
+2. `project` 继续作为具体学习空间，承载文档、聊天、测验、练习记录和生成资源。
+3. 现有业务数据继续通过 `project_id` 关联项目，再通过 `projects.course_id` 间接归属于课程。
+4. 为兼容尚未归类的历史项目，`projects.course_id` 允许暂时为空。
+
 资源元数据至少包含：
 
 1. 资源类型

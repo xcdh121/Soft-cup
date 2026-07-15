@@ -11,6 +11,9 @@ class PracticeRecordDto(BaseModel):
     id: str = Field(..., description="Unique ID of the practice record")
     user_id: str = Field(..., description="ID of the user")
     project_id: str = Field(..., description="ID of the project")
+    knowledge_point_id: str | None = Field(
+        None, description="Knowledge point associated with this practice"
+    )
     item_type: str = Field(..., description="Type of study resource: flashcard or quiz")
     item_id: str = Field(
         ..., description="ID of the study resource (flashcard or quiz question)"

@@ -1,8 +1,7 @@
-import { LogIn } from 'lucide-react'
 import { useSearch } from '@tanstack/react-router'
+import { LogIn } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/hooks/use-auth'
 import {
   Dialog,
   DialogContent,
@@ -13,30 +12,21 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useAuth } from '@/hooks/use-auth'
 
 export const LoginButton = () => {
-  const { login, sendMagicLink, isLoading, loginError, magicLinkError } =
-    useAuth()
+  const { login, isLoading, loginError } = useAuth()
   const search = useSearch({ from: '/' })
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [isOpen, setIsOpen] = useState(false)
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    // Store the redirect URL before login
+  const handleLogin = (event: React.FormEvent) => {
+    event.preventDefault()
     if (search?.redirect) {
       sessionStorage.setItem('auth.redirect', search.redirect)
     }
-    login({ email, password })
-  }
-
-  const handleMagicLink = async () => {
-    // Store the redirect URL before login
-    if (search?.redirect) {
-      sessionStorage.setItem('auth.redirect', search.redirect)
-    }
-    sendMagicLink(email)
+    login({ username, password })
   }
 
   return (
@@ -50,54 +40,40 @@ export const LoginButton = () => {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>登录</DialogTitle>
-          <DialogDescription>
-            使用邮箱和密码登录，或使用魔法链接。
-          </DialogDescription>
+          <DialogDescription>使用账户名和密码登录。</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">邮箱</Label>
+            <Label htmlFor="login-username">账户名</Label>
             <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              id="login-username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
               required
-              placeholder="you@example.com"
+              autoComplete="username"
+              placeholder="请输入账户名"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">密码</Label>
+            <Label htmlFor="login-password">密码</Label>
             <Input
-              id="password"
+              id="login-password"
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              autoComplete="current-password"
               placeholder="请输入密码"
             />
           </div>
-          {(loginError || magicLinkError) && (
+          {loginError && (
             <p className="text-sm text-red-500">
-              {loginError instanceof Error
-                ? loginError.message
-                : magicLinkError instanceof Error
-                  ? magicLinkError.message
-                  : '登录失败'}
+              {loginError instanceof Error ? loginError.message : '登录失败'}
             </p>
           )}
-          <div className="flex gap-2">
-            <Button type="submit" disabled={isLoading || !email}>
-              {isLoading ? '正在登录...' : '登录'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleMagicLink}
-              disabled={isLoading || !email}
-            >
-              发送魔法链接
-            </Button>
-          </div>
+          <Button type="submit" disabled={isLoading || !username || !password}>
+            {isLoading ? '正在登录...' : '登录'}
+          </Button>
         </form>
       </DialogContent>
     </Dialog>

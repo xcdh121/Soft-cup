@@ -138,7 +138,7 @@ For local development, you can set individual environment variables instead of u
 
 ```bash
 # Database
-DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
+DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5433/postgres
 
 # Azure OpenAI (required)
 AZURE_OPENAI_ENDPOINT=https://your-openai-endpoint.openai.azure.com/

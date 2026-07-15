@@ -2,10 +2,13 @@ import { useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import React, { useCallback, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Option } from 'effect'
+import { Loader2Icon } from 'lucide-react'
 import { FlashcardContent } from './flashcard-content'
+import type { FlashcardDto } from '@/integrations/api/client'
 import { flashcardDetailRoute } from '@/routes/_config'
+import { refreshFlashcardsAtom } from '@/data-acess/flashcard'
+import { useGeneratedResourceSnapshot } from '@/hooks/use-generated-resource-snapshot'
 import {
-  currentFlashcardAtom,
   flashcardDetailStateAtom,
   gotItRightAtom,
   gotItWrongAtom,
@@ -26,12 +29,12 @@ export const FlashcardDetail = ({ flashcardGroupId, ...props }: Props) => {
   const navigate = useNavigate()
 
   const stateResult = useAtomValue(flashcardDetailStateAtom(flashcardGroupId))
-  const currentCard = useAtomValue(
-    currentFlashcardAtom({ projectId, flashcardGroupId }),
-  )
 
   const reset = useAtomSet(resetAtom)
-  const initializeQueue = useAtomSet(initializeQueueAtom)
+  const initializeQueue = useAtomSet(initializeQueueAtom, { mode: 'promise' })
+  const refreshFlashcards = useAtomSet(refreshFlashcardsAtom, {
+    mode: 'promise',
+  })
   const resetWrong = useAtomSet(resetWrongAtom)
   const submitPendingPracticeRecords = useAtomSet(
     submitPendingPracticeRecordsAtom,
@@ -42,6 +45,12 @@ export const FlashcardDetail = ({ flashcardGroupId, ...props }: Props) => {
   const setShowAnswer = useAtomSet(setShowAnswerAtom)
   const gotItRight = useAtomSet(gotItRightAtom)
   const gotItWrong = useAtomSet(gotItWrongAtom)
+  const snapshot = useGeneratedResourceSnapshot<Array<FlashcardDto>>({
+    projectId,
+    targetType: 'flashcards',
+    targetId: flashcardGroupId,
+    dataPath: `/api/v1/projects/${projectId}/flashcard-groups/${flashcardGroupId}/flashcards`,
+  })
 
   const handleClose = useCallback(() => {
     navigate({
@@ -77,8 +86,9 @@ export const FlashcardDetail = ({ flashcardGroupId, ...props }: Props) => {
       }
 
       // Get current state
-      const currentState = Option.isSome(stateResult) ? stateResult.value : null
-      if (!currentState || !currentCard) return
+      if (Option.isNone(stateResult)) return
+      const currentState = stateResult.value
+      if (!currentState.currentCardId) return
 
       // Spacebar toggles show/hide answer
       if (event.code === 'Space' || event.key === ' ') {
@@ -101,7 +111,6 @@ export const FlashcardDetail = ({ flashcardGroupId, ...props }: Props) => {
   }, [
     projectId,
     stateResult,
-    currentCard,
     flashcardGroupId,
     setShowAnswer,
     gotItRight,
@@ -111,15 +120,68 @@ export const FlashcardDetail = ({ flashcardGroupId, ...props }: Props) => {
   // Initialize queue when component mounts or group changes
   // Wait a bit to ensure flashcards are loaded first
   useEffect(() => {
+    if (snapshot.checking || snapshot.isGenerating) return
     reset({ flashcardGroupId })
-    // Small delay to ensure flashcardsAtom has started loading
-    const timer = setTimeout(() => {
-      initializeQueue({ projectId, flashcardGroupId, includeMastered: false })
+    const timer = window.setTimeout(() => {
+      void refreshFlashcards({ projectId, flashcardGroupId }).then(() =>
+        initializeQueue({
+          projectId,
+          flashcardGroupId,
+          includeMastered: false,
+        }),
+      )
     }, 100)
-    return () => clearTimeout(timer)
-  }, [flashcardGroupId, reset, initializeQueue])
+    return () => window.clearTimeout(timer)
+  }, [
+    flashcardGroupId,
+    initializeQueue,
+    projectId,
+    refreshFlashcards,
+    reset,
+    snapshot.checking,
+    snapshot.isGenerating,
+  ])
 
   if (!projectId) return null
+
+  const flashcards = snapshot.data ?? []
+  const queueIsReady = Option.isSome(stateResult) && stateResult.value.isReady
+  const showIncrementalGeneration =
+    snapshot.checking ||
+    snapshot.isGenerating ||
+    (snapshot.isManaged && !queueIsReady && flashcards.length > 0)
+
+  if (showIncrementalGeneration) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2Icon className="size-4 animate-spin" />
+          <span>
+            {flashcards.length > 0
+              ? snapshot.isGenerating
+                ? `已生成 ${flashcards.length} 张闪卡，后续内容正在生成…`
+                : `已生成 ${flashcards.length} 张闪卡，正在准备复习…`
+              : snapshot.checking
+                ? '正在加载闪卡…'
+                : '正在生成第一张闪卡…'}
+          </span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {flashcards.map((card, index) => (
+            <div key={card.id} className="rounded-xl border bg-background p-4">
+              <div className="text-xs text-muted-foreground">
+                闪卡 {index + 1}
+              </div>
+              <div className="mt-2 font-medium">{card.question}</div>
+              <div className="mt-3 text-sm text-muted-foreground">
+                {card.answer}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0" {...props}>

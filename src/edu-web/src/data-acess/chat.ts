@@ -19,6 +19,10 @@ import { HttpBody } from '@effect/platform'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Array as Arr, Data, Effect, Layer, Schema, Stream } from 'effect'
 import { UsageLimitExceededError, usageAtom } from './usage'
+import {
+  learnerProfileAtom,
+  learnerProfileRevisionsAtom,
+} from './learner-profile'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -37,6 +41,7 @@ const ChatsAction = Data.taggedEnum<ChatsAction>()
 type ChatMessagesAction = Data.TaggedEnum<{
   Append: { readonly chatId: string; readonly message: ChatMessageDto }
   RemoveTemporaryMessage: {}
+  UpdateMetadata: { readonly chat: ChatDto }
   UpdateParts: {
     readonly chatId: string
     readonly messageId: string
@@ -137,48 +142,66 @@ export const chatAtom = Atom.family((input: string) =>
 
         const messages = Array.from(result.value.messages ?? [])
 
-        const update: ReadonlyArray<ChatMessageDto> = ChatMessagesAction.$match(
+        const update = ChatMessagesAction.$match(
           action,
           {
             Append: ({ message }) => {
-              return [...messages, message] as ReadonlyArray<ChatMessageDto>
+              return { ...result.value, messages: [...messages, message] }
             },
             UpdateParts: ({ messageId, parts }) => {
-              return messages.map((msg: ChatMessageDto) =>
-                msg.id === messageId ? { ...msg, parts } : msg,
-              ) as ReadonlyArray<ChatMessageDto>
+              return {
+                ...result.value,
+                messages: messages.map((msg: ChatMessageDto) =>
+                  msg.id === messageId ? { ...msg, parts } : msg,
+                ),
+              }
             },
             UpdateStatus: ({ messageId, status }) => {
-              return messages.map((msg: ChatMessageDto) =>
-                msg.id === messageId
-                  ? {
-                      ...msg,
-                      parts: (msg.parts
-                        ? Array.from(msg.parts).map((part) =>
-                            // Update status of any tool call parts
-                            part.type === 'tool_call'
-                              ? { ...part, tool_state: status }
-                              : part,
-                          )
-                        : []) as ReadonlyArray<
-                        | TextPartDto
-                        | FilePartDto
-                        | ToolCallPartDto
-                        | SourceDocumentPartDto
-                      >,
-                    }
-                  : msg,
-              ) as ReadonlyArray<ChatMessageDto>
+              return {
+                ...result.value,
+                messages: messages.map((msg: ChatMessageDto) =>
+                  msg.id === messageId
+                    ? {
+                        ...msg,
+                        parts: (msg.parts
+                          ? Array.from(msg.parts).map((part) =>
+                              // Update status of any tool call parts
+                              part.type === 'tool_call'
+                                ? { ...part, tool_state: status }
+                                : part,
+                            )
+                          : []) as ReadonlyArray<
+                          | TextPartDto
+                          | FilePartDto
+                          | ToolCallPartDto
+                          | SourceDocumentPartDto
+                        >,
+                      }
+                    : msg,
+                ),
+              }
             },
             RemoveTemporaryMessage: () => {
-              return messages.filter(
-                (msg: ChatMessageDto) => msg.id !== 'temporary-message-id',
-              ) as ReadonlyArray<ChatMessageDto>
+              return {
+                ...result.value,
+                messages: messages.filter(
+                  (msg: ChatMessageDto) => msg.id !== 'temporary-message-id',
+                ),
+              }
+            },
+            UpdateMetadata: ({ chat }) => {
+              return {
+                ...result.value,
+                title: chat.title,
+                updated_at: chat.updated_at,
+                last_message_content: chat.last_message_content,
+                last_message_at: chat.last_message_at,
+              }
             },
           },
         )
 
-        ctx.setSelf(Result.success({ ...result.value, messages: update }))
+        ctx.setSelf(Result.success(update))
       },
     ),
     {
@@ -364,6 +387,10 @@ export const streamMessageAtom = runtime
     ) {
       const registry = yield* Registry.AtomRegistry
 
+      // Start the UI lifecycle before waiting for the first SSE event. The
+      // chat stream does not guarantee that every event carries a status.
+      get.set(chatStreamStatusAtom(input.chatId), 'thinking')
+
       // Add user message using the new action pattern
       const chatKey = `${input.projectId}:${input.chatId}`
       get.set(
@@ -409,16 +436,18 @@ export const streamMessageAtom = runtime
         .pipe(
           // If the request fails, remove the temporary message
           Effect.tapError(() =>
-            Effect.sync(() =>
+            Effect.sync(() => {
               get.set(
                 chatAtom(chatKey),
                 ChatMessagesAction.RemoveTemporaryMessage(),
-              ),
-            ),
+              )
+              get.set(chatStreamStatusAtom(input.chatId), null)
+            }),
           ),
         )
 
       if (resp.status === 429) {
+        get.set(chatStreamStatusAtom(input.chatId), null)
         registry.set(
           chatAtom(chatKey),
           ChatMessagesAction.RemoveTemporaryMessage(),
@@ -440,9 +469,18 @@ export const streamMessageAtom = runtime
         ),
         Stream.tap(handleStreamPart(input, get, registry)),
         Stream.runCollect,
+        Effect.ensuring(
+          Effect.sync(() => get.set(chatStreamStatusAtom(input.chatId), null)),
+        ),
       )
 
-      // Refresh usage only
+      // The backend may have extracted stable profile facts from this chat.
+      // Invalidate both views so navigating to the profile does not show a
+      // permanently cached pre-chat snapshot.
+      registry.refresh(learnerProfileAtom(input.projectId))
+      registry.refresh(learnerProfileRevisionsAtom(input.projectId))
+      registry.refresh(chatRemoteAtom(chatKey))
+      registry.refresh(chatsRemoteAtom(input.projectId))
       get.refresh(usageAtom)
     }),
   )
@@ -479,6 +517,10 @@ export const updateChatAtom = runtime.fn(
       )
 
     registry.set(chatsAtom(res.project_id), ChatsAction.Upsert({ chat: res }))
+    registry.set(
+      chatAtom(`${input.projectId}:${input.chatId}`),
+      ChatMessagesAction.UpdateMetadata({ chat: res }),
+    )
     return res
   }),
 )

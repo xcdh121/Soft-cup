@@ -28,9 +28,11 @@ async def search_project_documents(
     sources = [
         {
             "id": result.id,
+            "segment_id": result.segment_id or result.id,
             "content": result.content or "",
             "title": result.title or f"Document {i}",
             "document_id": result.document_id,
+            "page_number": result.page_number,
             "score": getattr(result, "score", None) or 1.0,
         }
         for i, result in enumerate(search_results, 1)
@@ -39,7 +41,12 @@ async def search_project_documents(
     # Format content for agent - give clean context without citation markers
     # The agent should use this information naturally, not copy-paste it
     context_blocks = [
-        f"From {source['title']}:\n{source['content'][:1500]}" for source in sources
+        (
+            f"From {source['title']}"
+            f"{' page ' + str(source['page_number']) if source.get('page_number') else ''}:\n"
+            f"{source['content'][:1500]}"
+        )
+        for source in sources
     ]
 
     formatted_content = "\n\n---\n\n".join(context_blocks)

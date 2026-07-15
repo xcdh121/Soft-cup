@@ -70,6 +70,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import type { XfyunIatSession } from '@/lib/xfyun-iat'
+import { startXfyunIat } from '@/lib/xfyun-iat'
 import { cn } from '@/lib/utils'
 
 // ============================================================================
@@ -446,6 +448,7 @@ export type PromptInputProps = Omit<
   // Minimal constraints
   maxFiles?: number
   maxFileSize?: number // bytes
+  convertAttachmentsToDataUrls?: boolean
   onError?: (err: {
     code: 'max_files' | 'max_file_size' | 'accept'
     message: string
@@ -464,6 +467,7 @@ export const PromptInput = ({
   syncHiddenInput,
   maxFiles,
   maxFileSize,
+  convertAttachmentsToDataUrls = true,
   onError,
   onSubmit,
   children,
@@ -501,6 +505,9 @@ export const PromptInput = ({
         .filter(Boolean)
 
       return patterns.some((pattern) => {
+        if (pattern.startsWith('.')) {
+          return f.name.toLowerCase().endsWith(pattern.toLowerCase())
+        }
         if (pattern.endsWith('/*')) {
           const prefix = pattern.slice(0, -1) // e.g: image/* -> image/
           return f.type.startsWith(prefix)
@@ -728,7 +735,11 @@ export const PromptInput = ({
     // Convert blob URLs to data URLs asynchronously
     Promise.all(
       files.map(async ({ id, ...item }) => {
-        if (item.url && item.url.startsWith('blob:')) {
+        if (
+          convertAttachmentsToDataUrls &&
+          item.url &&
+          item.url.startsWith('blob:')
+        ) {
           const dataUrl = await convertBlobUrlToDataUrl(item.url)
           // If conversion failed, keep the original blob URL
           return {
@@ -1053,160 +1064,99 @@ export const PromptInputSubmit = ({
   )
 }
 
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean
-  interimResults: boolean
-  lang: string
-  start: () => void
-  stop: () => void
-  onstart: ((this: SpeechRecognition, ev: Event) => any) | null
-  onend: ((this: SpeechRecognition, ev: Event) => any) | null
-  onresult:
-    | ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any)
-    | null
-  onerror:
-    | ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any)
-    | null
-}
-
-interface SpeechRecognitionEvent extends Event {
-  results: SpeechRecognitionResultList
-  resultIndex: number
-}
-
-type SpeechRecognitionResultList = {
-  readonly length: number
-  item: (index: number) => SpeechRecognitionResult
-  [index: number]: SpeechRecognitionResult
-}
-
-type SpeechRecognitionResult = {
-  readonly length: number
-  item: (index: number) => SpeechRecognitionAlternative
-  [index: number]: SpeechRecognitionAlternative
-  isFinal: boolean
-}
-
-type SpeechRecognitionAlternative = {
-  transcript: string
-  confidence: number
-}
-
-interface SpeechRecognitionErrorEvent extends Event {
-  error: string
-}
-
-declare global {
-  interface Window {
-    SpeechRecognition: {
-      new (): SpeechRecognition
-    }
-    webkitSpeechRecognition: {
-      new (): SpeechRecognition
-    }
-  }
-}
-
 export type PromptInputSpeechButtonProps = ComponentProps<
   typeof PromptInputButton
 > & {
   textareaRef?: RefObject<HTMLTextAreaElement | null>
+  value?: string
   onTranscriptionChange?: (text: string) => void
 }
 
 export const PromptInputSpeechButton = ({
   className,
   textareaRef,
+  value,
   onTranscriptionChange,
   ...props
 }: PromptInputSpeechButtonProps) => {
   const [isListening, setIsListening] = useState(false)
-  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null)
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const [isStarting, setIsStarting] = useState(false)
+  const sessionRef = useRef<XfyunIatSession | null>(null)
+  const baseTextRef = useRef('')
 
   useEffect(() => {
-    if (
-      typeof window !== 'undefined' &&
-      ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
-    ) {
-      const SpeechRecognition =
-        window.SpeechRecognition || window.webkitSpeechRecognition
-      const speechRecognition = new SpeechRecognition()
-
-      speechRecognition.continuous = true
-      speechRecognition.interimResults = true
-      speechRecognition.lang = 'en-US'
-
-      speechRecognition.onstart = () => {
-        setIsListening(true)
-      }
-
-      speechRecognition.onend = () => {
-        setIsListening(false)
-      }
-
-      speechRecognition.onresult = (event) => {
-        let finalTranscript = ''
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i]
-          if (result.isFinal) {
-            finalTranscript += result[0]?.transcript ?? ''
-          }
-        }
-
-        if (finalTranscript && textareaRef?.current) {
-          const textarea = textareaRef.current
-          const currentValue = textarea.value
-          const newValue =
-            currentValue + (currentValue ? ' ' : '') + finalTranscript
-
-          textarea.value = newValue
-          textarea.dispatchEvent(new Event('input', { bubbles: true }))
-          onTranscriptionChange?.(newValue)
-        }
-      }
-
-      speechRecognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error)
-        setIsListening(false)
-      }
-
-      recognitionRef.current = speechRecognition
-      setRecognition(speechRecognition)
-    }
-
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop()
-      }
+      sessionRef.current?.stop()
     }
-  }, [textareaRef, onTranscriptionChange])
+  }, [])
 
-  const toggleListening = useCallback(() => {
-    if (!recognition) {
+  const applyTranscription = useCallback(
+    (transcript: string) => {
+      const trimmedTranscript = transcript.trim()
+      const baseText = baseTextRef.current.trimEnd()
+      const nextText = trimmedTranscript
+        ? `${baseText}${baseText ? ' ' : ''}${trimmedTranscript}`
+        : baseText
+
+      if (textareaRef?.current) {
+        textareaRef.current.value = nextText
+        textareaRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      onTranscriptionChange?.(nextText)
+    },
+    [textareaRef, onTranscriptionChange],
+  )
+
+  const toggleListening = useCallback(async () => {
+    if (isStarting) {
       return
     }
 
     if (isListening) {
-      recognition.stop()
-    } else {
-      recognition.start()
+      sessionRef.current?.stop()
+      sessionRef.current = null
+      setIsListening(false)
+      return
     }
-  }, [recognition, isListening])
+
+    try {
+      setIsStarting(true)
+      baseTextRef.current = textareaRef?.current?.value ?? value ?? ''
+      sessionRef.current = await startXfyunIat({
+        onTranscript: applyTranscription,
+        onListeningChange: setIsListening,
+        onError: (error) => {
+          console.error('XFYun speech recognition error:', error)
+          setIsListening(false)
+          sessionRef.current = null
+        },
+      })
+    } catch (error) {
+      console.error('XFYun speech recognition failed:', error)
+      setIsListening(false)
+      sessionRef.current = null
+    } finally {
+      setIsStarting(false)
+    }
+  }, [applyTranscription, isListening, isStarting, textareaRef, value])
 
   return (
     <PromptInputButton
       className={cn(
         'relative transition-all duration-200',
-        isListening && 'animate-pulse bg-accent text-accent-foreground',
+        (isListening || isStarting) &&
+          'animate-pulse bg-accent text-accent-foreground',
         className,
       )}
-      disabled={!recognition}
+      disabled={isStarting}
       onClick={toggleListening}
       {...props}
     >
-      <MicIcon className="size-4" />
+      {isStarting ? (
+        <Loader2Icon className="size-4 animate-spin" />
+      ) : (
+        <MicIcon className="size-4" />
+      )}
     </PromptInputButton>
   )
 }

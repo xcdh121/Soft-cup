@@ -1,7 +1,9 @@
 import os
 from logging.config import fileConfig
+from pathlib import Path
 
 from alembic import context
+from dotenv import load_dotenv
 from edu_db import models  # noqa: F401 - Import models to register with Base.metadata
 
 # add your model's MetaData object here
@@ -20,10 +22,19 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# Get database URL from environment variable
+# Alembic runs outside the API process, so it must load the root .env itself.
+if config.config_file_name:
+    env_path = Path(config.config_file_name).resolve().parent / ".env"
+    load_dotenv(env_path)
+
 database_url = os.getenv("DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+if not database_url:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Add it to the root .env file or the current "
+        "shell environment before running Alembic."
+    )
+
+config.set_main_option("sqlalchemy.url", database_url)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

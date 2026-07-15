@@ -1,8 +1,9 @@
-import { AppShell } from '@/routes/_app-shell'
 import { createRootRoute, createRoute, redirect } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { Suspense, lazy } from 'react'
 import { z } from 'zod'
+import { authClient } from '@/lib/auth-client'
+import { AppShell } from '@/routes/_app-shell'
 
 const LoadingPage = () => {
   return (
@@ -37,6 +38,11 @@ const DocumentDetailRoute = lazy(() =>
     default: m.DocumentDetailRoute,
   })),
 )
+const CustomDocumentLearningRoute = lazy(() =>
+  import('./custom-document-learning-route').then((m) => ({
+    default: m.CustomDocumentLearningRoute,
+  })),
+)
 const QuizDetailRoute = lazy(() =>
   import('./quiz-detail-route').then((m) => ({ default: m.QuizDetailRoute })),
 )
@@ -69,14 +75,49 @@ const StudyPlanRoute = lazy(() =>
     default: m.StudyPlanRoute,
   })),
 )
+const CustomStudyPlanRoute = lazy(() =>
+  import('./custom-study-plan-route').then((m) => ({
+    default: m.CustomStudyPlanRoute,
+  })),
+)
 const ResourcePackageRoute = lazy(() =>
   import('./resource-package-route').then((m) => ({
     default: m.ResourcePackageRoute,
   })),
 )
+const HandwritingRecognitionRoute = lazy(() =>
+  import('./handwriting-recognition-route').then((m) => ({
+    default: m.HandwritingRecognitionRoute,
+  })),
+)
+const PdfOcrRoute = lazy(() =>
+  import('./pdf-ocr-route').then((m) => ({
+    default: m.PdfOcrRoute,
+  })),
+)
+const DocumentTranslationRoute = lazy(() =>
+  import('./document-translation-route').then((m) => ({
+    default: m.DocumentTranslationRoute,
+  })),
+)
+const ProgrammingPracticeRoute = lazy(() =>
+  import('./programming-practice-route').then((m) => ({
+    default: m.ProgrammingPracticeRoute,
+  })),
+)
 const LearnerProfileRoute = lazy(() =>
   import('./learner-profile-route').then((m) => ({
     default: m.LearnerProfileRoute,
+  })),
+)
+const CourseLibraryRoute = lazy(() =>
+  import('./course-library-route').then((m) => ({
+    default: m.CourseLibraryRoute,
+  })),
+)
+const MyCoursesRoute = lazy(() =>
+  import('./my-courses-route').then((m) => ({
+    default: m.MyCoursesRoute,
   })),
 )
 const KnowledgeGraphRoute = lazy(() =>
@@ -102,30 +143,15 @@ const DashboardPage = lazy(() =>
     default: m.DashboardPage,
   })),
 )
-const AgentOrchestrationRoute = lazy(() =>
-  import('./agent-orchestration-route').then((m) => ({
-    default: m.AgentOrchestrationRoute,
+const AgentRuntimeRoute = lazy(() =>
+  import('./agent-runtime-route').then((m) => ({
+    default: m.AgentRuntimeRoute,
   })),
 )
-const ProjectAgentOrchestrationRoute = lazy(() =>
-  import('./project-agent-orchestration-route').then((m) => ({
-    default: m.ProjectAgentOrchestrationRoute,
-  })),
-)
-
 const requireAuth = async () => {
-  const { isSupabaseConfigured } = await import('@/lib/supabase')
-
-  if (!isSupabaseConfigured) {
-    return
-  }
-
-  // Check if user is authenticated by checking Supabase session
-  const { supabase } = await import('@/lib/supabase')
-
   const {
     data: { session },
-  } = await supabase.auth.getSession()
+  } = await authClient.auth.getSession()
   const isAuthenticated = !!session
 
   if (!isAuthenticated) {
@@ -194,16 +220,6 @@ export const signUpRoute = createRoute({
   ),
 })
 
-export const agentOrchestrationRoute = createRoute({
-  path: '/agent-orchestration',
-  getParentRoute: () => rootRoute,
-  component: () => (
-    <Suspense fallback={<LoadingPage />}>
-      <AgentOrchestrationRoute />
-    </Suspense>
-  ),
-})
-
 export const dashboardIndexRoute = createRoute({
   path: '/',
   getParentRoute: () => dashboardRoute,
@@ -240,6 +256,16 @@ export const documentDetailRoute = createRoute({
   component: () => (
     <Suspense fallback={<LoadingPage />}>
       <DocumentDetailRoute />
+    </Suspense>
+  ),
+})
+
+export const customDocumentLearningRoute = createRoute({
+  path: '/p/$projectId/custom-documents',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <CustomDocumentLearningRoute />
     </Suspense>
   ),
 })
@@ -314,12 +340,63 @@ export const studyPlanRoute = createRoute({
   ),
 })
 
-export const resourcePackageRoute = createRoute({
-  path: '/p/$projectId/resource-packages',
+export const customStudyPlanRoute = createRoute({
+  path: '/p/$projectId/study-plan/customize',
   getParentRoute: () => dashboardRoute,
   component: () => (
     <Suspense fallback={<LoadingPage />}>
+      <CustomStudyPlanRoute />
+    </Suspense>
+  ),
+})
+
+export const resourcePackageRoute = createRoute({
+  path: '/p/$projectId/resource-packages',
+  getParentRoute: () => dashboardRoute,
+  validateSearch: z.object({ packageId: z.string().optional() }).optional(),
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
       <ResourcePackageRoute />
+    </Suspense>
+  ),
+})
+
+export const handwritingRecognitionRoute = createRoute({
+  path: '/p/$projectId/handwriting-recognition',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <HandwritingRecognitionRoute />
+    </Suspense>
+  ),
+})
+
+export const pdfOcrRoute = createRoute({
+  path: '/p/$projectId/pdf-ocr',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <PdfOcrRoute />
+    </Suspense>
+  ),
+})
+
+export const documentTranslationRoute = createRoute({
+  path: '/p/$projectId/document-translation',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <DocumentTranslationRoute />
+    </Suspense>
+  ),
+})
+
+export const programmingPracticeRoute = createRoute({
+  path: '/p/$projectId/programming/$resourceId',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <ProgrammingPracticeRoute />
     </Suspense>
   ),
 })
@@ -330,6 +407,27 @@ export const learnerProfileRoute = createRoute({
   component: () => (
     <Suspense fallback={<LoadingPage />}>
       <LearnerProfileRoute />
+    </Suspense>
+  ),
+})
+
+export const courseLibraryRoute = createRoute({
+  path: '/course-library',
+  getParentRoute: () => dashboardRoute,
+  validateSearch: z.object({ courseId: z.string().optional() }).optional(),
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <CourseLibraryRoute />
+    </Suspense>
+  ),
+})
+
+export const myCoursesRoute = createRoute({
+  path: '/my-courses',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <MyCoursesRoute />
     </Suspense>
   ),
 })
@@ -349,17 +447,47 @@ export const learningEvaluationRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   component: () => (
     <Suspense fallback={<LoadingPage />}>
-      <LearningEvaluationRoute />
+      <LearningEvaluationRoute section="history" />
     </Suspense>
   ),
 })
 
-export const projectAgentOrchestrationRoute = createRoute({
-  path: '/p/$projectId/agent-orchestration',
+export const learningEvaluationHistoryRoute = createRoute({
+  path: '/p/$projectId/learning-evaluation/history',
   getParentRoute: () => dashboardRoute,
   component: () => (
     <Suspense fallback={<LoadingPage />}>
-      <ProjectAgentOrchestrationRoute />
+      <LearningEvaluationRoute section="history" />
+    </Suspense>
+  ),
+})
+
+export const learningEvaluationProgrammingRoute = createRoute({
+  path: '/p/$projectId/learning-evaluation/programming',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <LearningEvaluationRoute section="practice" />
+    </Suspense>
+  ),
+})
+
+export const learningEvaluationChoiceRoute = createRoute({
+  path: '/p/$projectId/learning-evaluation/choice',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <LearningEvaluationRoute section="practice" />
+    </Suspense>
+  ),
+})
+
+export const learningEvaluationPracticeRoute = createRoute({
+  path: '/p/$projectId/learning-evaluation/practice',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <LearningEvaluationRoute section="practice" />
     </Suspense>
   ),
 })
@@ -374,11 +502,22 @@ export const settingsRoute = createRoute({
   ),
 })
 
+export const agentRuntimeRoute = createRoute({
+  path: '/agent-runtime',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <AgentRuntimeRoute />
+    </Suspense>
+  ),
+})
+
 export const routeTree = rootRoute.addChildren([
   dashboardRoute.addChildren([
     dashboardIndexRoute,
     projectDetailRoute,
     chatDetailRoute,
+    customDocumentLearningRoute,
     documentDetailRoute,
     flashcardDetailRoute,
     flashcardEditRoute,
@@ -388,15 +527,25 @@ export const routeTree = rootRoute.addChildren([
     mindMapDetailRoute,
 
     studyPlanRoute,
+    customStudyPlanRoute,
     resourcePackageRoute,
+    handwritingRecognitionRoute,
+    pdfOcrRoute,
+    documentTranslationRoute,
+    programmingPracticeRoute,
     learnerProfileRoute,
+    myCoursesRoute,
+    courseLibraryRoute,
     knowledgeGraphRoute,
     learningEvaluationRoute,
-    projectAgentOrchestrationRoute,
+    learningEvaluationHistoryRoute,
+    learningEvaluationProgrammingRoute,
+    learningEvaluationChoiceRoute,
+    learningEvaluationPracticeRoute,
+    agentRuntimeRoute,
     settingsRoute,
   ]),
   indexRoute,
   signInRoute,
   signUpRoute,
-  agentOrchestrationRoute,
 ])

@@ -242,7 +242,12 @@ class XfyunEmbeddings(Embeddings):
     def _augment_http_error(exc: httpx.HTTPStatusError) -> httpx.HTTPStatusError:
         response = exc.response
         detail = response.text.strip()
-        message = str(exc)
+        url = exc.request.url
+        safe_url = f"{url.scheme}://{url.host}{url.path}"
+        message = (
+            f"{response.status_code} {response.reason_phrase} for url "
+            f"'{safe_url}'"
+        )
         if detail:
             message = f"{message}\nResponse body: {detail}"
         return httpx.HTTPStatusError(message, request=exc.request, response=response)

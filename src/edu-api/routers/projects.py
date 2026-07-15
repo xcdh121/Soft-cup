@@ -26,7 +26,10 @@ async def create_project(
             name=project.name,
             description=project.description,
             language_code=project.language_code,
+            course_id=project.course_id,
         )
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -73,6 +76,8 @@ async def update_project(
             name=project.name,
             description=project.description,
             language_code=project.language_code,
+            course_id=project.course_id,
+            fields_to_update=project.model_fields_set,
         )
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

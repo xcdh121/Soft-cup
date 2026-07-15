@@ -11,7 +11,7 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
 } from '@/components/ui/breadcrumb'
-import { generateMindMapAtom, mindMapAtom } from '@/data-acess/mind-map'
+import { generateMindMapStreamAtom, mindMapAtom } from '@/data-acess/mind-map'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import {
@@ -90,7 +90,7 @@ type MindMapHeaderProps = {
 }
 
 export const MindMapHeader = ({ projectId, mindMapId }: MindMapHeaderProps) => {
-  const generateMap = useAtomSet(generateMindMapAtom, { mode: 'promise' })
+  const generateMap = useAtomSet(generateMindMapStreamAtom, { mode: 'promise' })
   const [isGenerating, setIsGenerating] = useState(false)
   const [customInstructions, setCustomInstructions] = useState('')
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -100,6 +100,7 @@ export const MindMapHeader = ({ projectId, mindMapId }: MindMapHeaderProps) => {
     try {
       await generateMap({
         projectId,
+        mindMapId,
         customInstructions: customInstructions || undefined,
       })
       setCustomInstructions('')

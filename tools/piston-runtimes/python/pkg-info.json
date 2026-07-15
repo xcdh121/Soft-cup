@@ -1,0 +1,6 @@
+{
+  "language": "python",
+  "version": "3.7.3",
+  "build_platform": "docker-debian",
+  "aliases": ["py", "py3", "python3"]
+}

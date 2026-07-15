@@ -1,3 +1,8 @@
+import { useAtomSet } from '@effect-atom/atom-react'
+import { Link } from '@tanstack/react-router'
+import { format } from 'date-fns'
+import { MoreVerticalIcon, PencilIcon, TrashIcon } from 'lucide-react'
+import type { ChatDto } from '@/integrations/api/client'
 import { useConfirmationDialog } from '@/components/confirmation-dialog'
 import { Button } from '@/components/ui/button'
 import {
@@ -7,11 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { deleteChatAtom } from '@/data-acess/chat'
-import type { ChatDto } from '@/integrations/api/client'
-import { useAtomSet } from '@effect-atom/atom-react'
-import { Link } from '@tanstack/react-router'
-import { format } from 'date-fns'
-import { MoreVerticalIcon, TrashIcon } from 'lucide-react'
+import { useEditChatDialog } from '@/features/chat/components/edit-chat-dialog'
 
 type Props = {
   chat: ChatDto
@@ -20,6 +21,13 @@ type Props = {
 export const ChatListItem = ({ chat }: Props) => {
   const deleteChat = useAtomSet(deleteChatAtom, { mode: 'promise' })
   const confirmationDialog = useConfirmationDialog()
+  const editChatDialog = useEditChatDialog()
+
+  const handleEdit = (e: Event) => {
+    e.preventDefault()
+    e.stopPropagation()
+    editChatDialog.open(chat.project_id, chat.id, chat.title ?? null)
+  }
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -83,6 +91,10 @@ export const ChatListItem = ({ chat }: Props) => {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={handleEdit}>
+              <PencilIcon className="size-4" />
+              <span>重命名</span>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={handleDelete} variant="destructive">
               <TrashIcon className="size-4" />
               <span>删除</span>

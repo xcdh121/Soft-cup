@@ -1,12 +1,15 @@
 """Router for flashcard group CRUD operations."""
 
+import json
 from collections.abc import AsyncGenerator
 
 from auth import get_current_user
 from dependencies import (
     get_flashcard_group_service,
+    get_task_runner,
     get_usage_service,
 )
+from task_runner import TaskRunnerService
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.flashcards import FlashcardDto, FlashcardGroupDto
 from edu_core.schemas.users import UserDto
@@ -158,49 +161,39 @@ async def generate_flashcards_stream(
     current_user: UserDto = Depends(get_current_user),
     service: FlashcardGroupService = Depends(get_flashcard_group_service),
     usage_service: UsageService = Depends(get_usage_service),
+    task_runner: TaskRunnerService = Depends(get_task_runner),
 ):
-    """Queue flashcard generation request with streaming progress updates."""
+    """Generate flashcards and stream each complete card."""
     # Check usage limit before processing
     usage_service.check_and_increment(current_user.id, "flashcard_generation")
 
     async def generate_stream() -> AsyncGenerator[bytes]:
         """Generate streaming progress updates"""
         try:
-            # Queuing request
-            progress = GenerationProgressUpdate(
-                status="queuing", message="Queuing flashcard generation request..."
-            )
-            yield f"data: {progress.model_dump_json()}\n\n".encode()
-
-            service.queue_generation(
-                group_id=group_id,
-                project_id=project_id,
-                topic=request.topic,
-                custom_instructions=request.custom_instructions,
-                user_id=current_user.id,
-            )
-
-            # Done (queued)
-            progress = GenerationProgressUpdate(
-                status="done",
-                message="Flashcard generation request queued successfully",
-            )
-            yield f"data: {progress.model_dump_json()}\n\n".encode()
+            service.get_flashcard_group(group_id=group_id, project_id=project_id)
+            started = {"event": "generation_started", "status": "generating",
+                       "message": "Generating flashcards", "group_id": group_id}
+            yield f"data: {json.dumps(started)}\n\n".encode()
+            async for event in task_runner.stream_flashcards({
+                "project_id": project_id, "group_id": group_id,
+                "topic": request.topic,
+                "custom_instructions": request.custom_instructions,
+                "count": request.count, "difficulty": request.difficulty,
+            }):
+                completed = event.get("event") == "flashcards_completed"
+                payload = {"status": "done" if completed else "generating",
+                           "message": "Flashcards generated" if completed else "Generating flashcards",
+                           **event}
+                yield f"data: {json.dumps(payload)}\n\n".encode()
 
         except NotFoundError as e:
-            error_progress = GenerationProgressUpdate(
-                status="done",
-                message="Error queuing flashcard generation",
-                error=str(e),
-            )
-            yield f"data: {error_progress.model_dump_json()}\n\n".encode()
+            payload = {"event": "generation_failed", "status": "done",
+                       "message": "Flashcard generation failed", "error": str(e)}
+            yield f"data: {json.dumps(payload)}\n\n".encode()
         except Exception as e:
-            error_progress = GenerationProgressUpdate(
-                status="done",
-                message="Error queuing flashcard generation",
-                error=str(e),
-            )
-            yield f"data: {error_progress.model_dump_json()}\n\n".encode()
+            payload = {"event": "generation_failed", "status": "done",
+                       "message": "Flashcard generation failed", "error": str(e)}
+            yield f"data: {json.dumps(payload)}\n\n".encode()
 
     return StreamingResponse(
         generate_stream(),
@@ -227,6 +220,7 @@ async def create_flashcard(
         return service.create_flashcard(
             group_id=group_id,
             project_id=project_id,
+            knowledge_point_id=flashcard.knowledge_point_id,
             question=flashcard.question,
             answer=flashcard.answer,
             difficulty_level=flashcard.difficulty_level,
@@ -288,6 +282,7 @@ async def update_flashcard(
             flashcard_id=flashcard_id,
             group_id=group_id,
             project_id=project_id,
+            knowledge_point_id=flashcard.knowledge_point_id,
             question=flashcard.question,
             answer=flashcard.answer,
             difficulty_level=flashcard.difficulty_level,

@@ -1,18 +1,29 @@
 """CRUD service for managing chats."""
 
 import json
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import contextmanager, suppress
 from datetime import datetime
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Union
 from uuid import uuid4
 
 from edu_ai.chatbot.context import ChatbotContext
 from edu_ai.chatbot.factory import make_chatbot
+from edu_ai.chatbot.image_generation_routing import (
+    extract_image_topic,
+    should_force_image_generation,
+)
 from edu_db.models import (
     Chat,
     Document,
+    KnowledgePoint,
+    LearnerProfile,
+    PracticeRecord,
     Project,
+    StudentKnowledgeState,
 )
 from edu_db.models import (
     ChatMessage as DBChatMessage,
@@ -32,12 +43,14 @@ from edu_core.schemas.chats import (
     ChatMessageDto,
     FilePartDto,
     SourceDocumentPartDto,
+    StreamEventDto,
     StreamingChatMessage,
     TextPartDto,
     ToolCallPartDto,
-    StreamEventDto,
 )
 from edu_core.storage import LocalStorageService
+
+logger = logging.getLogger(__name__)
 
 
 # Constants for part types and tool names
@@ -68,6 +81,26 @@ class ToolState:
 class ChatService:
     """Service for managing chats with AI-powered responses."""
 
+    # RAG can be invoked more than once while the agent refines a response. Keep
+    # the citations useful by counting logical documents, rather than every
+    # matching chunk returned by every invocation.
+    MAX_SOURCE_DOCUMENTS = 5
+
+    TUTOR_PROFILE_FIELDS = (
+        "major_background",
+        "education_level",
+        "current_course",
+        "learning_goal",
+        "knowledge_background",
+        "learning_progress",
+        "resource_preference",
+        "cognitive_style",
+        "common_error_types",
+        "practical_ability",
+        "available_study_time",
+        "current_learning_state",
+    )
+
     def __init__(
         self,
         search_service=None,
@@ -77,6 +110,8 @@ class ChatService:
         storage_root: str = "./.localdata",
         usage_service=None,
         queue_service=None,
+        resource_package_service=None,
+        learning_path_service=None,
     ) -> None:
         """Initialize the chat service.
 
@@ -92,6 +127,8 @@ class ChatService:
         self.search_service = search_service
         self.usage_service = usage_service
         self._queue_service = queue_service
+        self.resource_package_service = resource_package_service
+        self.learning_path_service = learning_path_service
         self.storage = LocalStorageService(storage_root)
         llm_config = LlmProviderConfig(
             model=llm_model or "gpt-4o-mini",
@@ -194,7 +231,10 @@ class ChatService:
         Returns:
             SourceDocumentPartDto if created, None if skipped (duplicate or invalid)
         """
-        source_id = source.get("id") or source.get("document_id", "")
+        # Search results are document *segments*.  Using the segment ID here made
+        # several chunks from the same PDF appear as several independent sources
+        # (and repeated searches could therefore show 10 or 15 sources).
+        source_id = source.get("document_id") or source.get("id", "")
         if not source_id or source_id in existing_source_ids:
             return None
 
@@ -216,18 +256,25 @@ class ChatService:
         }
         media_type = media_type_map.get(file_type.lower(), "application/pdf")
 
+        provider_metadata = {
+            # Only real uploaded documents have a document-detail route. Course
+            # library results use synthetic IDs and should not link to that route.
+            "document_id": str(document.id) if document else None,
+            "segment_id": source.get("segment_id") or source.get("id"),
+            "page_number": source.get("page_number"),
+            "score": source.get("score"),
+        }
+        provider_metadata = {
+            key: value for key, value in provider_metadata.items() if value is not None
+        }
+
         return SourceDocumentPartDto(
             id=str(uuid4()),
             source_id=source_id,
             media_type=media_type,
             title=source.get("title", document.file_name if document else "Document"),
             filename=document.file_name if document else None,
-            provider_metadata={
-                "document_id": source.get("document_id"),
-                "score": source.get("score"),
-            }
-            if source.get("score")
-            else None,
+            provider_metadata=provider_metadata or None,
             order=order,
         )
 
@@ -415,6 +462,20 @@ class ChatService:
             streaming_message,
         )
 
+    @staticmethod
+    def _non_text_stream_parts(
+        parts: list[
+            Union[TextPartDto, FilePartDto, ToolCallPartDto, SourceDocumentPartDto]
+        ],
+    ) -> list[Union[FilePartDto, ToolCallPartDto, SourceDocumentPartDto]]:
+        """Return snapshot parts that are safe to emit as non-delta updates.
+
+        Text parts in ``current_parts`` contain the full accumulated answer. They
+        must not be emitted in source/tool snapshots because the SSE adapter treats
+        every non-final text part as a delta and the browser would append it again.
+        """
+        return [part for part in parts if not isinstance(part, TextPartDto)]
+
     def _process_user_message_parts(
         self,
         parts: list[dict[str, Any]],
@@ -437,8 +498,25 @@ class ChatService:
         for part_index, part_dict in enumerate(parts):
             part_type = part_dict.get("type", PartType.TEXT)
 
-            # Filter out file parts - file upload is not supported
             if part_type == PartType.FILE:
+                db_part = DBChatMessagePart(
+                    id=str(uuid4()),
+                    message_id=user_message_db.id,
+                    part_type=part_type,
+                    order=part_index,
+                    file_name=part_dict.get("file_name") or "image",
+                    file_type=part_dict.get("file_type") or "application/octet-stream",
+                    file_url=part_dict.get("file_url") or "",
+                )
+                user_parts_dto.append(
+                    FilePartDto(
+                        file_name=db_part.file_name,
+                        file_type=db_part.file_type,
+                        file_url=db_part.file_url,
+                        order=part_index,
+                    )
+                )
+                db.add(db_part)
                 continue
 
             if part_type == PartType.TEXT:
@@ -595,6 +673,21 @@ class ChatService:
                     self._db_message_to_dto(db_msg) for db_msg in db_messages
                 ]
 
+                if not (chat.title and chat.title.strip()):
+                    first_user_message = next(
+                        (message for message in db_messages if message.role == "user"),
+                        None,
+                    )
+                    if first_user_message:
+                        first_message_text = " ".join(
+                            part.text_content
+                            for part in first_user_message.parts
+                            if part.part_type == PartType.TEXT and part.text_content
+                        )
+                        if first_message_text.strip():
+                            chat.title = self._fallback_chat_title(first_message_text)
+                            db.commit()
+
                 # Create ChatDetailDto with messages
                 chat_dto = self._model_to_dto(chat)
                 return ChatDetailDto(
@@ -631,6 +724,7 @@ class ChatService:
                 )
 
                 result = []
+                titles_backfilled = False
                 for chat in chats:
                     # Fetch last message for each chat
                     last_message = (
@@ -640,10 +734,40 @@ class ChatService:
                         .order_by(DBChatMessage.created_at.desc())
                         .first()
                     )
+
+                    # Repair chats created while automatic title generation was
+                    # unavailable by extracting a title from the first user message.
+                    if not (chat.title and chat.title.strip()):
+                        first_user_message = (
+                            db.query(DBChatMessage)
+                            .filter(
+                                DBChatMessage.chat_id == chat.id,
+                                DBChatMessage.role == "user",
+                            )
+                            .options(joinedload(DBChatMessage.parts))
+                            .order_by(DBChatMessage.created_at.asc())
+                            .first()
+                        )
+                        if first_user_message:
+                            first_message_text = " ".join(
+                                part.text_content
+                                for part in first_user_message.parts
+                                if part.part_type == PartType.TEXT
+                                and part.text_content
+                            )
+                            if first_message_text.strip():
+                                chat.title = self._fallback_chat_title(
+                                    first_message_text
+                                )
+                                titles_backfilled = True
+
                     result.append(self._model_to_dto(chat, last_message))
 
+                if titles_backfilled:
+                    db.commit()
+
                 # Sort by last_message_at
-                result.sort(key=lambda x: x.last_message_at or x.updated_at, reverse=True)                
+                result.sort(key=lambda x: x.last_message_at or x.updated_at, reverse=True)
 
                 return result
             except Exception:
@@ -797,7 +921,7 @@ class ChatService:
                     self._db_message_to_dto(db_msg) for db_msg in db_messages
                 ]
 
-                is_first_message = len(chat_history_for_llm) == 0
+                should_generate_title = not (chat.title and chat.title.strip())
 
                 # Save user message to DB
                 user_message_db = DBChatMessage(
@@ -885,17 +1009,16 @@ class ChatService:
                                 db_part.provider_metadata = part_dto.provider_metadata
                             db.add(db_part)
 
-                        # Queue title generation for first message
-                        if is_first_message:
-                            # Extract text content from user message parts
-                            user_message_text = " ".join(
-                                [
-                                    p.text_content
-                                    for p in user_parts_dto
-                                    if isinstance(p, TextPartDto)
-                                ]
-                            )
+                        user_message_text = " ".join(
+                            [
+                                part.text_content
+                                for part in user_parts_dto
+                                if isinstance(part, TextPartDto)
+                            ]
+                        )
 
+                        # Generate titles for new chats and repair older unnamed chats.
+                        if should_generate_title:
                             # Extract AI response text
                             ai_response_text = "".join(
                                 [
@@ -941,6 +1064,36 @@ class ChatService:
 
                     yield stream_chunk
 
+                    # Queue profile extraction after the final SSE event has been
+                    # yielded, so local synchronous queues do not delay the answer.
+                    if stream_chunk.done and user_message_text.strip():
+                        queue_service = getattr(self, "_queue_service", None)
+                        if queue_service:
+                            try:
+                                from edu_queue.schemas import (
+                                    LearnerProfileExtractionData,
+                                    QueueTaskMessage,
+                                    TaskType,
+                                )
+
+                                profile_task_data: LearnerProfileExtractionData = {
+                                    "project_id": chat.project_id,
+                                    "user_id": user_id,
+                                    "message_id": user_message_db.id,
+                                    "message_text": user_message_text,
+                                }
+                                profile_task: QueueTaskMessage = {
+                                    "type": TaskType.LEARNER_PROFILE_EXTRACTION,
+                                    "data": profile_task_data,
+                                }
+                                queue_service.send_message(profile_task)
+                            except Exception:
+                                # Profile enrichment is best effort and must never
+                                # turn a successful chat response into an error.
+                                logger.exception(
+                                    "Failed to queue learner-profile extraction"
+                                )
+
             except Exception as e:
                 # Use the pre-generated assistant_message_id for error messages
                 error_parts = [TextPartDto(text_content=f"Error: {e!s}")]
@@ -952,6 +1105,134 @@ class ChatService:
                     parts=error_parts,
                     done=True,
                 )
+
+    @staticmethod
+    def _profile_field_value(field_data: Any) -> Any:
+        if isinstance(field_data, dict) and "value" in field_data:
+            return field_data.get("value")
+        return field_data
+
+    @classmethod
+    def _load_tutor_personalization_context(
+        cls,
+        *,
+        db_session,
+        project_id: str,
+        user_id: str | None,
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        """Load compact, evidence-backed context for the tutor prompt and tools."""
+        if db_session is None or not user_id:
+            return {}, {}, {}
+
+        try:
+            project = (
+                db_session.query(Project)
+                .filter(Project.id == project_id, Project.owner_id == user_id)
+                .first()
+            )
+            if project is None:
+                return {}, {}, {}
+
+            project_context = {
+                "project_id": project.id,
+                "project_name": project.name,
+                "project_description": project.description,
+                "course_id": project.course_id,
+                "course_name": project.course.name if project.course else project.name,
+                "language_code": project.language_code,
+            }
+
+            profile = (
+                db_session.query(LearnerProfile)
+                .filter(
+                    LearnerProfile.project_id == project_id,
+                    LearnerProfile.user_id == user_id,
+                )
+                .first()
+            )
+            profile_fields: dict[str, Any] = {}
+            if profile is not None:
+                raw_profile = profile.profile_data or {}
+                for field_key in cls.TUTOR_PROFILE_FIELDS:
+                    value = cls._profile_field_value(raw_profile.get(field_key))
+                    if value not in (None, "", [], {}):
+                        profile_fields[field_key] = value
+            learner_profile = (
+                {
+                    "id": profile.id,
+                    "status": profile.status,
+                    "completeness_score": float(profile.completeness_score or 0),
+                    "fields": profile_fields,
+                }
+                if profile is not None
+                else {}
+            )
+
+            state_rows = []
+            if project.course_id:
+                state_rows = (
+                    db_session.query(StudentKnowledgeState, KnowledgePoint)
+                    .join(
+                        KnowledgePoint,
+                        StudentKnowledgeState.knowledge_point_id == KnowledgePoint.id,
+                    )
+                    .filter(
+                        StudentKnowledgeState.user_id == user_id,
+                        StudentKnowledgeState.attempt_count > 0,
+                        KnowledgePoint.course_id == project.course_id,
+                    )
+                    .order_by(StudentKnowledgeState.mastery_score.asc())
+                    .all()
+                )
+
+            weak_points = [
+                {
+                    "id": point.id,
+                    "name": point.name,
+                    "mastery_score": round(float(state.mastery_score), 2),
+                    "confidence": round(float(state.confidence), 2),
+                    "trend": state.trend,
+                    "attempt_count": state.attempt_count,
+                    "correct_count": state.correct_count,
+                }
+                for state, point in state_rows
+                if float(state.mastery_score) < 70
+            ][:5]
+            mastery_scores = [float(state.mastery_score) for state, _ in state_rows]
+
+            recent_records = (
+                db_session.query(PracticeRecord)
+                .filter(
+                    PracticeRecord.project_id == project_id,
+                    PracticeRecord.user_id == user_id,
+                )
+                .order_by(PracticeRecord.created_at.desc())
+                .limit(50)
+                .all()
+            )
+            correct_count = sum(1 for record in recent_records if record.was_correct)
+            learning_evidence = {
+                "tracked_knowledge_point_count": len(state_rows),
+                "overall_mastery": (
+                    round(sum(mastery_scores) / len(mastery_scores), 2)
+                    if mastery_scores
+                    else None
+                ),
+                "weak_points": weak_points,
+                "recent_attempt_count": len(recent_records),
+                "recent_accuracy": (
+                    round(correct_count / len(recent_records), 2)
+                    if recent_records
+                    else None
+                ),
+            }
+            return project_context, learner_profile, learning_evidence
+        except Exception:
+            logger.exception(
+                "Failed to load tutor personalization context for project %s",
+                project_id,
+            )
+            return {}, {}, {}
 
     async def _get_response_stream(
         self,
@@ -990,6 +1271,13 @@ class ChatService:
         # Track part IDs for streaming (similar to Vercel AI SDK)
         text_part_id: str | None = None
 
+        project_context, learner_profile, learning_evidence = (
+            self._load_tutor_personalization_context(
+                db_session=db_session,
+                project_id=project_id,
+                user_id=user_id,
+            )
+        )
         ctx = ChatbotContext(
             project_id=project_id,
             user_id=user_id or "",
@@ -998,6 +1286,11 @@ class ChatService:
             queue=self._queue_service,
             language=language_code,
             llm=self.llm_non_streaming,  # Use non-streaming LLM for tools
+            resource_packages=self.resource_package_service,
+            learning_paths=self.learning_path_service,
+            project_context=project_context,
+            learner_profile=learner_profile,
+            learning_evidence=learning_evidence,
         )
 
         # Send initial "thinking" status with start message
@@ -1013,6 +1306,15 @@ class ChatService:
             done=False,
             status="thinking",
         )
+
+        if should_force_image_generation(llm_chat_history):
+            yield await self._create_direct_image_package_response(
+                messages=llm_chat_history,
+                context=ctx,
+                assistant_message_id=assistant_message_id,
+                chat_id=messages[0].chat_id if messages else "",
+            )
+            return
 
         # --- process stream chunks ----------------------------------------------
         async for chunk in self.chatbot.astream(
@@ -1087,6 +1389,8 @@ class ChatService:
 
                 # Create source-document parts
                 for source in sources:
+                    if len(existing_source_ids) >= self.MAX_SOURCE_DOCUMENTS:
+                        break
                     source_part = self._create_source_document_part(
                         source, db_session, existing_source_ids, len(current_parts)
                     )
@@ -1101,7 +1405,7 @@ class ChatService:
                         chat_id=chat_id,
                         role="assistant",
                         created_at=datetime.now(),
-                        parts=current_parts.copy(),
+                        parts=self._non_text_stream_parts(current_parts),
                         done=False,
                     )
 
@@ -1131,6 +1435,7 @@ class ChatService:
                             # Create or update tool call entry for non-RAG tools
                             if tc_id not in tool_calls:
                                 tool_calls[tc_id] = ToolCallPartDto(
+                                    id=str(uuid4()),
                                     tool_call_id=tc_id,
                                     tool_name=tc_name,
                                     tool_input=tc_args,
@@ -1147,7 +1452,7 @@ class ChatService:
                                 chat_id=messages[0].chat_id if messages else "",
                                 role="assistant",
                                 created_at=datetime.now(),
-                                parts=current_parts.copy(),
+                                parts=self._non_text_stream_parts(current_parts),
                                 done=False,
                             )
 
@@ -1188,6 +1493,11 @@ class ChatService:
 
                                         # Create source-document parts
                                         for source in sources:
+                                            if (
+                                                len(existing_source_ids)
+                                                >= self.MAX_SOURCE_DOCUMENTS
+                                            ):
+                                                break
                                             source_part = (
                                                 self._create_source_document_part(
                                                     source,
@@ -1212,7 +1522,9 @@ class ChatService:
                                                 chat_id=chat_id,
                                                 role="assistant",
                                                 created_at=datetime.now(),
-                                                parts=current_parts.copy(),
+                                                parts=self._non_text_stream_parts(
+                                                    current_parts
+                                                ),
                                                 done=False,
                                             )
                                 except Exception:
@@ -1241,7 +1553,7 @@ class ChatService:
                                     chat_id=messages[0].chat_id if messages else "",
                                     role="assistant",
                                     created_at=datetime.now(),
-                                    parts=current_parts.copy(),
+                                    parts=self._non_text_stream_parts(current_parts),
                                     done=False,
                                 )
 
@@ -1257,6 +1569,72 @@ class ChatService:
             done=True,
         )
 
+    async def _create_direct_image_package_response(
+        self,
+        *,
+        messages: list[BaseMessage],
+        context: ChatbotContext,
+        assistant_message_id: str | None,
+        chat_id: str,
+    ) -> StreamingChatMessage:
+        """Create an image package without relying on model tool-choice support."""
+        from edu_ai.tools.resource_package import generate_resource_package
+
+        topic = extract_image_topic(messages)
+        tool_call_id = str(uuid4())
+        tool_input: dict[str, Any] = {"resource_types": ["image"]}
+        if topic:
+            tool_input["topic"] = topic
+
+        try:
+            output_text = await generate_resource_package.coroutine(
+                runtime=SimpleNamespace(context=context),
+                topic=topic,
+                resource_types=["image"],
+            )
+            output = json.loads(output_text)
+            resolved_topic = str(output.get("target_topic") or topic or "当前学习主题")
+            status = str(output.get("status") or "generating")
+            answer = (
+                f"已为你创建“{resolved_topic}”AI 图片资源包, "
+                + (
+                    "图片正在后台生成, 可通过下方按钮查看进度。"
+                    if status == "generating"
+                    else "图片已生成, 可通过下方按钮查看资源包。"
+                )
+            )
+            tool_state = ToolState.OUTPUT_AVAILABLE
+            tool_output: Any = output_text
+        except Exception as exc:
+            logger.exception("Direct image resource-package generation failed")
+            answer = "图片资源包创建失败, 请稍后重试或检查讯飞图片生成配置。"
+            tool_state = ToolState.OUTPUT_ERROR
+            tool_output = {"error": str(exc)}
+
+        return StreamingChatMessage(
+            id=assistant_message_id,
+            chat_id=chat_id,
+            role="assistant",
+            created_at=datetime.now(),
+            parts=[
+                TextPartDto(
+                    id=str(uuid4()),
+                    text_content=answer,
+                    order=0,
+                ),
+                ToolCallPartDto(
+                    id=str(uuid4()),
+                    tool_call_id=tool_call_id,
+                    tool_name="resource_package_generate",
+                    tool_input=tool_input,
+                    tool_output=tool_output,
+                    tool_state=tool_state,
+                    order=1,
+                ),
+            ],
+            done=True,
+        )
+
     async def _generate_chat_title(self, user_message: str, ai_response: str) -> str:
         """Generate a concise chat title based on the first exchange.
 
@@ -1268,7 +1646,8 @@ class ChatService:
             Generated chat title
         """
         try:
-            prompt = f"""Generate a concise, descriptive title (max 5 words) for a chat based on this conversation:
+            prompt = f"""Generate a concise, descriptive title (max 5 words) for a chat based on this conversation.
+Use the same language as the user's message.
 
 User: "{user_message}"
 Assistant: "{ai_response}"
@@ -1287,7 +1666,20 @@ Only respond with the title, nothing else. Do not use quotes."""
 
             return title
         except Exception:
-            return "New Chat"
+            return self._fallback_chat_title(user_message)
+
+    @staticmethod
+    def _fallback_chat_title(user_message: str) -> str:
+        """Extract a compact title from the first user message."""
+        compact = " ".join(user_message.strip().split())
+        compact = compact.strip('"\'“”\u2018\u2019').rstrip(
+            "。.!\uFF01?\uFF1F"
+        )
+        if not compact:
+            return "新聊天"
+        if len(compact) <= 30:
+            return compact
+        return compact[:29].rstrip() + "…"
 
     def upload_chat_file(
         self, file_content: bytes, filename: str, project_id: str, chat_id: str
@@ -1307,16 +1699,29 @@ Only respond with the title, nothing else. Do not use quotes."""
             Exception: If blob storage is not configured or upload fails
         """
         try:
+            safe_filename = filename.replace("\\", "/").rsplit("/", 1)[-1]
+            safe_filename = safe_filename.replace("\x00", "").strip() or "image"
             relative_path = self.storage.build_chat_file_path(
                 project_id=project_id,
                 chat_id=chat_id,
-                filename=filename,
+                filename=safe_filename,
                 unique_prefix=str(uuid4()),
             )
             self.storage.write_bytes(relative_path, file_content)
             return relative_path
         except Exception as e:
             raise Exception(f"Failed to upload chat file: {e}") from e
+
+    def resolve_chat_file(
+        self, *, project_id: str, chat_id: str, file_key: str
+    ) -> Path:
+        """Resolve a stored chat attachment without allowing path traversal."""
+        safe_key = file_key.replace("\\", "/").rsplit("/", 1)[-1]
+        if not safe_key or safe_key in {".", ".."} or safe_key != file_key:
+            raise ValueError("Invalid chat file key")
+        return self.storage.resolve(
+            f"projects/{project_id}/chat-files/{chat_id}/{safe_key}"
+        )
 
     @contextmanager
     def _get_db_session(self):
@@ -1361,7 +1766,7 @@ Only respond with the title, nothing else. Do not use quotes."""
                         if isinstance(streaming_msg.created_at, datetime)
                         else streaming_msg.created_at
                     )
-                    
+
                     event_data = {
                         "message_id": streaming_msg.id,
                         "chat_id": streaming_msg.chat_id,

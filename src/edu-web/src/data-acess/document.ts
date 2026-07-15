@@ -8,6 +8,7 @@ import type { DocumentDto } from '@/integrations/api'
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
 import { withToast } from '@/lib/with-toast'
+import { HttpBody } from '@effect/platform'
 import { Atom, Registry, Result } from '@effect-atom/atom-react'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Data, Effect, Layer, Schema } from 'effect'
@@ -18,6 +19,84 @@ const runtime = makeAtomRuntime(
     ApiClientService.Default,
   ),
 )
+
+const isSuccessStatus = (status: number) => status >= 200 && status < 300
+
+const getResponseErrorDetail = (payload: unknown) => {
+  if (!payload || typeof payload !== 'object') return ''
+
+  const detail = (payload as { detail?: unknown }).detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item
+        try {
+          return JSON.stringify(item)
+        } catch {
+          return String(item)
+        }
+      })
+      .join('; ')
+  }
+  if (detail) {
+    try {
+      return JSON.stringify(detail)
+    } catch {
+      return String(detail)
+    }
+  }
+  return ''
+}
+
+export type CourseBook = {
+  resource_id: string
+  document_id: string
+  chapter_id: string | null
+  title: string
+  author: string | null
+  cover_url: string | null
+  file_url: string
+  status: DocumentDto['status']
+  license: string | null
+  source_url: string | null
+  start_page: number | null
+  end_page: number | null
+  metadata: Record<string, unknown>
+}
+
+export type DocumentCitation = {
+  document_id: string
+  segment_id: string | null
+  title: string
+  page_number: number | null
+  score: number | null
+  excerpt: string | null
+}
+
+export type DocumentQuestionResponse = {
+  answer: string
+  citations: Array<DocumentCitation>
+}
+
+export type AskDocumentQuestionInput = {
+  projectId: string
+  documentId: string
+  question: string
+  selectedText?: string
+  pageNumber?: number
+  chapterId?: string | null
+  topK?: number
+}
+
+export type BindCourseBookInput = {
+  projectId: string
+  courseId: string
+  chapterId: string
+  documentId: string
+  title: string
+  chapterTitle?: string
+}
 
 type DocumentsAction = Data.TaggedEnum<{
   Del: { readonly documentId: DocumentId }
@@ -78,6 +157,86 @@ export const indexedDocumentsAtom = Atom.family((projectId: string) =>
   ),
 )
 
+export const courseBooksAtom = Atom.family((projectId: string) =>
+  runtime
+    .atom(
+      Effect.fn(function* () {
+        const { httpClient } = yield* ApiClientService
+        const parsedProjectId = yield* Schema.decode(ProjectIdSchema)(projectId)
+        const response = yield* httpClient.get(
+          `/api/v1/projects/${parsedProjectId}/course-books`,
+        )
+        if (!isSuccessStatus(response.status)) {
+          return yield* Effect.fail(
+            new Error(
+              `Course books request failed with status ${response.status}`,
+            ),
+          )
+        }
+        return (yield* response.json) as Array<CourseBook>
+      })(),
+    )
+    .pipe(Atom.keepAlive),
+)
+
+export const bindCourseBookAtom = runtime.fn(
+  Effect.fn(function* (input: BindCourseBookInput) {
+    const registry = yield* Registry.AtomRegistry
+    const { httpClient } = yield* ApiClientService
+    const parsed = yield* Schema.decode(
+      Schema.Struct({
+        projectId: ProjectIdSchema,
+        courseId: Schema.String,
+        chapterId: Schema.String,
+        documentId: DocumentIdSchema,
+        title: Schema.String,
+        chapterTitle: Schema.optional(Schema.String),
+      }),
+    )(input)
+
+    const response = yield* httpClient.post(
+      `/api/v1/courses/${parsed.courseId}/resources`,
+      {
+        body: HttpBody.unsafeJson({
+          chapter_id: parsed.chapterId,
+          document_id: parsed.documentId,
+          generated_resource_id: null,
+          resource_type: 'pdf',
+          title: parsed.title,
+          description: `${parsed.chapterTitle ?? '章节'}配套 PDF 阅读材料`,
+          source_type: 'uploaded',
+          source_url: null,
+          difficulty_level: 'medium',
+          estimated_minutes: null,
+          license_info: null,
+          target_audiences: ['student'],
+          metadata: {
+            chapter_title: parsed.chapterTitle,
+            display_title: parsed.title,
+          },
+          knowledge_point_ids: [],
+        }),
+      },
+    )
+    if (!isSuccessStatus(response.status)) {
+      const payload = yield* response.json.pipe(
+        Effect.catchAll(() => Effect.succeed(null)),
+      )
+      const detail = getResponseErrorDetail(payload)
+      return yield* Effect.fail(
+        new Error(
+          detail
+            ? `Course PDF bind failed with status ${response.status}: ${detail}`
+            : `Course PDF bind failed with status ${response.status}`,
+        ),
+      )
+    }
+
+    registry.refresh(courseBooksAtom(parsed.projectId))
+    return yield* response.json
+  }),
+)
+
 export const documentAtom = Atom.family((input: string) => {
   const [projectId, documentId] = input.split(':')
 
@@ -97,6 +256,33 @@ export const documentAtom = Atom.family((input: string) => {
         parsed.documentId,
       )
     })().pipe(Effect.provide(ApiClientService.Default)),
+  )
+})
+
+export const documentFileBufferAtom = Atom.family((input: string) => {
+  const [projectId, documentId] = input.split(':')
+  return runtime.atom(
+    Effect.fn(function* () {
+      const { httpClient } = yield* ApiClientService
+      const parsed = yield* Schema.decode(
+        Schema.Struct({
+          projectId: ProjectIdSchema,
+          documentId: DocumentIdSchema,
+        }),
+      )({ projectId, documentId })
+
+      const response = yield* httpClient.get(
+        `/api/v1/projects/${parsed.projectId}/documents/${parsed.documentId}/file`,
+      )
+      if (!isSuccessStatus(response.status)) {
+        return yield* Effect.fail(
+          new Error(
+            `Document file request failed with status ${response.status}`,
+          ),
+        )
+      }
+      return yield* response.arrayBuffer
+    })(),
   )
 })
 
@@ -178,6 +364,8 @@ export const refreshDocumentAtom = runtime.fn(
         parsed.documentId,
       )
 
+    registry.refresh(documentAtom(`${parsed.projectId}:${parsed.documentId}`))
+
     // Update the document in the documents list atom
     registry.set(
       documentsAtom(parsed.projectId),
@@ -185,6 +373,75 @@ export const refreshDocumentAtom = runtime.fn(
         document: Result.success(document),
       }),
     )
+  }),
+)
+
+export const reprocessDocumentAtom = runtime.fn(
+  Effect.fn(function* (input: { projectId: string; documentId: string }) {
+    const registry = yield* Registry.AtomRegistry
+    const { httpClient } = yield* ApiClientService
+    const parsed = yield* Schema.decode(
+      Schema.Struct({
+        projectId: ProjectIdSchema,
+        documentId: DocumentIdSchema,
+      }),
+    )(input)
+
+    const response = yield* httpClient.post(
+      `/api/v1/projects/${parsed.projectId}/documents/${parsed.documentId}/process`,
+    )
+    if (!isSuccessStatus(response.status)) {
+      return yield* Effect.fail(
+        new Error(
+          `Document process request failed with status ${response.status}`,
+        ),
+      )
+    }
+
+    registry.refresh(documentAtom(`${parsed.projectId}:${parsed.documentId}`))
+    registry.refresh(documentsRemoteAtom(parsed.projectId))
+  }),
+)
+
+export const askDocumentQuestionAtom = runtime.fn(
+  Effect.fn(function* (input: AskDocumentQuestionInput) {
+    const { httpClient } = yield* ApiClientService
+    const parsed = yield* Schema.decode(
+      Schema.Struct({
+        projectId: ProjectIdSchema,
+        documentId: DocumentIdSchema,
+      }),
+    )({
+      projectId: input.projectId,
+      documentId: input.documentId,
+    })
+
+    const response = yield* httpClient.post(
+      `/api/v1/projects/${parsed.projectId}/documents/${parsed.documentId}/ask`,
+      {
+        body: HttpBody.unsafeJson({
+          question: input.question,
+          selected_text: input.selectedText,
+          page_number: input.pageNumber,
+          chapter_id: input.chapterId,
+          top_k: input.topK ?? 5,
+        }),
+      },
+    )
+    if (!isSuccessStatus(response.status)) {
+      const payload = yield* response.json.pipe(
+        Effect.catchAll(() => Effect.succeed(null)),
+      )
+      const detail = getResponseErrorDetail(payload)
+      return yield* Effect.fail(
+        new Error(
+          detail
+            ? `Document AI request failed with status ${response.status}: ${detail}`
+            : `Document AI request failed with status ${response.status}`,
+        ),
+      )
+    }
+    return (yield* response.json) as DocumentQuestionResponse
   }),
 )
 

@@ -1,6 +1,7 @@
 import { Data, Effect, Layer } from 'effect'
 import { Atom, Registry, Result } from '@effect-atom/atom-react'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
+import { knowledgeGraphAtom } from './knowledge-graph'
 import type {
   PracticeRecordBatchCreate,
   PracticeRecordCreate,
@@ -85,6 +86,7 @@ export const submitPracticeRecordAtom = runtime.fn(
     )
 
     registry.refresh(practiceRecordsRemoteAtom(input.projectId))
+    registry.refresh(knowledgeGraphAtom(input.projectId))
 
     return resp
   }),
@@ -111,6 +113,7 @@ export const submitPracticeRecordsBatchAtom = runtime.fn(
       }),
     )
     registry.refresh(practiceRecordsRemoteAtom(input.projectId))
+    registry.refresh(knowledgeGraphAtom(input.projectId))
     return resp
   }),
 )

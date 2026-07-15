@@ -13,7 +13,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -100,7 +99,7 @@ export function NavUser() {
 
   return Result.builder(currentUserResult)
     .onFailure(() => <div>用户数据加载失败。</div>)
-    .onSuccess(({ name, initials, email }) => {
+    .onSuccess(({ name, initials, username }) => {
       return (
         <SidebarMenu>
           <SidebarMenuItem>
@@ -118,7 +117,7 @@ export function NavUser() {
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">{name}</span>
-                    <span className="truncate text-xs">{email}</span>
+                    <span className="truncate text-xs">@{username}</span>
                   </div>
                   <ChevronsUpDown className="ml-auto size-4" />
                 </SidebarMenuButton>
@@ -139,7 +138,7 @@ export function NavUser() {
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
                       <span className="truncate font-medium">{name}</span>
-                      <span className="truncate text-xs">{email}</span>
+                      <span className="truncate text-xs">@{username}</span>
                     </div>
                   </div>
                 </DropdownMenuLabel>
@@ -150,13 +149,19 @@ export function NavUser() {
                 <div className="px-2 py-1.5 space-y-2">
                   <UsageSection />
                 </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <LogOutIcon />
-                  退出登录
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              type="button"
+              tooltip="退出登录"
+              onClick={handleSignOut}
+              className="text-slate-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+            >
+              <LogOutIcon />
+              <span>退出登录</span>
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       )

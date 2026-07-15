@@ -2,7 +2,19 @@ from datetime import datetime
 from uuid import uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -11,12 +23,16 @@ from edu_db.base import Base
 
 class User(Base):
     __tablename__ = "users"
-    # Use Supabase user ID as primary key to sync with auth.users
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True
-    )  # Maps to auth.users.id (UUID from Supabase)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    username: Mapped[str] = mapped_column(
+        String, unique=True, index=True, nullable=False
+    )
     name: Mapped[str] = mapped_column(String, nullable=True)
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=True)
+    # Nullable so existing/dev users can be migrated without inventing credentials.
+    password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -41,6 +57,57 @@ class User(Base):
     generated_resources = relationship(
         "GeneratedResource", back_populates="user", cascade="all, delete-orphan"
     )
+    courses = relationship(
+        "Course", back_populates="owner", cascade="all, delete-orphan"
+    )
+    learner_profiles = relationship(
+        "LearnerProfile", back_populates="user", cascade="all, delete-orphan"
+    )
+    knowledge_states = relationship(
+        "StudentKnowledgeState", back_populates="user", cascade="all, delete-orphan"
+    )
+    dashboard_comments = relationship(
+        "DashboardComment", back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class DashboardComment(Base):
+    __tablename__ = "dashboard_comments"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    parent_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("dashboard_comments.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    user = relationship("User", back_populates="dashboard_comments")
+
+
+class DashboardCommentLike(Base):
+    __tablename__ = "dashboard_comment_likes"
+
+    comment_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("dashboard_comments.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class Project(Base):
@@ -51,9 +118,15 @@ class Project(Base):
     owner_id: Mapped[str] = mapped_column(
         String, ForeignKey("users.id", ondelete="CASCADE")
     )
+    course_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("courses.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=True)
-    language_code: Mapped[str] = mapped_column(String, default="en")
+    language_code: Mapped[str] = mapped_column(String, default="zh")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -65,6 +138,10 @@ class Project(Base):
     chats = relationship("Chat", back_populates="project", cascade="all, delete-orphan")
     resource_packages = relationship(
         "ResourcePackage", back_populates="project", cascade="all, delete-orphan"
+    )
+    course = relationship("Course", back_populates="projects")
+    learner_profiles = relationship(
+        "LearnerProfile", back_populates="project", cascade="all, delete-orphan"
     )
 
 
@@ -97,6 +174,7 @@ class Document(Base):
     summary: Mapped[str] = mapped_column(
         Text, nullable=True
     )  # Auto-generated summary of the document
+    extra_metadata: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
     # Document processing metadata
     status: Mapped[str] = mapped_column(String, default="uploaded")
@@ -119,6 +197,14 @@ class Document(Base):
 
 class DocumentSegment(Base):
     __tablename__ = "document_segments"
+    __table_args__ = (
+        Index(
+            "ix_document_segments_document_page",
+            "document_id",
+            "page_number",
+        ),
+    )
+
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: str(uuid4())
     )
@@ -129,6 +215,8 @@ class DocumentSegment(Base):
     # Content
     content: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(String, default="text")
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, default=0)
 
     # Metadata for RAG
     embedding_vector: Mapped[list] = mapped_column(Vector(3072), nullable=True)
@@ -273,6 +361,12 @@ class Flashcard(Base):
     project_id: Mapped[str] = mapped_column(
         String, ForeignKey("projects.id", ondelete="CASCADE")
     )
+    knowledge_point_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     question: Mapped[str] = mapped_column(Text)
     answer: Mapped[str] = mapped_column(Text)
@@ -328,6 +422,12 @@ class QuizQuestion(Base):
     )
     project_id: Mapped[str] = mapped_column(
         String, ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    knowledge_point_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     question_text: Mapped[str] = mapped_column(Text)
@@ -388,6 +488,13 @@ class PracticeRecord(Base):
         String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
 
+    knowledge_point_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     item_type: Mapped[str] = mapped_column(
         String, index=True
     )  # "flashcard" or "quiz" - type of study resource
@@ -412,6 +519,7 @@ class PracticeRecord(Base):
     # Relationships
     user = relationship("User")
     project = relationship("Project")
+    knowledge_point = relationship("KnowledgePoint")
 
 
 class MindMap(Base):
@@ -589,6 +697,73 @@ class AgentRun(Base):
     artifacts = relationship(
         "AgentArtifact", back_populates="run", cascade="all, delete-orphan"
     )
+    skill_executions = relationship(
+        "SkillExecution", back_populates="run", cascade="all, delete-orphan"
+    )
+    tool_calls = relationship(
+        "AgentToolCall", back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class SkillExecution(Base):
+    __tablename__ = "skill_executions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    agent_name: Mapped[str] = mapped_column(String, index=True)
+    skill_id: Mapped[str] = mapped_column(String, index=True)
+    skill_version: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, index=True)
+    input_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    output_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    output_artifact_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fallback_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    fallback_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    run = relationship("AgentRun", back_populates="skill_executions")
+    tool_calls = relationship("AgentToolCall", back_populates="skill_execution")
+
+
+class AgentToolCall(Base):
+    __tablename__ = "agent_tool_calls"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_agent_tool_calls_idempotency_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    skill_execution_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("skill_executions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    agent_name: Mapped[str] = mapped_column(String, index=True)
+    skill_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    tool_name: Mapped[str] = mapped_column(String, index=True)
+    tool_version: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, index=True)
+    risk_level: Mapped[str] = mapped_column(String)
+    approval_status: Mapped[str] = mapped_column(String)
+    arguments: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    evidence_refs: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    idempotency_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    run = relationship("AgentRun", back_populates="tool_calls")
+    skill_execution = relationship("SkillExecution", back_populates="tool_calls")
 
 
 class AgentEvent(Base):
@@ -836,3 +1011,500 @@ class GeneratedResource(Base):
     resource_package = relationship("ResourcePackage", back_populates="resources")
     project = relationship("Project")
     user = relationship("User", back_populates="generated_resources")
+
+
+class Course(Base):
+    __tablename__ = "courses"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    owner_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    code: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    owner = relationship("User", back_populates="courses")
+    projects = relationship("Project", back_populates="course")
+    chapters = relationship(
+        "CourseChapter",
+        back_populates="course",
+        cascade="all, delete-orphan",
+        order_by="CourseChapter.position",
+    )
+    knowledge_points = relationship(
+        "KnowledgePoint", back_populates="course", cascade="all, delete-orphan"
+    )
+    resources = relationship(
+        "CourseResource", back_populates="course", cascade="all, delete-orphan"
+    )
+
+
+class CourseChapter(Base):
+    __tablename__ = "course_chapters"
+    __table_args__ = (
+        CheckConstraint("position >= 0", name="ck_course_chapters_position"),
+        CheckConstraint(
+            "estimated_minutes IS NULL OR estimated_minutes >= 0",
+            name="ck_course_chapters_estimated_minutes",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    course_id: Mapped[str] = mapped_column(
+        String, ForeignKey("courses.id", ondelete="CASCADE"), index=True
+    )
+    parent_chapter_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("course_chapters.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    learning_objectives: Mapped[list[str]] = mapped_column(JSON, default=list)
+    estimated_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    course = relationship("Course", back_populates="chapters")
+    parent = relationship(
+        "CourseChapter", remote_side=[id], back_populates="children"
+    )
+    children = relationship("CourseChapter", back_populates="parent")
+    knowledge_points = relationship(
+        "KnowledgePoint", back_populates="chapter", passive_deletes=True
+    )
+    resources = relationship(
+        "CourseResource", back_populates="chapter", passive_deletes=True
+    )
+
+
+class KnowledgePoint(Base):
+    __tablename__ = "knowledge_points"
+    __table_args__ = (
+        UniqueConstraint(
+            "course_id", "name", name="uq_knowledge_points_course_name"
+        ),
+        CheckConstraint("position >= 0", name="ck_knowledge_points_position"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    course_id: Mapped[str] = mapped_column(
+        String, ForeignKey("courses.id", ondelete="CASCADE"), index=True
+    )
+    chapter_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("course_chapters.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    difficulty_level: Mapped[str] = mapped_column(
+        String, default="intermediate", index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    course = relationship("Course", back_populates="knowledge_points")
+    chapter = relationship("CourseChapter", back_populates="knowledge_points")
+    outgoing_relations = relationship(
+        "KnowledgePointRelation",
+        foreign_keys="KnowledgePointRelation.source_knowledge_point_id",
+        back_populates="source",
+        cascade="all, delete-orphan",
+    )
+    incoming_relations = relationship(
+        "KnowledgePointRelation",
+        foreign_keys="KnowledgePointRelation.target_knowledge_point_id",
+        back_populates="target",
+        cascade="all, delete-orphan",
+    )
+    resource_links = relationship(
+        "CourseResourceKnowledgePoint",
+        back_populates="knowledge_point",
+        cascade="all, delete-orphan",
+    )
+    student_states = relationship(
+        "StudentKnowledgeState",
+        back_populates="knowledge_point",
+        cascade="all, delete-orphan",
+    )
+
+
+class KnowledgePointRelation(Base):
+    __tablename__ = "knowledge_point_relations"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_knowledge_point_id",
+            "target_knowledge_point_id",
+            "relation_type",
+            name="uq_knowledge_point_relations_edge",
+        ),
+        CheckConstraint(
+            "source_knowledge_point_id <> target_knowledge_point_id",
+            name="ck_knowledge_point_relations_not_self",
+        ),
+        CheckConstraint(
+            "strength >= 0 AND strength <= 1",
+            name="ck_knowledge_point_relations_strength",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    course_id: Mapped[str] = mapped_column(
+        String, ForeignKey("courses.id", ondelete="CASCADE"), index=True
+    )
+    source_knowledge_point_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="CASCADE"),
+        index=True,
+    )
+    target_knowledge_point_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="CASCADE"),
+        index=True,
+    )
+    relation_type: Mapped[str] = mapped_column(
+        String, default="prerequisite", index=True
+    )
+    strength: Mapped[float] = mapped_column(Float, default=1.0)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    course = relationship("Course")
+    source = relationship(
+        "KnowledgePoint",
+        foreign_keys=[source_knowledge_point_id],
+        back_populates="outgoing_relations",
+    )
+    target = relationship(
+        "KnowledgePoint",
+        foreign_keys=[target_knowledge_point_id],
+        back_populates="incoming_relations",
+    )
+
+
+class CourseResource(Base):
+    __tablename__ = "course_resources"
+    __table_args__ = (
+        CheckConstraint(
+            "estimated_minutes IS NULL OR estimated_minutes >= 0",
+            name="ck_course_resources_estimated_minutes",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    course_id: Mapped[str] = mapped_column(
+        String, ForeignKey("courses.id", ondelete="CASCADE"), index=True
+    )
+    chapter_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("course_chapters.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    document_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    generated_resource_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("generated_resources.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    resource_type: Mapped[str] = mapped_column(String, index=True)
+    title: Mapped[str] = mapped_column(String, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_type: Mapped[str] = mapped_column(String, default="internal", index=True)
+    source_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    difficulty_level: Mapped[str] = mapped_column(
+        String, default="intermediate", index=True
+    )
+    estimated_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    license_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_audiences: Mapped[list[str]] = mapped_column(JSON, default=list)
+    extra_metadata: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    course = relationship("Course", back_populates="resources")
+    chapter = relationship("CourseChapter", back_populates="resources")
+    document = relationship("Document")
+    generated_resource = relationship("GeneratedResource")
+    knowledge_point_links = relationship(
+        "CourseResourceKnowledgePoint",
+        back_populates="resource",
+        cascade="all, delete-orphan",
+    )
+
+
+class CourseResourceKnowledgePoint(Base):
+    __tablename__ = "course_resource_knowledge_points"
+    __table_args__ = (
+        UniqueConstraint(
+            "course_resource_id",
+            "knowledge_point_id",
+            name="uq_course_resource_knowledge_points_pair",
+        ),
+        CheckConstraint(
+            "relevance_score >= 0 AND relevance_score <= 1",
+            name="ck_course_resource_knowledge_points_relevance",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    course_resource_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("course_resources.id", ondelete="CASCADE"),
+        index=True,
+    )
+    knowledge_point_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="CASCADE"),
+        index=True,
+    )
+    relevance_score: Mapped[float] = mapped_column(Float, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    resource = relationship(
+        "CourseResource", back_populates="knowledge_point_links"
+    )
+    knowledge_point = relationship(
+        "KnowledgePoint", back_populates="resource_links"
+    )
+
+
+class LearnerProfile(Base):
+    __tablename__ = "learner_profiles"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "project_id", name="uq_learner_profiles_user_project"
+        ),
+        CheckConstraint(
+            "completeness_score >= 0 AND completeness_score <= 1",
+            name="ck_learner_profiles_completeness",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String, default="incomplete", index=True)
+    profile_data: Mapped[dict] = mapped_column(JSON, default=dict)
+    completeness_score: Mapped[float] = mapped_column(Float, default=0.0)
+    last_refreshed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user = relationship("User", back_populates="learner_profiles")
+    project = relationship("Project", back_populates="learner_profiles")
+    revisions = relationship(
+        "LearnerProfileRevision",
+        back_populates="profile",
+        cascade="all, delete-orphan",
+        order_by="LearnerProfileRevision.created_at",
+    )
+
+
+class LearnerProfileRevision(Base):
+    __tablename__ = "learner_profile_revisions"
+    __table_args__ = (
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",
+            name="ck_learner_profile_revisions_confidence",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    profile_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("learner_profiles.id", ondelete="CASCADE"),
+        index=True,
+    )
+    field_key: Mapped[str] = mapped_column(String, index=True)
+    old_value: Mapped[object | None] = mapped_column(JSON, nullable=True)
+    new_value: Mapped[object | None] = mapped_column(JSON, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source_type: Mapped[str] = mapped_column(String, default="manual", index=True)
+    source_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    profile = relationship("LearnerProfile", back_populates="revisions")
+
+
+class StudentKnowledgeState(Base):
+    __tablename__ = "student_knowledge_states"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "knowledge_point_id",
+            name="uq_student_knowledge_states_user_point",
+        ),
+        CheckConstraint(
+            "mastery_score >= 0 AND mastery_score <= 100",
+            name="ck_student_knowledge_states_mastery",
+        ),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 1",
+            name="ck_student_knowledge_states_confidence",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND correct_count >= 0 "
+            "AND correct_count <= attempt_count",
+            name="ck_student_knowledge_states_counts",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    knowledge_point_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="CASCADE"),
+        index=True,
+    )
+    mastery_score: Mapped[float] = mapped_column(Float, default=0.0)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    trend: Mapped[str] = mapped_column(String, default="stable", index=True)
+    status: Mapped[str] = mapped_column(String, default="not_started", index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    correct_count: Mapped[int] = mapped_column(Integer, default=0)
+    evidence: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    last_practiced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user = relationship("User", back_populates="knowledge_states")
+    knowledge_point = relationship(
+        "KnowledgePoint", back_populates="student_states"
+    )
+    events = relationship(
+        "KnowledgeStateEvent",
+        back_populates="knowledge_state",
+        cascade="all, delete-orphan",
+        order_by="KnowledgeStateEvent.created_at",
+    )
+
+
+class KnowledgeStateEvent(Base):
+    __tablename__ = "knowledge_state_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "knowledge_point_id",
+            "source_type",
+            "source_id",
+            name="uq_knowledge_state_events_source",
+        ),
+        CheckConstraint(
+            "score_before >= 0 AND score_before <= 100",
+            name="ck_knowledge_state_events_score_before",
+        ),
+        CheckConstraint(
+            "score_after >= 0 AND score_after <= 100",
+            name="ck_knowledge_state_events_score_after",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    knowledge_state_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("student_knowledge_states.id", ondelete="CASCADE"),
+        index=True,
+    )
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    knowledge_point_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="CASCADE"),
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String, index=True)
+    source_type: Mapped[str] = mapped_column(String, index=True)
+    source_id: Mapped[str] = mapped_column(String, index=True)
+    score_before: Mapped[float] = mapped_column(Float)
+    score_after: Mapped[float] = mapped_column(Float)
+    impact: Mapped[float] = mapped_column(Float)
+    was_correct: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    knowledge_state = relationship(
+        "StudentKnowledgeState", back_populates="events"
+    )

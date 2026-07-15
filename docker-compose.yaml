@@ -3,12 +3,18 @@ services:
     build:
       context: .
       dockerfile: src/edu-api/Dockerfile
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:123456@db:5432/postgres
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
       STORAGE_ROOT: /app/.localdata
-      ALLOW_DEV_AUTH_BYPASS: "true"
+      ALLOW_DEV_AUTH_BYPASS: ${ALLOW_DEV_AUTH_BYPASS:-false}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Set AUTH_JWT_SECRET in .env}
+      AUTH_ACCESS_TOKEN_EXPIRE_MINUTES: ${AUTH_ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+      AUTH_ALLOW_REGISTRATION: ${AUTH_ALLOW_REGISTRATION:-true}
+      AUTH_ADMIN_USERNAMES: ${AUTH_ADMIN_USERNAMES:-}
       TASK_QUEUE_BACKEND: arq
       TASK_QUEUE_NAME: edu-agent:tasks
       REDIS_URL: redis://redis:6379/0
@@ -25,10 +31,6 @@ services:
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       EMBEDDING_DOMAIN: ${EMBEDDING_DOMAIN:-query}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-3072}
-      MAX_CHAT_MESSAGES_PER_DAY: ${MAX_CHAT_MESSAGES_PER_DAY:-50}
-      MAX_FLASHCARD_GENERATIONS_PER_DAY: ${MAX_FLASHCARD_GENERATIONS_PER_DAY:-10}
-      MAX_QUIZ_GENERATIONS_PER_DAY: ${MAX_QUIZ_GENERATIONS_PER_DAY:-10}
-      MAX_DOCUMENT_UPLOADS_PER_DAY: ${MAX_DOCUMENT_UPLOADS_PER_DAY:-5}
       XFYUN_PPT_ENABLED: ${XFYUN_PPT_ENABLED:-false}
       XFYUN_PPT_BASE_URL: ${XFYUN_PPT_BASE_URL:-https://zwapi.xfyun.cn}
       XFYUN_PPT_APP_ID: ${XFYUN_PPT_APP_ID:-}
@@ -40,8 +42,37 @@ services:
       XFYUN_PPT_DEFAULT_IS_CARD_NOTE: ${XFYUN_PPT_DEFAULT_IS_CARD_NOTE:-false}
       XFYUN_PPT_DEFAULT_IS_FIGURE: ${XFYUN_PPT_DEFAULT_IS_FIGURE:-false}
       XFYUN_PPT_DEFAULT_AI_IMAGE: ${XFYUN_PPT_DEFAULT_AI_IMAGE:-normal}
+      XFYUN_IMAGE_GENERATION_ENABLED: ${XFYUN_IMAGE_GENERATION_ENABLED:-false}
+      XFYUN_IMAGE_GENERATION_APP_ID: ${XFYUN_IMAGE_GENERATION_APP_ID:-}
+      XFYUN_IMAGE_GENERATION_API_KEY: ${XFYUN_IMAGE_GENERATION_API_KEY:-}
+      XFYUN_IMAGE_GENERATION_API_SECRET: ${XFYUN_IMAGE_GENERATION_API_SECRET:-}
+      XFYUN_IMAGE_GENERATION_BASE_URL: ${XFYUN_IMAGE_GENERATION_BASE_URL:-https://spark-api.cn-huabei-1.xf-yun.com/v2.1/tti}
+      XFYUN_IMAGE_GENERATION_TIMEOUT_SECONDS: ${XFYUN_IMAGE_GENERATION_TIMEOUT_SECONDS:-120}
+      XFYUN_IMAGE_GENERATION_DEFAULT_WIDTH: ${XFYUN_IMAGE_GENERATION_DEFAULT_WIDTH:-512}
+      XFYUN_IMAGE_GENERATION_DEFAULT_HEIGHT: ${XFYUN_IMAGE_GENERATION_DEFAULT_HEIGHT:-512}
+      BAIDU_SEARCH_API_KEY: ${BAIDU_SEARCH_API_KEY:-}
+      BAIDU_SEARCH_BASE_URL: ${BAIDU_SEARCH_BASE_URL:-https://qianfan.baidubce.com}
+      BAIDU_SEARCH_VIDEO_TOP_K: ${BAIDU_SEARCH_VIDEO_TOP_K:-6}
+      BAIDU_SEARCH_SITES: ${BAIDU_SEARCH_SITES:-bilibili.com}
+      BAIDU_SEARCH_TIMEOUT_SECONDS: ${BAIDU_SEARCH_TIMEOUT_SECONDS:-15}
       XFYUN_PPT_POLL_INTERVAL_SECONDS: ${XFYUN_PPT_POLL_INTERVAL_SECONDS:-3}
       XFYUN_PPT_POLL_TIMEOUT_SECONDS: ${XFYUN_PPT_POLL_TIMEOUT_SECONDS:-180}
+      XFYUN_IAT_ENABLED: ${XFYUN_IAT_ENABLED:-false}
+      XFYUN_IAT_APP_ID: ${XFYUN_IAT_APP_ID:-}
+      XFYUN_IAT_API_KEY: ${XFYUN_IAT_API_KEY:-}
+      XFYUN_IAT_API_SECRET: ${XFYUN_IAT_API_SECRET:-}
+      XFYUN_IAT_HOST: ${XFYUN_IAT_HOST:-iat.xf-yun.com}
+      XFYUN_IAT_PATH: ${XFYUN_IAT_PATH:-/v1}
+      XFYUN_TRANSLATION_ENABLED: ${XFYUN_TRANSLATION_ENABLED:-false}
+      XFYUN_TRANSLATION_APP_ID: ${XFYUN_TRANSLATION_APP_ID:-}
+      XFYUN_TRANSLATION_API_KEY: ${XFYUN_TRANSLATION_API_KEY:-}
+      XFYUN_TRANSLATION_API_SECRET: ${XFYUN_TRANSLATION_API_SECRET:-}
+      XFYUN_TRANSLATION_BASE_URL: ${XFYUN_TRANSLATION_BASE_URL:-https://itrans.xf-yun.com/v1/its}
+      XFYUN_TRANSLATION_TIMEOUT_SECONDS: ${XFYUN_TRANSLATION_TIMEOUT_SECONDS:-30}
+      MAX_CHAT_MESSAGES_PER_DAY: ${MAX_CHAT_MESSAGES_PER_DAY:-50}
+      MAX_FLASHCARD_GENERATIONS_PER_DAY: ${MAX_FLASHCARD_GENERATIONS_PER_DAY:-10}
+      MAX_QUIZ_GENERATIONS_PER_DAY: ${MAX_QUIZ_GENERATIONS_PER_DAY:-10}
+      MAX_DOCUMENT_UPLOADS_PER_DAY: ${MAX_DOCUMENT_UPLOADS_PER_DAY:-5}
     depends_on:
       db:
         condition: service_healthy
@@ -49,6 +80,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      piston:
+        condition: service_started
     volumes:
       - ./src:/app/src
       - ./.localdata:/app/.localdata
@@ -59,8 +92,9 @@ services:
       dockerfile: src/edu-worker/Dockerfile
     command: [ "arq", "worker.WorkerSettings" ]
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:123456@db:5432/postgres
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
       STORAGE_ROOT: /app/.localdata
+      TASK_QUEUE_BACKEND: arq
       TASK_QUEUE_NAME: edu-agent:tasks
       REDIS_URL: redis://redis:6379/0
       TASK_JOB_TIMEOUT_SECONDS: "900"
@@ -76,10 +110,6 @@ services:
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       EMBEDDING_DOMAIN: ${EMBEDDING_DOMAIN:-query}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-3072}
-      MAX_CHAT_MESSAGES_PER_DAY: ${MAX_CHAT_MESSAGES_PER_DAY:-50}
-      MAX_FLASHCARD_GENERATIONS_PER_DAY: ${MAX_FLASHCARD_GENERATIONS_PER_DAY:-10}
-      MAX_QUIZ_GENERATIONS_PER_DAY: ${MAX_QUIZ_GENERATIONS_PER_DAY:-10}
-      MAX_DOCUMENT_UPLOADS_PER_DAY: ${MAX_DOCUMENT_UPLOADS_PER_DAY:-5}
       XFYUN_PPT_ENABLED: ${XFYUN_PPT_ENABLED:-false}
       XFYUN_PPT_BASE_URL: ${XFYUN_PPT_BASE_URL:-https://zwapi.xfyun.cn}
       XFYUN_PPT_APP_ID: ${XFYUN_PPT_APP_ID:-}
@@ -91,8 +121,37 @@ services:
       XFYUN_PPT_DEFAULT_IS_CARD_NOTE: ${XFYUN_PPT_DEFAULT_IS_CARD_NOTE:-false}
       XFYUN_PPT_DEFAULT_IS_FIGURE: ${XFYUN_PPT_DEFAULT_IS_FIGURE:-false}
       XFYUN_PPT_DEFAULT_AI_IMAGE: ${XFYUN_PPT_DEFAULT_AI_IMAGE:-normal}
+      XFYUN_IMAGE_GENERATION_ENABLED: ${XFYUN_IMAGE_GENERATION_ENABLED:-false}
+      XFYUN_IMAGE_GENERATION_APP_ID: ${XFYUN_IMAGE_GENERATION_APP_ID:-}
+      XFYUN_IMAGE_GENERATION_API_KEY: ${XFYUN_IMAGE_GENERATION_API_KEY:-}
+      XFYUN_IMAGE_GENERATION_API_SECRET: ${XFYUN_IMAGE_GENERATION_API_SECRET:-}
+      XFYUN_IMAGE_GENERATION_BASE_URL: ${XFYUN_IMAGE_GENERATION_BASE_URL:-https://spark-api.cn-huabei-1.xf-yun.com/v2.1/tti}
+      XFYUN_IMAGE_GENERATION_TIMEOUT_SECONDS: ${XFYUN_IMAGE_GENERATION_TIMEOUT_SECONDS:-120}
+      XFYUN_IMAGE_GENERATION_DEFAULT_WIDTH: ${XFYUN_IMAGE_GENERATION_DEFAULT_WIDTH:-512}
+      XFYUN_IMAGE_GENERATION_DEFAULT_HEIGHT: ${XFYUN_IMAGE_GENERATION_DEFAULT_HEIGHT:-512}
+      BAIDU_SEARCH_API_KEY: ${BAIDU_SEARCH_API_KEY:-}
+      BAIDU_SEARCH_BASE_URL: ${BAIDU_SEARCH_BASE_URL:-https://qianfan.baidubce.com}
+      BAIDU_SEARCH_VIDEO_TOP_K: ${BAIDU_SEARCH_VIDEO_TOP_K:-6}
+      BAIDU_SEARCH_SITES: ${BAIDU_SEARCH_SITES:-bilibili.com}
+      BAIDU_SEARCH_TIMEOUT_SECONDS: ${BAIDU_SEARCH_TIMEOUT_SECONDS:-15}
       XFYUN_PPT_POLL_INTERVAL_SECONDS: ${XFYUN_PPT_POLL_INTERVAL_SECONDS:-3}
       XFYUN_PPT_POLL_TIMEOUT_SECONDS: ${XFYUN_PPT_POLL_TIMEOUT_SECONDS:-180}
+      XFYUN_IAT_ENABLED: ${XFYUN_IAT_ENABLED:-false}
+      XFYUN_IAT_APP_ID: ${XFYUN_IAT_APP_ID:-}
+      XFYUN_IAT_API_KEY: ${XFYUN_IAT_API_KEY:-}
+      XFYUN_IAT_API_SECRET: ${XFYUN_IAT_API_SECRET:-}
+      XFYUN_IAT_HOST: ${XFYUN_IAT_HOST:-iat.xf-yun.com}
+      XFYUN_IAT_PATH: ${XFYUN_IAT_PATH:-/v1}
+      XFYUN_TRANSLATION_ENABLED: ${XFYUN_TRANSLATION_ENABLED:-false}
+      XFYUN_TRANSLATION_APP_ID: ${XFYUN_TRANSLATION_APP_ID:-}
+      XFYUN_TRANSLATION_API_KEY: ${XFYUN_TRANSLATION_API_KEY:-}
+      XFYUN_TRANSLATION_API_SECRET: ${XFYUN_TRANSLATION_API_SECRET:-}
+      XFYUN_TRANSLATION_BASE_URL: ${XFYUN_TRANSLATION_BASE_URL:-https://itrans.xf-yun.com/v1/its}
+      XFYUN_TRANSLATION_TIMEOUT_SECONDS: ${XFYUN_TRANSLATION_TIMEOUT_SECONDS:-30}
+      MAX_CHAT_MESSAGES_PER_DAY: ${MAX_CHAT_MESSAGES_PER_DAY:-50}
+      MAX_FLASHCARD_GENERATIONS_PER_DAY: ${MAX_FLASHCARD_GENERATIONS_PER_DAY:-10}
+      MAX_QUIZ_GENERATIONS_PER_DAY: ${MAX_QUIZ_GENERATIONS_PER_DAY:-10}
+      MAX_DOCUMENT_UPLOADS_PER_DAY: ${MAX_DOCUMENT_UPLOADS_PER_DAY:-5}
     depends_on:
       db:
         condition: service_healthy
@@ -108,13 +167,40 @@ services:
     build:
       context: .
       dockerfile: src/edu-api/Dockerfile
-    command: [ "alembic", "-c", "/app/alembic.ini", "upgrade", "head" ]
+    command: [ "alembic", "-c", "/app/alembic.ini", "upgrade", "heads" ]
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:123456@db:5432/postgres
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/postgres
     depends_on:
       db:
         condition: service_healthy
     restart: "no"
+    volumes:
+      - ./src:/app/src
+
+  piston:
+    image: ghcr.io/engineer-man/piston
+    container_name: softcup-piston
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "127.0.0.1:2000:2000"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    environment:
+      PISTON_RUN_TIMEOUT: "5000"
+      PISTON_COMPILE_TIMEOUT: "10000"
+      PISTON_RUN_MEMORY_LIMIT: "256000000"
+      PISTON_COMPILE_MEMORY_LIMIT: "256000000"
+      PISTON_MAX_CONCURRENT_JOBS: "4"
+      PISTON_DISABLE_NETWORKING: "true"
+      PISTON_OUTPUT_MAX_SIZE: "65536"
+    volumes:
+      - piston_packages:/piston/packages
+      - ./tools/piston-runtimes/python:/piston/packages/python/3.7.3
+      - ./tools/piston-runtimes/gcc:/piston/packages/gcc/8.3.0
+    tmpfs:
+      - /tmp:exec
 
   redis:
     image: redis:7-alpine
@@ -128,7 +214,7 @@ services:
     image: pgvector/pgvector:pg16
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=123456
+      - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=postgres
     ports:
       - "5433:5432"
@@ -142,3 +228,4 @@ services:
 
 volumes:
   postgres_data:
+  piston_packages:

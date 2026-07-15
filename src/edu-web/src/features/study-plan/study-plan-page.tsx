@@ -1,11 +1,24 @@
-import { Button } from '@/components/ui/button'
+import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { Link } from '@tanstack/react-router'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+  ArrowUpRight,
+  BrainCircuit,
+  CalendarDays,
+  History,
+  Loader2,
+  PenLine,
+  Sparkles,
+} from 'lucide-react'
+import { useState } from 'react'
+import { StudyPlanCalendar } from './components/study-plan-calendar'
+import { StudyPlanHeader } from './components/study-plan-header'
+import { loadCustomStudyPlan } from './custom-study-plan'
+import {
+  generateStudyPlanAtom,
+  latestStudyPlanRemoteAtom,
+  studyPlanProgressAtom,
+  studyPlansHistoryRemoteAtom,
+} from '@/data-acess/study-plan'
 import {
   Select,
   SelectContent,
@@ -14,21 +27,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  generateStudyPlanAtom,
-  latestStudyPlanRemoteAtom,
-  studyPlansHistoryRemoteAtom,
-} from '@/data-acess/study-plan'
-import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { Link } from '@tanstack/react-router'
-import {
-  BrainCircuit,
-  CalendarDays,
-  History,
-  Loader2,
-  Sparkles,
-} from 'lucide-react'
-import { useState } from 'react'
-import { StudyPlanHeader } from './components/study-plan-header'
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 
 interface StudyPlanPageProps {
   projectId: string
@@ -37,9 +42,11 @@ interface StudyPlanPageProps {
 export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
   const latestPlanResult = useAtomValue(latestStudyPlanRemoteAtom(projectId))
   const historyResult = useAtomValue(studyPlansHistoryRemoteAtom(projectId))
+  const generationProgress = useAtomValue(studyPlanProgressAtom)
 
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [customEntries] = useState(() => loadCustomStudyPlan(projectId))
 
   // Determine which plan to show: selected or latest
   const historyPlans = Result.isSuccess(historyResult)
@@ -52,6 +59,9 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
   const displayedPlan = selectedPlanId
     ? historyPlans.find((p) => p.id === selectedPlanId)
     : latestPlan
+  const streamingPath = isGenerating
+    ? generationProgress?.partialPlan
+    : undefined
 
   const plannerModeLabel =
     displayedPlan?.planner_mode === 'llm'
@@ -73,6 +83,8 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
     setIsGenerating(true)
     try {
       await generatePlan(projectId)
+    } catch {
+      // The generation atom displays the failure toast.
     } finally {
       setIsGenerating(false)
     }
@@ -82,7 +94,7 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
     <div className="flex h-full flex-col max-h-screen">
       <StudyPlanHeader projectId={projectId} />
       <div className="flex flex-1 flex-col min-h-0 overflow-y-auto">
-        <div className="container mx-auto max-w-5xl py-8 space-y-8">
+        <div className="container mx-auto max-w-7xl space-y-8 px-4 py-8">
           <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
             <div>
               <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
@@ -93,7 +105,16 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                 基于 AI 分析你的学习表现，优化学习路径。
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="lg" asChild>
+                <Link
+                  to="/dashboard/p/$projectId/study-plan/customize"
+                  params={{ projectId }}
+                >
+                  <PenLine className="mr-2 size-4" />
+                  我要自定义学习计划
+                </Link>
+              </Button>
               {displayedPlan && (
                 <div className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm">
                   <span className="text-muted-foreground">规划模式</span>
@@ -142,6 +163,69 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
             </div>
           </div>
 
+          {isGenerating && generationProgress && (
+            <div
+              className="flex items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3 text-sm"
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+              <span>{generationProgress.message}</span>
+            </div>
+          )}
+
+          {streamingPath && (
+            <Card className="border-primary/30 shadow-sm">
+              <CardHeader className="border-b">
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <Sparkles className="h-5 w-5 animate-pulse text-primary" />
+                  {streamingPath.title || '正在生成个性化学习路径…'}
+                </CardTitle>
+                {streamingPath.estimated_minutes ? (
+                  <CardDescription>
+                    预计学习时长：{streamingPath.estimated_minutes} 分钟
+                  </CardDescription>
+                ) : null}
+              </CardHeader>
+              <CardContent className="space-y-4 pt-6">
+                {(streamingPath.path_steps ?? []).length > 0 && (
+                  <div className="space-y-3">
+                    {(streamingPath.path_steps ?? []).map((step, index) => (
+                      <div
+                        key={step.step_no ?? step.target_id ?? index}
+                        className="rounded-md border bg-muted/30 p-3"
+                      >
+                        <div className="font-medium">
+                          {step.step_no ?? index + 1}.{' '}
+                          {step.title || '正在生成步骤内容…'}
+                        </div>
+                        {step.reason && (
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {step.reason}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(streamingPath.based_on_knowledge_points ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {(streamingPath.based_on_knowledge_points ?? []).map(
+                      (point) => (
+                        <span
+                          key={point}
+                          className="rounded-full bg-primary/10 px-3 py-1 text-xs text-primary"
+                        >
+                          {point}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <div className="grid gap-6">
             {displayedPlan ? (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -167,31 +251,38 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                       </div>
 
                       {/* Focus Areas */}
-                      <div>
-                        <h3 className="text-lg font-semibold mb-2">
-                          重点关注
-                        </h3>
-                        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                          {displayedPlan.content.focus_areas.map((area, i) => (
-                            <li key={i}>{area}</li>
-                          ))}
-                        </ol>
-                      </div>
+                      {displayedPlan.content.focus_areas.length > 0 && (
+                        <div>
+                          <h3 className="text-lg font-semibold mb-2">
+                            重点关注
+                          </h3>
+                          <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                            {displayedPlan.content.focus_areas.map(
+                              (area, i) => (
+                                <li key={i}>{area}</li>
+                              ),
+                            )}
+                          </ol>
+                        </div>
+                      )}
 
                       {/* Action Items */}
                       <div>
-                        <h3 className="text-lg font-semibold mb-2">
-                          行动项
-                        </h3>
+                        <h3 className="text-lg font-semibold mb-2">行动项</h3>
                         <div className="grid gap-2">
                           {displayedPlan.content.action_items.map((item, i) => {
                             const isQuiz = item.type === 'quiz'
+                            const targetId = item.parent_id || item.id
+                            const hasDirectTarget =
+                              item.is_navigable &&
+                              Boolean(targetId) &&
+                              !targetId.startsWith('path-step-')
                             const content = (
                               <div className="flex items-center gap-2 p-3 rounded-md bg-muted/50 hover:bg-muted transition-colors border">
                                 {isQuiz ? (
                                   <BrainCircuit className="h-4 w-4 text-blue-500" />
                                 ) : (
-                                  <Sparkles className="h-4 w-4 text-amber-500" />
+                                  <Sparkles className="h-4 w-4 text-[#5483B3]" />
                                 )}
                                 <div className="flex-1">
                                   <div className="font-medium text-sm">
@@ -206,14 +297,24 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                                 <span className="text-xs uppercase tracking-wider font-bold text-muted-foreground opacity-70 border px-1.5 py-0.5 rounded">
                                   {item.source_type || item.type}
                                 </span>
+                                <ArrowUpRight className="size-4 shrink-0 text-muted-foreground" />
                               </div>
                             )
 
-                            if (!item.is_navigable) {
+                            if (!hasDirectTarget) {
                               return (
-                                <div key={i} className="block">
+                                <Link
+                                  key={i}
+                                  to={
+                                    isQuiz
+                                      ? '/dashboard/p/$projectId/learning-evaluation/practice'
+                                      : '/dashboard/p/$projectId/resource-packages'
+                                  }
+                                  params={{ projectId }}
+                                  className="block"
+                                >
                                   {content}
-                                </div>
+                                </Link>
                               )
                             }
 
@@ -229,12 +330,11 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                                   isQuiz
                                     ? {
                                         projectId,
-                                        quizId: item.parent_id || item.id,
+                                        quizId: targetId,
                                       }
                                     : {
                                         projectId,
-                                        flashcardGroupId:
-                                          item.parent_id || item.id,
+                                        flashcardGroupId: targetId,
                                       }
                                 }
                                 className="block"
@@ -248,9 +348,7 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
 
                       {/* Schedule */}
                       <div>
-                        <h3 className="text-lg font-semibold mb-2">
-                          每周安排
-                        </h3>
+                        <h3 className="text-lg font-semibold mb-2">每周安排</h3>
                         <div className="space-y-4">
                           {displayedPlan.content.schedule.map((day, i) => (
                             <div
@@ -281,73 +379,49 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                 </div>
 
                 <div className="space-y-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">薄弱主题</CardTitle>
-                      <CardDescription>
-                        需要提升的领域
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      {displayedPlan.weak_topics &&
-                      displayedPlan.weak_topics.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {displayedPlan.weak_topics.map((topic, i) => (
-                            <span
-                              key={i}
-                              className="px-3 py-1 rounded-full bg-destructive/10 text-destructive text-sm font-medium"
-                            >
-                              {topic}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">
-                          暂未识别出具体薄弱主题。继续练习吧！
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-muted/50">
-                    <CardHeader>
-                      <CardTitle className="text-lg">工作原理</CardTitle>
-                    </CardHeader>
-                    <CardContent className="text-sm text-muted-foreground space-y-2">
-                      <p>
-                        1. 分析你的测验结果和闪卡表现。
-                      </p>
-                      <p>
-                        2. 找出正确率低于 70% 的主题。
-                      </p>
-                      <p>
-                        3. AI 智能体生成定制日程，并推荐具体学习资源。
-                      </p>
-                    </CardContent>
-                  </Card>
+                  <StudyPlanCalendar
+                    generatedAt={displayedPlan.created_at}
+                    schedule={displayedPlan.content.schedule}
+                    customEntries={customEntries}
+                  />
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-8 border-2 border-dashed rounded-lg bg-muted/30">
-                <div className="bg-background p-4 rounded-full shadow-sm mb-4">
-                  <BrainCircuit className="h-12 w-12 text-primary" />
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <div className="flex min-h-[400px] flex-col items-center justify-center border-2 border-dashed bg-muted/30 p-8 text-center lg:col-span-2">
+                  <div className="mb-4 rounded-full bg-background p-4 shadow-sm">
+                    <BrainCircuit className="h-12 w-12 text-primary" />
+                  </div>
+                  <h3 className="mb-2 text-xl font-semibold">还没有学习计划</h3>
+                  <p className="mb-6 max-w-md text-muted-foreground">
+                    生成第一个个性化学习计划，或先手动安排未来 7 天的学习任务。
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button onClick={handleGenerate} disabled={isGenerating}>
+                      {isGenerating ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          正在生成...
+                        </>
+                      ) : (
+                        '生成我的第一个计划'
+                      )}
+                    </Button>
+                    <Button variant="outline" asChild>
+                      <Link
+                        to="/dashboard/p/$projectId/study-plan/customize"
+                        params={{ projectId }}
+                      >
+                        自定义 7 天计划
+                      </Link>
+                    </Button>
+                  </div>
                 </div>
-                <h3 className="text-xl font-semibold mb-2">
-                  还没有学习计划
-                </h3>
-                <p className="text-muted-foreground max-w-md mb-6">
-                  生成第一个个性化学习计划，根据你的表现获得定制学习路线。
-                </p>
-                <Button onClick={handleGenerate} disabled={isGenerating}>
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      正在生成...
-                    </>
-                  ) : (
-                    '生成我的第一个计划'
-                  )}
-                </Button>
+                <StudyPlanCalendar
+                  generatedAt={new Date().toISOString()}
+                  schedule={[]}
+                  customEntries={customEntries}
+                />
               </div>
             )}
           </div>

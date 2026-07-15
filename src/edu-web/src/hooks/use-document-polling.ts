@@ -6,11 +6,9 @@ const POLL_INTERVAL_MS = 3000 // Poll every 3 seconds
 
 /**
  * Hook that automatically polls for document status updates when there are
- * documents that are not yet ready (status !== 'indexed' && status !== 'failed')
+ * documents that are not yet ready.
  */
 export const useDocumentPolling = (projectId: string) => {
-  if (projectId.length === 0) return
-  
   const documentsResult = useAtomValue(documentsAtom(projectId))
   const refreshDocument = useAtomSet(refreshDocumentAtom, {
     mode: 'promise',
@@ -21,7 +19,12 @@ export const useDocumentPolling = (projectId: string) => {
   const unreadyDocumentIds = useMemo(() => {
     if (Result.isSuccess(documentsResult)) {
       return documentsResult.value
-        .filter((doc) => doc.status !== 'indexed' && doc.status !== 'failed')
+        .filter(
+          (doc) =>
+            doc.status !== 'processed' &&
+            doc.status !== 'indexed' &&
+            doc.status !== 'failed',
+        )
         .map((doc) => doc.id)
     }
     return []
@@ -35,7 +38,7 @@ export const useDocumentPolling = (projectId: string) => {
     }
 
     // Only poll if we have unready documents
-    if (unreadyDocumentIds.length > 0) {
+    if (projectId.length > 0 && unreadyDocumentIds.length > 0) {
       // Start polling
       intervalRef.current = setInterval(() => {
         // Poll each unready document individually

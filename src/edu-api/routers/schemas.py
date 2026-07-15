@@ -1,21 +1,171 @@
 """Request schemas for CRUD operations."""
 
-from typing import List, Union, Literal
-from pydantic import BaseModel, Field
+from datetime import datetime
+from typing import Any, Literal, Union
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class ProjectCreate(BaseModel):
     name: str = Field(..., description="Name of the project")
     description: str | None = Field(None, description="Description of the project")
     language_code: str = Field(
-        default="en", description="Language code for the project"
+        default="zh", description="Language code for the project"
     )
+    course_id: str | None = Field(None, description="Optional parent course ID")
 
 
 class ProjectUpdate(BaseModel):
     name: str | None = Field(None, description="Name of the project")
     description: str | None = Field(None, description="Description of the project")
     language_code: str | None = Field(None, description="Language code for the project")
+    course_id: str | None = Field(None, description="Optional parent course ID")
+
+
+class CourseCreate(BaseModel):
+    name: str = Field(..., min_length=1, description="Course name")
+    code: str | None = Field(None, description="Optional course code")
+    description: str | None = Field(None, description="Course description")
+    status: str = Field(default="active", description="Course status")
+
+
+class CourseUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, description="Course name")
+    code: str | None = Field(None, description="Optional course code")
+    description: str | None = Field(None, description="Course description")
+    status: str | None = Field(None, description="Course status")
+
+
+class CourseChapterCreate(BaseModel):
+    title: str = Field(..., min_length=1, description="Chapter title")
+    description: str | None = Field(None, description="Chapter description")
+    parent_chapter_id: str | None = Field(
+        None, description="Optional parent chapter ID"
+    )
+    position: int = Field(default=0, ge=0, description="Chapter display order")
+    learning_objectives: list[str] = Field(
+        default_factory=list, description="Chapter learning objectives"
+    )
+    estimated_minutes: int | None = Field(
+        None, ge=0, description="Estimated study duration"
+    )
+
+
+class KnowledgePointCreate(BaseModel):
+    name: str = Field(..., min_length=1, description="Knowledge point name")
+    description: str | None = Field(
+        None, description="Knowledge point description"
+    )
+    chapter_id: str | None = Field(None, description="Optional chapter ID")
+    difficulty_level: str = Field(
+        default="intermediate", description="Knowledge point difficulty"
+    )
+    position: int = Field(default=0, ge=0, description="Display order")
+    tags: list[str] = Field(
+        default_factory=list, description="Knowledge point tags"
+    )
+
+
+class KnowledgePointUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, description="Knowledge point name")
+    description: str | None = Field(
+        None, description="Knowledge point Markdown body"
+    )
+    chapter_id: str | None = Field(None, description="Optional chapter ID")
+    difficulty_level: str | None = Field(
+        None, description="Knowledge point difficulty"
+    )
+    position: int | None = Field(None, ge=0, description="Display order")
+    tags: list[str] | None = Field(None, description="Knowledge point tags")
+
+
+class KnowledgePointRelationCreate(BaseModel):
+    source_knowledge_point_id: str = Field(..., description="Source knowledge point ID")
+    target_knowledge_point_id: str = Field(..., description="Target knowledge point ID")
+    relation_type: str = Field(default="prerequisite", description="Relation type")
+    strength: float = Field(default=1.0, ge=0, le=1, description="Relation strength")
+    description: str | None = Field(None, description="Relation description")
+
+    @model_validator(mode="after")
+    def validate_not_self(self):
+        if self.source_knowledge_point_id == self.target_knowledge_point_id:
+            raise ValueError("source and target knowledge points cannot be the same")
+        return self
+
+
+class CourseResourceCreate(BaseModel):
+    chapter_id: str | None = None
+    document_id: str | None = None
+    generated_resource_id: str | None = None
+    resource_type: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=1)
+    description: str | None = None
+    source_type: str = "internal"
+    source_url: str | None = None
+    difficulty_level: str = "intermediate"
+    estimated_minutes: int | None = Field(None, ge=0)
+    license_info: str | None = None
+    target_audiences: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    knowledge_point_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_source(self):
+        if self.document_id and self.generated_resource_id:
+            raise ValueError(
+                "document_id and generated_resource_id cannot both be set"
+            )
+        return self
+
+
+class CourseResourceUpdate(BaseModel):
+    chapter_id: str | None = None
+    document_id: str | None = None
+    generated_resource_id: str | None = None
+    resource_type: str | None = Field(None, min_length=1)
+    title: str | None = Field(None, min_length=1)
+    description: str | None = None
+    source_type: str | None = None
+    source_url: str | None = None
+    difficulty_level: str | None = None
+    estimated_minutes: int | None = Field(None, ge=0)
+    license_info: str | None = None
+    target_audiences: list[str] | None = None
+    metadata: dict[str, Any] | None = None
+    knowledge_point_ids: list[str] | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self):
+        if self.document_id and self.generated_resource_id:
+            raise ValueError(
+                "document_id and generated_resource_id cannot both be set"
+            )
+        return self
+
+
+class LearnerProfileReplace(BaseModel):
+    profile_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class LearnerProfilePatch(BaseModel):
+    profile_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class KnowledgeStateUpsert(BaseModel):
+    mastery_score: float = Field(..., ge=0, le=100)
+    confidence: float = Field(default=0, ge=0, le=1)
+    trend: str = "stable"
+    status: str = "not_started"
+    attempt_count: int = Field(default=0, ge=0)
+    correct_count: int = Field(default=0, ge=0)
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    last_practiced_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_counts(self):
+        if self.correct_count > self.attempt_count:
+            raise ValueError("correct_count cannot exceed attempt_count")
+        return self
 
 
 class DocumentCreate(BaseModel):
@@ -32,6 +182,18 @@ class DocumentUpdate(BaseModel):
     summary: str | None = Field(
         None, description="Auto-generated summary of the document"
     )
+
+
+class DocumentQuestionRequest(BaseModel):
+    question: str = Field(..., min_length=1, description="User question")
+    selected_text: str | None = Field(
+        None, description="Text selected by the user in the PDF reader"
+    )
+    page_number: int | None = Field(
+        None, ge=1, description="Current PDF page number"
+    )
+    chapter_id: str | None = Field(None, description="Optional course chapter ID")
+    top_k: int = Field(default=5, ge=1, le=10, description="RAG result count")
 
 
 class ChatCreate(BaseModel):
@@ -52,6 +214,22 @@ class NoteUpdate(BaseModel):
     title: str | None = Field(None, description="Title of the note")
     content: str | None = Field(None, description="Content of the note")
     description: str | None = Field(None, description="Description of the note")
+
+
+class ImportResourceRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    summary: str = Field(..., min_length=1, max_length=500)
+    origin: Literal["handwriting", "pdf_ocr", "translation"]
+    resource_type: Literal["lecture_note", "reading_material"]
+    content_format: str = Field(..., min_length=1, max_length=50)
+    content_text: str | None = Field(None, max_length=100_000)
+    file_url: str | None = Field(None, max_length=2_000)
+
+    @model_validator(mode="after")
+    def validate_content(self):
+        if not (self.content_text and self.content_text.strip()) and not self.file_url:
+            raise ValueError("content_text or file_url is required")
+        return self
 
 
 class QuizCreate(BaseModel):
@@ -79,9 +257,6 @@ class FlashcardGroupUpdate(BaseModel):
     )
 
 
-from typing import List, Union, Literal
-
-
 class TextPart(BaseModel):
     type: Literal["text"]
     text: str
@@ -95,10 +270,13 @@ class FilePart(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
-    parts: List[Union[TextPart, FilePart]]
+    parts: list[Union[TextPart, FilePart]]
 
 
 class FlashcardCreate(BaseModel):
+    knowledge_point_id: str | None = Field(
+        None, description="Optional related knowledge point ID"
+    )
     question: str = Field(..., description="Question of the flashcard")
     answer: str = Field(..., description="Answer of the flashcard")
     difficulty_level: str = Field(
@@ -110,6 +288,9 @@ class FlashcardCreate(BaseModel):
 
 
 class FlashcardUpdate(BaseModel):
+    knowledge_point_id: str | None = Field(
+        None, description="Optional related knowledge point ID"
+    )
     question: str | None = Field(None, description="Question of the flashcard")
     answer: str | None = Field(None, description="Answer of the flashcard")
     difficulty_level: str | None = Field(
@@ -121,6 +302,9 @@ class FlashcardUpdate(BaseModel):
 
 
 class QuizQuestionCreate(BaseModel):
+    knowledge_point_id: str | None = Field(
+        None, description="Optional related knowledge point ID"
+    )
     question_text: str = Field(..., description="The quiz question text")
     option_a: str = Field(..., description="Option A")
     option_b: str = Field(..., description="Option B")
@@ -139,6 +323,9 @@ class QuizQuestionCreate(BaseModel):
 
 
 class QuizQuestionUpdate(BaseModel):
+    knowledge_point_id: str | None = Field(
+        None, description="Optional related knowledge point ID"
+    )
     question_text: str | None = Field(None, description="The quiz question text")
     option_a: str | None = Field(None, description="Option A")
     option_b: str | None = Field(None, description="Option B")
@@ -172,6 +359,9 @@ class PracticeRecordCreate(BaseModel):
     )
     item_id: str = Field(
         ..., description="ID of the study resource (flashcard or quiz question)"
+    )
+    knowledge_point_id: str | None = Field(
+        None, description="Optional related knowledge point ID"
     )
     topic: str = Field(..., max_length=500, description="Topic extracted from question")
     user_answer: str | None = Field(
@@ -220,12 +410,19 @@ class GenerateResourcePackageRequest(BaseModel):
     learning_path_id: str | None = Field(
         None, description="Associated learning path ID"
     )
+    diagnosis_id: str | None = Field(None, description="Associated diagnosis ID")
+    explanation_mode: str | None = Field(
+        None, description="Explanation mode for generated resources"
+    )
     title: str | None = Field(None, description="Optional package title")
     description: str | None = Field(None, description="Optional package description")
     target_topic: str = Field(..., description="Target topic")
     target_goal: str | None = Field(None, description="Learning goal")
     source_document_ids: list[str] = Field(
         default_factory=list, description="Source document IDs"
+    )
+    chapter_ids: list[str] = Field(
+        default_factory=list, description="Selected course chapter IDs"
     )
     knowledge_point_ids: list[str] = Field(
         default_factory=list, description="Knowledge point IDs"
@@ -239,6 +436,7 @@ class GenerateResourcePackageRequest(BaseModel):
             "mind_map",
             "practice_set",
             "ppt_outline",
+            "programming_questions",
             "code_lab",
         ],
         description="Requested resource types",
@@ -264,3 +462,21 @@ class UpdateGeneratedResourceRequest(BaseModel):
     content_text: str | None = Field(None, description="Text content")
     content_json: dict | None = Field(None, description="Structured content")
     generation_reason: str | None = Field(None, description="Generation reason")
+
+
+class ProgrammingGradeRequest(BaseModel):
+    question_id: str = Field(..., min_length=1, max_length=200)
+    answer: str = Field(..., min_length=1, max_length=50000)
+    language: Literal["python", "cpp", "java", "javascript", "go"] = Field(
+        default="python",
+        description="Programming language used by the submitted answer",
+    )
+
+
+class ProgrammingRunRequest(BaseModel):
+    question_id: str = Field(..., min_length=1, max_length=200)
+    code: str = Field(..., min_length=1, max_length=50000)
+    stdin: str = Field(default="", max_length=20000)
+    language: Literal["python", "cpp", "java", "javascript", "go"] = Field(
+        default="python", description="Programming language to execute"
+    )

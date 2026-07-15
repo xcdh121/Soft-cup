@@ -3,10 +3,16 @@
 from contextlib import contextmanager
 from uuid import uuid4
 
-from edu_db.models import Flashcard, PracticeRecord, QuizQuestion
+from edu_db.models import (
+    Flashcard,
+    PracticeRecord,
+    Project,
+    QuizQuestion,
+)
 from edu_db.session import get_session_factory
 
 from edu_core.schemas.practice import PracticeRecordDto
+from edu_core.services.knowledge_point_matching import resolve_knowledge_point_id
 
 
 class PracticeService:
@@ -22,6 +28,7 @@ class PracticeService:
         project_id: str,
         item_type: str,
         item_id: str,
+        knowledge_point_id: str | None,
         topic: str,
         user_answer: str | None,
         correct_answer: str,
@@ -52,11 +59,21 @@ class PracticeService:
                     raise ValueError(
                         f"Study resource {item_id} of type {item_type} not found"
                     )
+                project = self._get_owned_project(db, project_id, user_id)
+                resolved_knowledge_point_id = self._resolve_knowledge_point(
+                    db,
+                    project.course_id,
+                    knowledge_point_id,
+                    topic,
+                    item_type,
+                    item_id,
+                )
 
                 practice_record = PracticeRecord(
                     id=str(uuid4()),
                     user_id=user_id,
                     project_id=project_id,
+                    knowledge_point_id=resolved_knowledge_point_id,
                     item_type=item_type,
                     item_id=item_id,
                     topic=topic,
@@ -95,6 +112,7 @@ class PracticeService:
         with self._get_db_session() as db:
             try:
                 created_records = []
+                project = self._get_owned_project(db, project_id, user_id)
 
                 for record_data in practice_records_data:
                     item_type = record_data.get("item_type")
@@ -103,11 +121,20 @@ class PracticeService:
                     # Validate that the referenced study resource exists
                     if not self._validate_item(db, item_type, item_id):
                         continue
+                    resolved_knowledge_point_id = self._resolve_knowledge_point(
+                        db,
+                        project.course_id,
+                        record_data.get("knowledge_point_id"),
+                        record_data.get("topic"),
+                        item_type,
+                        item_id,
+                    )
 
                     practice_record = PracticeRecord(
                         id=str(uuid4()),
                         user_id=user_id,
                         project_id=project_id,
+                        knowledge_point_id=resolved_knowledge_point_id,
                         item_type=item_type,
                         item_id=item_id,
                         topic=record_data.get("topic"),
@@ -182,12 +209,53 @@ class PracticeService:
         except Exception:
             return False
 
+    @staticmethod
+    def _get_owned_project(db, project_id: str, user_id: str) -> Project:
+        project = (
+            db.query(Project)
+            .filter(Project.id == project_id, Project.owner_id == user_id)
+            .first()
+        )
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+        return project
+
+    @staticmethod
+    def _resolve_knowledge_point(
+        db,
+        course_id: str | None,
+        knowledge_point_id: str | None,
+        topic: str | None,
+        item_type: str | None,
+        item_id: str | None,
+    ) -> str | None:
+        stored_knowledge_point_id = None
+        content_texts: list[str | None] = [topic]
+        if item_type == "quiz" and item_id:
+            item = db.query(QuizQuestion).filter(QuizQuestion.id == item_id).first()
+            if item:
+                stored_knowledge_point_id = item.knowledge_point_id
+                content_texts.extend([item.question_text, item.explanation])
+        elif item_type == "flashcard" and item_id:
+            item = db.query(Flashcard).filter(Flashcard.id == item_id).first()
+            if item:
+                stored_knowledge_point_id = item.knowledge_point_id
+                content_texts.extend([item.question, item.answer])
+
+        return resolve_knowledge_point_id(
+            db,
+            course_id,
+            explicit_id=knowledge_point_id or stored_knowledge_point_id,
+            texts=content_texts,
+        )
+
     def _model_to_dto(self, record: PracticeRecord) -> PracticeRecordDto:
         """Convert PracticeRecord model to PracticeRecordDto."""
         return PracticeRecordDto(
             id=record.id,
             user_id=record.user_id,
             project_id=record.project_id,
+            knowledge_point_id=record.knowledge_point_id,
             item_type=record.item_type,
             item_id=record.item_id,
             topic=record.topic,

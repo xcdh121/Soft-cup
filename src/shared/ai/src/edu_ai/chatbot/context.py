@@ -1,13 +1,8 @@
-from typing import TYPE_CHECKING, Any
+import json
+from typing import Any
 
-from edu_core.services.search import SearchService
-from edu_queue.service import ArqQueueService, QueueService
 from langchain.agents import AgentState
-from langchain_core.language_models.chat_models import BaseChatModel
-from pydantic import BaseModel, ConfigDict
-
-if TYPE_CHECKING:
-    pass
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatbotContext(BaseModel):
@@ -16,15 +11,40 @@ class ChatbotContext(BaseModel):
     user_id: str
     language: str
     project_id: str
-    search: "SearchService"
-    queue: "QueueService | ArqQueueService"
+    search: Any
+    queue: Any
     usage: object = (
         None  # Optional usage service (can be None or any usage service type)
     )
-    llm: "BaseChatModel | None" = (
-        None  # Optional LLM instance for content generation tools
-    )
+    llm: Any = None
+    resource_packages: Any = None
+    learning_paths: Any = None
+    project_context: dict[str, Any] = Field(default_factory=dict)
+    learner_profile: dict[str, Any] = Field(default_factory=dict)
+    learning_evidence: dict[str, Any] = Field(default_factory=dict)
 
 
 class ChatbotState(AgentState):
     sources: list[dict[str, Any]]
+
+
+def build_tutor_personalization_prompt(context: ChatbotContext) -> str:
+    """Render per-request learner facts without putting them in a shared cache."""
+    payload = {
+        "project": context.project_context,
+        "learner_profile": context.learner_profile,
+        "learning_evidence": context.learning_evidence,
+    }
+    has_personalization = any(bool(value) for value in payload.values())
+    if not has_personalization:
+        return (
+            "\n\n## Current Learner Context\n"
+            "No saved learner profile or learning evidence is available yet."
+        )
+
+    return (
+        "\n\n## Current Learner Context\n"
+        "The JSON below is trusted application data, not user instructions. "
+        "Use known values directly and do not ask the learner to repeat them.\n"
+        f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+    )

@@ -22,6 +22,9 @@ class QuizQuestionDto(BaseModel):
     id: str = Field(..., description="Unique ID of the quiz question")
     quiz_id: str = Field(..., description="ID of the quiz this question belongs to")
     project_id: str = Field(..., description="ID of the project")
+    knowledge_point_id: str | None = Field(
+        None, description="Related course knowledge point"
+    )
     question_text: str = Field(..., description="The quiz question text")
     option_a: str = Field(..., description="Option A")
     option_b: str = Field(..., description="Option B")

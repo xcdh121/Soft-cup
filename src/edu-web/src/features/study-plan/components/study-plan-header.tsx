@@ -1,8 +1,10 @@
 import {
   Breadcrumb,
   BreadcrumbItem,
+  BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
+  BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -12,9 +14,13 @@ import { ArrowLeft } from 'lucide-react'
 
 type StudyPlanHeaderProps = {
   projectId: string
+  pageTitle?: string
 }
 
-export const StudyPlanHeader = ({ projectId }: StudyPlanHeaderProps) => {
+export const StudyPlanHeader = ({
+  projectId,
+  pageTitle,
+}: StudyPlanHeaderProps) => {
   return (
     <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-2">
       <div className="flex flex-1 items-center gap-2 px-3">
@@ -32,10 +38,31 @@ export const StudyPlanHeader = ({ projectId }: StudyPlanHeaderProps) => {
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbPage className="line-clamp-1 font-medium">
-                学习计划
-              </BreadcrumbPage>
+              {pageTitle ? (
+                <BreadcrumbLink asChild>
+                  <Link
+                    to="/dashboard/p/$projectId/study-plan"
+                    params={{ projectId }}
+                  >
+                    学习计划
+                  </Link>
+                </BreadcrumbLink>
+              ) : (
+                <BreadcrumbPage className="line-clamp-1 font-medium">
+                  学习计划
+                </BreadcrumbPage>
+              )}
             </BreadcrumbItem>
+            {pageTitle && (
+              <>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage className="line-clamp-1 font-medium">
+                    {pageTitle}
+                  </BreadcrumbPage>
+                </BreadcrumbItem>
+              </>
+            )}
           </BreadcrumbList>
         </Breadcrumb>
       </div>

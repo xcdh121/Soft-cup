@@ -1,15 +1,21 @@
 import { create } from 'zustand'
 import { useMemo, useState } from 'react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { useNavigate } from '@tanstack/react-router'
 import { FileTextIcon, Loader2Icon, SparklesIcon } from 'lucide-react'
+import { ResourceResultPreview } from './resource-result-preview'
+import type {
+  DifficultyLevel,
+  GeneratedResource,
+  GeneratedResourceStatus,
+  ResourcePackage,
+  ResourceType,
+} from '@/data-acess/resource-package'
 import { indexedDocumentsAtom } from '@/data-acess/document'
 import {
-  type DifficultyLevel,
-  type GeneratedResource,
-  type ResourcePackage,
-  type ResourceType,
   generateResourcePackageAtom,
   generatedResourcesAtom,
+  resourcePackageProgressAtom,
   resourcePackagesAtom,
 } from '@/data-acess/resource-package'
 import { Badge } from '@/components/ui/badge'
@@ -75,9 +81,19 @@ const RESOURCE_TYPE_OPTIONS: Array<{
     description: 'Layered practice questions',
   },
   {
+    value: 'flashcards',
+    label: 'Flashcards',
+    description: 'Queued flashcard group generation',
+  },
+  {
     value: 'ppt_outline',
     label: 'PPT outline',
     description: 'Slide-by-slide speaking outline',
+  },
+  {
+    value: 'image',
+    label: 'AI image',
+    description: 'XFYun text-to-image generation',
   },
   {
     value: 'pptx',
@@ -85,19 +101,14 @@ const RESOURCE_TYPE_OPTIONS: Array<{
     description: 'Generated presentation file link',
   },
   {
-    value: 'code_lab',
-    label: 'Code lab',
-    description: 'Hands-on coding exercise',
+    value: 'programming_questions',
+    label: 'Programming practice',
+    description: 'Generated coding exercises',
   },
   {
-    value: 'reading_material',
-    label: 'Reading guide',
-    description: 'Extended reading material',
-  },
-  {
-    value: 'video_script',
-    label: 'Video script',
-    description: 'Short explainer storyboard',
+    value: 'video_recommendations',
+    label: 'Video recommendations',
+    description: 'Search Bilibili for relevant learning videos',
   },
 ]
 
@@ -216,7 +227,9 @@ const ResourcePreview = ({
   const resourcesResult = useAtomValue(
     generatedResourcesAtom(`${projectId}:${resourcePackage.id}`),
   )
-  const resources = Result.isSuccess(resourcesResult) ? resourcesResult.value : []
+  const resources = Result.isSuccess(resourcesResult)
+    ? resourcesResult.value
+    : []
 
   if (resourcesResult.waiting) {
     return (
@@ -260,7 +273,7 @@ const ResourcePreview = ({
             <Badge variant="outline">{resource.difficulty_level}</Badge>
           </div>
 
-          {resource.file_url ? (
+          {resource.file_url && resource.resource_type !== 'image' ? (
             <div className="mt-3">
               <a
                 href={resource.file_url}
@@ -271,16 +284,10 @@ const ResourcePreview = ({
                 Open generated PPT
               </a>
             </div>
-          ) : resource.content_text ? (
-            <div className="mt-3 rounded-lg bg-muted/40 p-3 text-sm whitespace-pre-wrap">
-              {resource.content_text.slice(0, 600)}
-              {resource.content_text.length > 600 ? '...' : ''}
-            </div>
-          ) : resource.content_json ? (
-            <pre className="mt-3 overflow-x-auto rounded-lg bg-muted/40 p-3 text-xs">
-              {JSON.stringify(resource.content_json, null, 2)}
-            </pre>
           ) : null}
+          <div className="mt-3 rounded-lg bg-muted/40 p-3">
+            <ResourceResultPreview projectId={projectId} resource={resource} />
+          </div>
         </div>
       ))}
     </div>
@@ -290,10 +297,58 @@ const ResourcePreview = ({
 const ResourcePreviewPanel = ({
   projectId,
   resourcePackage,
+  streamingResources,
+  streamingStatuses,
 }: {
   projectId: string
   resourcePackage: ResourcePackage | null
+  streamingResources: Array<GeneratedResource>
+  streamingStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>>
 }) => {
+  const hasStreamingResources = Object.values(streamingStatuses).some(
+    (status) => status === 'pending' || status === 'generating',
+  )
+  if (
+    hasStreamingResources ||
+    (!resourcePackage && Object.keys(streamingStatuses).length > 0)
+  ) {
+    return (
+      <div className="space-y-3">
+        {Object.entries(streamingStatuses)
+          .filter(
+            ([type]) =>
+              !streamingResources.some((item) => item.resource_type === type),
+          )
+          .map(([type, status]) => (
+            <div
+              key={type}
+              className="flex items-center justify-between rounded-xl border p-4"
+            >
+              <div className="font-medium">
+                {resourceTypeLabelMap.get(type as ResourceType) ?? type}
+              </div>
+              <Badge variant={statusToneMap[status]}>{status}</Badge>
+            </div>
+          ))}
+        {streamingResources.map((resource) => (
+          <div key={resource.id} className="rounded-xl border p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-medium">{resource.title}</div>
+              <Badge variant={statusToneMap[resource.status]}>
+                {resource.status}
+              </Badge>
+            </div>
+            <div className="mt-3 rounded-lg bg-muted/40 p-3">
+              <ResourceResultPreview
+                projectId={projectId}
+                resource={resource}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
   if (!resourcePackage) {
     return (
       <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
@@ -316,17 +371,22 @@ const ResourcePackageSheetBody = ({
   contextLabel?: string
   onClose: () => void
 }) => {
+  const navigate = useNavigate()
   const generateResourcePackage = useAtomSet(generateResourcePackageAtom, {
     mode: 'promise',
   })
   const documentsResult = useAtomValue(indexedDocumentsAtom(projectId))
+  const globalPackageProgress = useAtomValue(resourcePackageProgressAtom)
+  const packageProgress =
+    globalPackageProgress?.projectId === projectId
+      ? globalPackageProgress
+      : null
 
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
   const [goal, setGoal] = useState('')
   const [instructions, setInstructions] = useState('')
-  const [difficulty, setDifficulty] =
-    useState<DifficultyLevel>('intermediate')
+  const [difficulty, setDifficulty] = useState<DifficultyLevel>('intermediate')
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(
     new Set(),
   )
@@ -334,12 +394,13 @@ const ResourcePackageSheetBody = ({
     'lecture_note',
     'mind_map',
     'practice_set',
+    'flashcards',
     'ppt_outline',
-    'code_lab',
+    'pptx',
+    'video_recommendations',
   ])
-  const [selectedPackage, setSelectedPackage] = useState<ResourcePackage | null>(
-    null,
-  )
+  const [selectedPackage, setSelectedPackage] =
+    useState<ResourcePackage | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const indexedDocuments =
@@ -349,7 +410,8 @@ const ResourcePackageSheetBody = ({
     !topic.trim() || selectedTypes.length === 0 || isSubmitting
 
   const helperText = useMemo(() => {
-    if (!contextLabel) return 'Create a package of resources for the current project.'
+    if (!contextLabel)
+      return 'Create a package of resources for the current project.'
     return `Opened from ${contextLabel}. You can turn the current learning moment into a targeted resource package.`
   }, [contextLabel])
 
@@ -375,7 +437,7 @@ const ResourcePackageSheetBody = ({
 
     setIsSubmitting(true)
     try {
-      const resourcePackage = await generateResourcePackage({
+      const generationInput = {
         projectId,
         title: title.trim() || undefined,
         target_topic: topic.trim(),
@@ -384,10 +446,19 @@ const ResourcePackageSheetBody = ({
         source_document_ids: Array.from(selectedDocumentIds),
         resource_types: selectedTypes,
         difficulty_level: difficulty,
-        generation_params: contextLabel ? { launch_context: contextLabel } : {},
+        generation_params: {
+          launch_context: contextLabel,
+          quiz_count: selectedTypes.includes('practice_set') ? 10 : undefined,
+        },
+      }
+      onClose()
+      await navigate({
+        to: '/dashboard/p/$projectId/resource-packages',
+        params: { projectId },
       })
-
-      setSelectedPackage(resourcePackage)
+      void generateResourcePackage(generationInput).catch(() => {
+        // The shared generation atom exposes the error on the destination page.
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -443,7 +514,9 @@ const ResourcePackageSheetBody = ({
               <Label htmlFor="resource-package-difficulty">Difficulty</Label>
               <Select
                 value={difficulty}
-                onValueChange={(value) => setDifficulty(value as DifficultyLevel)}
+                onValueChange={(value) =>
+                  setDifficulty(value as DifficultyLevel)
+                }
               >
                 <SelectTrigger id="resource-package-difficulty">
                   <SelectValue />
@@ -460,7 +533,7 @@ const ResourcePackageSheetBody = ({
 
             <div className="space-y-3">
               <Label>Resource types</Label>
-              <div className="grid gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {RESOURCE_TYPE_OPTIONS.map((option) => {
                   const checked = selectedTypes.includes(option.value)
                   return (
@@ -516,7 +589,7 @@ const ResourcePackageSheetBody = ({
                           {document.file_name}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {document.file_type?.toUpperCase()}
+                          {document.file_type.toUpperCase()}
                         </div>
                       </div>
                     </label>
@@ -566,6 +639,8 @@ const ResourcePackageSheetBody = ({
                 <ResourcePreviewPanel
                   projectId={projectId}
                   resourcePackage={selectedPackage}
+                  streamingResources={packageProgress?.resources ?? []}
+                  streamingStatuses={packageProgress?.resourceStatuses ?? {}}
                 />
               </div>
             </div>

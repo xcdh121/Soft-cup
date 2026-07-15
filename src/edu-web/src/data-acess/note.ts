@@ -6,6 +6,7 @@ import { Atom, Registry } from '@effect-atom/atom-react'
 import { HttpBody } from '@effect/platform'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Effect, Layer, Schema, Stream } from 'effect'
+import { appendSseChunk } from '@/lib/sse'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -37,15 +38,21 @@ export const noteAtom = Atom.family((input: string) => {
 })
 
 const NoteProgressUpdate = Schema.Struct({
+  event: Schema.NullishOr(Schema.String),
   status: Schema.String,
   message: Schema.String,
   note_id: Schema.NullishOr(Schema.String),
   error: Schema.NullishOr(Schema.String),
+  delta: Schema.NullishOr(Schema.String),
+  content: Schema.NullishOr(Schema.String),
 })
 
 export const noteProgressAtom = Atom.make<{
   status: string
   message: string
+  noteId?: string
+  content: string
+  delta?: string
   error?: string
 } | null>(null)
 
@@ -64,6 +71,7 @@ export const createNoteStreamAtom = Atom.fn(
     Effect.gen(function* () {
       const { httpClient } = yield* ApiClientService
       let streamError: string | undefined
+      let streamedContent = ''
       const body = HttpBody.unsafeJson(
         new GenerateRequest({
           custom_instructions: input.customInstructions,
@@ -78,37 +86,41 @@ export const createNoteStreamAtom = Atom.fn(
       )
 
       const decoder = new TextDecoder()
+      let buffer = ''
       const respStream = resp.stream.pipe(
-        Stream.map((value) => decoder.decode(value, { stream: true })),
-        Stream.map((chunk) => {
-          const chunkLines = chunk.split('\n')
-          const res = chunkLines
-            .map((line) =>
-              line.startsWith('data: ') ? line.replace('data: ', '') : '',
-            )
-            .filter((line) => line !== '')
-            .join('\n')
-          return res
-        }),
-        Stream.filter((chunk) => chunk !== ''),
-        Stream.flatMap((chunk) => {
-          const lines = chunk.trim().split('\n')
-          return Stream.fromIterable(lines).pipe(
-            Stream.filter((line) => line.trim() !== ''),
-            Stream.flatMap((line) =>
-              Schema.decodeUnknown(Schema.parseJson(NoteProgressUpdate))(line),
-            ),
+        Stream.map((value) => {
+          const parsed = appendSseChunk(
+            buffer,
+            decoder.decode(value, { stream: true }),
           )
+          buffer = parsed.buffer
+          return parsed.blocks
         }),
+        Stream.flatMap((blocks) => Stream.fromIterable(blocks)),
+        Stream.map((block) =>
+          block
+            .split('\n')
+            .map((line) => (line.startsWith('data: ') ? line.slice(6) : ''))
+            .filter((line) => line !== '')
+            .join('\n'),
+        ),
+        Stream.filter((chunk) => chunk !== ''),
+        Stream.flatMap((chunk) =>
+          Schema.decodeUnknown(Schema.parseJson(NoteProgressUpdate))(chunk),
+        ),
         Stream.tap((progress) =>
           Effect.gen(function* () {
             const registry = yield* Registry.AtomRegistry
             if (progress.error) {
               streamError = progress.error
             }
+            if (progress.content) streamedContent = progress.content
             registry.set(noteProgressAtom, {
               status: progress.status,
               message: progress.message,
+              noteId: progress.note_id ?? undefined,
+              content: streamedContent,
+              delta: progress.delta ?? undefined,
               error: progress.error ?? undefined,
             })
           }),
@@ -121,6 +133,7 @@ export const createNoteStreamAtom = Atom.fn(
       const registry = yield* Registry.AtomRegistry
       if (input.projectId) {
         registry.refresh(notesAtom(input.projectId))
+        registry.refresh(noteAtom(`${input.projectId}:${input.noteId}`))
       }
       registry.set(noteProgressAtom, null)
       if (streamError) {
@@ -128,6 +141,13 @@ export const createNoteStreamAtom = Atom.fn(
       }
     }).pipe(Effect.provide(ApiClientService.Default)),
 ).pipe(Atom.keepAlive)
+
+export const refreshNoteAtom = runtime.fn(
+  Effect.fn(function* (input: { projectId: string; noteId: string }) {
+    const registry = yield* Registry.AtomRegistry
+    registry.refresh(noteAtom(`${input.projectId}:${input.noteId}`))
+  }),
+)
 
 export const createNoteAtom = runtime.fn(
   Effect.fn(function* (input: {

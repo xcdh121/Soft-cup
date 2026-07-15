@@ -10,7 +10,7 @@ export const UserProfile = () => {
   const currentUserResult = useAtomValue(currentUserAtom)
 
   return Result.builder(currentUserResult)
-    .onSuccess(({ name, email, initials }) => (
+    .onSuccess(({ name, username, initials }) => (
       <div className="flex items-center gap-3 p-3 border rounded-lg">
         <pre>{JSON.stringify(currentUserResult, null, 2)}</pre>
         <Avatar>
@@ -18,7 +18,7 @@ export const UserProfile = () => {
         </Avatar>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{name}</p>
-          <p className="text-xs text-gray-500 truncate">{email}</p>
+          <p className="text-xs text-gray-500 truncate">@{username}</p>
         </div>
         <div className="flex items-center gap-2">
           <Link

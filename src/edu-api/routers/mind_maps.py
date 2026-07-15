@@ -1,12 +1,15 @@
 """Router for mind map operations."""
 
+import json
 from collections.abc import AsyncGenerator
 
 from auth import get_current_user
 from dependencies import (
     get_mind_map_service,
+    get_task_runner,
     get_usage_service,
 )
+from task_runner import TaskRunnerService
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.mind_maps import MindMapDto
 from edu_core.schemas.users import UserDto
@@ -25,6 +28,7 @@ class GenerationProgressUpdate(BaseModel):
 
     status: str = Field(..., description="Status: searching, generating, saving, done")
     message: str = Field(..., description="Progress message")
+    mind_map_id: str | None = Field(None, description="Mind map ID if available")
     error: str | None = Field(None, description="Error message if any")
 
 
@@ -101,8 +105,9 @@ async def create_mind_map_stream(
     current_user: UserDto = Depends(get_current_user),
     service: MindMapService = Depends(get_mind_map_service),
     usage_service: UsageService = Depends(get_usage_service),
+    task_runner: TaskRunnerService = Depends(get_task_runner),
 ):
-    """Queue mind map generation request with streaming progress updates."""
+    """Generate a mind map and stream valid node/edge batches."""
 
     # Check usage limit before processing
     usage_service.check_and_increment(current_user.id, "mindmap_generation")
@@ -110,35 +115,98 @@ async def create_mind_map_stream(
     async def generate_stream() -> AsyncGenerator[bytes]:
         """Generate streaming progress updates"""
         try:
-            # Queuing request
-            progress = GenerationProgressUpdate(
-                status="queuing", message="Queuing mind map generation request..."
-            )
-            yield f"data: {progress.model_dump_json()}\n\n".encode()
-
-            service.queue_generation(
+            mind_map = service.create_mind_map(
                 user_id=current_user.id,
                 project_id=project_id,
-                topic=request.title or request.custom_instructions or "",
-                custom_instructions=request.custom_instructions or request.description,
+                title=request.title or "Generating...",
+                description=request.description or "Mind map is being generated",
+                map_data={"nodes": [], "edges": []},
             )
-
-            # Done (queued)
-            progress = GenerationProgressUpdate(
-                status="done", message="Mind map generation request queued successfully"
-            )
-            yield f"data: {progress.model_dump_json()}\n\n".encode()
+            started = {"event": "generation_started", "status": "generating",
+                       "message": "Generating mind map", "mind_map_id": mind_map.id}
+            yield f"data: {json.dumps(started)}\n\n".encode()
+            async for event in task_runner.stream_mind_map({
+                "project_id": project_id, "mind_map_id": mind_map.id,
+                "user_id": current_user.id,
+                "topic": request.title or request.custom_instructions or "",
+                "custom_instructions": request.custom_instructions or request.description,
+            }):
+                completed = event.get("event") == "mind_map_completed"
+                payload = {"status": "done" if completed else "generating",
+                           "message": "Mind map generated" if completed else "Generating mind map",
+                           **event}
+                yield f"data: {json.dumps(payload)}\n\n".encode()
 
         except NotFoundError as e:
-            error_progress = GenerationProgressUpdate(
-                status="done", message="Error queuing mind map generation", error=str(e)
-            )
-            yield f"data: {error_progress.model_dump_json()}\n\n".encode()
+            payload = {"event": "generation_failed", "status": "done",
+                       "message": "Mind map generation failed", "error": str(e)}
+            yield f"data: {json.dumps(payload)}\n\n".encode()
         except Exception as e:
-            error_progress = GenerationProgressUpdate(
-                status="done", message="Error queuing mind map generation", error=str(e)
+            payload = {"event": "generation_failed", "status": "done",
+                       "message": "Mind map generation failed", "error": str(e)}
+            yield f"data: {json.dumps(payload)}\n\n".encode()
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+        },
+    )
+
+
+@router.post("/{mind_map_id}/generate/stream", status_code=200)
+async def regenerate_mind_map_stream(
+    project_id: str,
+    mind_map_id: str,
+    request: MindMapCreate,
+    current_user: UserDto = Depends(get_current_user),
+    service: MindMapService = Depends(get_mind_map_service),
+    usage_service: UsageService = Depends(get_usage_service),
+    task_runner: TaskRunnerService = Depends(get_task_runner),
+):
+    """Regenerate an existing mind map while streaming node/edge batches."""
+    usage_service.check_and_increment(current_user.id, "mindmap_generation")
+
+    async def generate_stream() -> AsyncGenerator[bytes]:
+        try:
+            service.get_mind_map(
+                mind_map_id=mind_map_id,
+                project_id=project_id,
+                user_id=current_user.id,
             )
-            yield f"data: {error_progress.model_dump_json()}\n\n".encode()
+            started = {
+                "event": "generation_started",
+                "status": "generating",
+                "message": "Generating mind map",
+                "mind_map_id": mind_map_id,
+            }
+            yield f"data: {json.dumps(started)}\n\n".encode()
+            async for event in task_runner.stream_mind_map({
+                "project_id": project_id,
+                "mind_map_id": mind_map_id,
+                "user_id": current_user.id,
+                "topic": request.title or request.custom_instructions or "",
+                "custom_instructions": request.custom_instructions or request.description,
+            }):
+                completed = event.get("event") == "mind_map_completed"
+                payload = {
+                    "status": "done" if completed else "generating",
+                    "message": "Mind map generated" if completed else "Generating mind map",
+                    **event,
+                }
+                yield f"data: {json.dumps(payload)}\n\n".encode()
+        except Exception as exc:
+            payload = {
+                "event": "generation_failed",
+                "status": "done",
+                "message": "Mind map generation failed",
+                "error": str(exc),
+            }
+            yield f"data: {json.dumps(payload)}\n\n".encode()
 
     return StreamingResponse(
         generate_stream(),

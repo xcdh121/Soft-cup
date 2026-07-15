@@ -15,21 +15,33 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
 from routers import (
+    agent_runs_router,
     auth_router,
     chats_router,
+    course_books_router,
+    courses_router,
+    dashboard_router,
     diagnosis_router,
     documents_router,
     flashcard_groups_router,
+    generated_resources_router,
+    handwriting_router,
+    knowledge_graph_router,
+    knowledge_points_router,
+    knowledge_states_router,
+    learner_profiles_router,
     learning_paths_router,
     mind_maps_router,
     notes_router,
+    pdf_ocr_router,
     practice_records_router,
     projects_router,
     quizzes_router,
     recommendations_router,
-    generated_resources_router,
     resource_packages_router,
+    speech_router,
     study_plans_router,
+    translation_router,
     usage_router,
     users_router,
 )
@@ -100,19 +112,31 @@ class Api:
 
         # Register all routers
         self.app.include_router(projects_router)
+        self.app.include_router(agent_runs_router)
+        self.app.include_router(courses_router)
+        self.app.include_router(course_books_router)
+        self.app.include_router(learner_profiles_router)
+        self.app.include_router(knowledge_states_router)
+        self.app.include_router(knowledge_graph_router)
+        self.app.include_router(knowledge_points_router)
         self.app.include_router(documents_router)
         self.app.include_router(chats_router)
         self.app.include_router(diagnosis_router)
+        self.app.include_router(dashboard_router)
         self.app.include_router(notes_router)
         self.app.include_router(quizzes_router)
         self.app.include_router(flashcard_groups_router)
+        self.app.include_router(handwriting_router)
+        self.app.include_router(pdf_ocr_router)
         self.app.include_router(practice_records_router)
         self.app.include_router(mind_maps_router)
         self.app.include_router(study_plans_router)
+        self.app.include_router(translation_router)
         self.app.include_router(recommendations_router)
         self.app.include_router(learning_paths_router)
         self.app.include_router(resource_packages_router)
         self.app.include_router(generated_resources_router)
+        self.app.include_router(speech_router)
         self.app.include_router(usage_router)
         self.app.include_router(users_router)
         self.app.include_router(auth_router)

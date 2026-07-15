@@ -42,15 +42,21 @@ export const mindMapAtom = Atom.family((key: string) => {
 })
 
 const MindMapProgressUpdate = Schema.Struct({
+  event: Schema.NullishOr(Schema.String),
   status: Schema.String,
   message: Schema.String,
   mind_map_id: Schema.NullishOr(Schema.String),
   error: Schema.NullishOr(Schema.String),
+  nodes: Schema.NullishOr(Schema.Array(Schema.Unknown)),
+  edges: Schema.NullishOr(Schema.Array(Schema.Unknown)),
 })
 
 export const mindMapProgressAtom = Atom.make<{
   status: string
   message: string
+  mindMapId?: string
+  nodes: Array<Record<string, unknown>>
+  edges: Array<Record<string, unknown>>
   error?: string
 } | null>(null)
 
@@ -58,6 +64,8 @@ export const generateMindMapStreamAtom = Atom.fn(
   (
     input: {
       projectId: string
+      mindMapId?: string
+      title?: string
       customInstructions?: string
     },
     _get,
@@ -65,11 +73,19 @@ export const generateMindMapStreamAtom = Atom.fn(
     Effect.gen(function* () {
       const { httpClient } = yield* ApiClientService
       let streamError: string | undefined
-      const body = HttpBody.unsafeJson({
-        custom_instructions: input.customInstructions || null,
-      })
+      let streamedNodes: Array<Record<string, unknown>> = []
+      let streamedEdges: Array<Record<string, unknown>> = []
+      const body = HttpBody.unsafeJson(
+        new MindMapCreate({
+          title: input.title ?? 'AI 思维导图',
+          description: input.customInstructions,
+          custom_instructions: input.customInstructions,
+        }),
+      )
       const resp = yield* httpClient.post(
-        `/api/v1/projects/${input.projectId}/mind-maps/stream`,
+        input.mindMapId
+          ? `/api/v1/projects/${input.projectId}/mind-maps/${input.mindMapId}/generate/stream`
+          : `/api/v1/projects/${input.projectId}/mind-maps/stream`,
         { body },
       )
 
@@ -104,9 +120,20 @@ export const generateMindMapStreamAtom = Atom.fn(
             if (progress.error) {
               streamError = progress.error
             }
+            streamedNodes = [
+              ...streamedNodes,
+              ...((progress.nodes ?? []) as Array<Record<string, unknown>>),
+            ]
+            streamedEdges = [
+              ...streamedEdges,
+              ...((progress.edges ?? []) as Array<Record<string, unknown>>),
+            ]
             registry.set(mindMapProgressAtom, {
               status: progress.status,
               message: progress.message,
+              mindMapId: progress.mind_map_id ?? undefined,
+              nodes: streamedNodes,
+              edges: streamedEdges,
               error: progress.error ?? undefined,
             })
           }),
@@ -115,10 +142,12 @@ export const generateMindMapStreamAtom = Atom.fn(
 
       yield* Stream.runCollect(respStream)
 
-      // Refresh mind maps list after completion
       const registry = yield* Registry.AtomRegistry
       if (input.projectId) {
         registry.refresh(mindMapsAtom(input.projectId))
+        if (input.mindMapId) {
+          registry.refresh(mindMapAtom(`${input.projectId}:${input.mindMapId}`))
+        }
       }
       registry.set(mindMapProgressAtom, null)
       if (streamError) {
@@ -126,6 +155,13 @@ export const generateMindMapStreamAtom = Atom.fn(
       }
     }).pipe(Effect.provide(ApiClientService.Default)),
 ).pipe(Atom.keepAlive)
+
+export const refreshMindMapAtom = runtime.fn(
+  Effect.fn(function* (input: { projectId: string; mindMapId: string }) {
+    const registry = yield* Registry.AtomRegistry
+    registry.refresh(mindMapAtom(`${input.projectId}:${input.mindMapId}`))
+  }),
+)
 
 export const generateMindMapAtom = runtime.fn(
   Effect.fn(function* (input: {
@@ -146,7 +182,6 @@ export const generateMindMapAtom = runtime.fn(
         }),
       )
 
-    // Refresh both the list and the individual mind map atom
     registry.refresh(mindMapsAtom(input.projectId))
     registry.refresh(mindMapAtom(`${input.projectId}:${mindMap.id}`))
     return mindMap
