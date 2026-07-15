@@ -412,9 +412,11 @@ const ResourcePreviewPanel = ({
   streamingResources: Array<GeneratedResource>
   streamingStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>>
 }) => {
-  const hasLivePackage = Object.keys(streamingStatuses).length > 0
+  const hasStreamingResources = Object.values(streamingStatuses).some(
+    (status) => status === 'pending' || status === 'generating',
+  )
   if (
-    hasLivePackage ||
+    hasStreamingResources ||
     (!resourcePackage && Object.keys(streamingStatuses).length > 0)
   ) {
     return (
@@ -443,6 +445,17 @@ const ResourcePreviewPanel = ({
                 {resource.status}
               </Badge>
             </div>
+            {resource.preview_url && resource.resource_type !== 'image' ? (
+              <div className="mt-3">
+                <a
+                  href={resource.preview_url}
+                  className="inline-flex items-center gap-1 text-sm text-primary underline underline-offset-4"
+                >
+                  打开生成资源
+                  <ExternalLinkIcon className="size-3.5" />
+                </a>
+              </div>
+            ) : null}
             <div className="mt-3 rounded-lg bg-muted/40 p-3">
               <ResourceResultPreview
                 projectId={projectId}
