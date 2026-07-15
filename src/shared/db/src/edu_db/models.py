@@ -126,7 +126,7 @@ class Project(Base):
     )
     name: Mapped[str] = mapped_column(String, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=True)
-    language_code: Mapped[str] = mapped_column(String, default="en")
+    language_code: Mapped[str] = mapped_column(String, default="zh")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

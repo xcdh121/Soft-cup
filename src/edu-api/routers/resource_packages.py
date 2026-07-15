@@ -1,7 +1,9 @@
 import asyncio
+import json
 import logging
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
 from auth import get_current_user
 from code_execution import CodeExecutionError, execute_code
@@ -27,6 +29,23 @@ from routers.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+_BACKGROUND_RESOURCE_PACKAGE_TASKS: set[asyncio.Task[Any]] = set()
+
+
+def _track_resource_package_task(task: asyncio.Task[Any]) -> None:
+    """Keep generation alive after the start request returns its package URL."""
+    _BACKGROUND_RESOURCE_PACKAGE_TASKS.add(task)
+
+    def finish(completed_task: asyncio.Task[Any]) -> None:
+        _BACKGROUND_RESOURCE_PACKAGE_TASKS.discard(completed_task)
+        if completed_task.cancelled():
+            return
+        try:
+            completed_task.result()
+        except Exception:
+            logger.exception("Background resource-package generation failed")
+
+    task.add_done_callback(finish)
 
 resource_packages_router = APIRouter(
     prefix="/api/v1/projects/{project_id}/resource-packages",
@@ -69,6 +88,46 @@ async def generate_resource_package(
 
 
 @resource_packages_router.post(
+    "/generate/start",
+    response_model=ResourcePackageDto,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def start_resource_package_generation(
+    project_id: str,
+    request: GenerateResourcePackageRequest,
+    user=Depends(get_current_user),
+    service: ResourcePackageService = Depends(get_resource_package_service),
+):
+    """Create the durable package, then continue generation in the background."""
+    loop = asyncio.get_running_loop()
+    package_started: asyncio.Future[str] = loop.create_future()
+
+    async def capture_start(event: ResourcePackageStreamEventDto) -> None:
+        if event.event == "package_started" and not package_started.done():
+            package_started.set_result(event.package_id)
+
+    task = asyncio.create_task(
+        service.generate_resource_package(
+            user_id=user.id,
+            project_id=project_id,
+            payload=request.model_dump(),
+            event_sink=capture_start,
+        )
+    )
+    _track_resource_package_task(task)
+
+    await asyncio.wait(
+        {task, package_started},
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    if package_started.done():
+        return service.get_resource_package(
+            user.id, project_id, package_started.result()
+        )
+    return task.result()
+
+
+@resource_packages_router.post(
     "/import", response_model=ResourcePackageDto, status_code=status.HTTP_201_CREATED
 )
 def import_resource_package(
@@ -96,6 +155,7 @@ async def generate_resource_package_stream(
 
     async def generate_stream() -> AsyncGenerator[bytes]:
         queue: asyncio.Queue[ResourcePackageStreamEventDto] = asyncio.Queue()
+        last_package_id = ""
         task = asyncio.create_task(service.generate_resource_package(
             user_id=user.id,
             project_id=project_id,
@@ -108,21 +168,26 @@ async def generate_resource_package_stream(
                     event = await asyncio.wait_for(queue.get(), timeout=0.5)
                 except TimeoutError:
                     continue
-                yield f"data: {event.model_dump_json()}\n\n".encode("utf-8")
+                last_package_id = event.package_id or last_package_id
+                yield f"data: {event.model_dump_json()}\n\n".encode()
             await task
         except Exception as exc:
             event = ResourcePackageStreamEventDto(
                 event="package_failed",
-                package_id="",
-                timestamp=datetime.now(timezone.utc),
+                package_id=last_package_id,
+                timestamp=datetime.now(UTC),
                 payload={"status": "failed", "error": str(exc)},
             )
-            yield f"data: {event.model_dump_json()}\n\n".encode("utf-8")
+            yield f"data: {event.model_dump_json()}\n\n".encode()
 
     return StreamingResponse(
         generate_stream(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -170,15 +235,66 @@ async def stream_resource_package(
         async for event in service.stream_resource_package_events(
             user.id, project_id, package_id
         ):
-            yield f"data: {event.model_dump_json()}\n\n".encode("utf-8")
+            yield f"data: {event.model_dump_json()}\n\n".encode()
 
-    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 generated_resources_router = APIRouter(
     prefix="/api/v1/projects/{project_id}/generated-resources",
     tags=["Generated Resources"],
 )
+
+
+@generated_resources_router.get("/by-target/note/{target_id}/stream")
+async def stream_generated_note_by_target(
+    project_id: str,
+    target_id: str,
+    user=Depends(get_current_user),
+    service: ResourcePackageService = Depends(get_resource_package_service),
+):
+    resource = service.get_generated_resource_by_target(
+        user.id, project_id, "note", target_id
+    )
+
+    async def generate_stream() -> AsyncGenerator[bytes]:
+        async for snapshot in service.stream_generated_note_snapshots(
+            user.id, project_id, resource.id, target_id
+        ):
+            yield f"data: {json.dumps(snapshot, ensure_ascii=False)}\n\n".encode()
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@generated_resources_router.get(
+    "/by-target/{target_type}/{target_id}", response_model=GeneratedResourceDto
+)
+def get_generated_resource_by_target(
+    project_id: str,
+    target_type: str,
+    target_id: str,
+    user=Depends(get_current_user),
+    service: ResourcePackageService = Depends(get_resource_package_service),
+):
+    return service.get_generated_resource_by_target(
+        user.id, project_id, target_type, target_id
+    )
 
 
 @generated_resources_router.get("/{resource_id}", response_model=GeneratedResourceDto)

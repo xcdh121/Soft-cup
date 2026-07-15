@@ -268,6 +268,9 @@ def get_chat_service(
     resource_package_service: ResourcePackageService = Depends(
         get_resource_package_service
     ),
+    agent_orchestration_service: AgentOrchestrationService = Depends(
+        get_agent_orchestration_service
+    ),
 ) -> ChatService:
     """Get ChatService instance."""
     return ChatService(
@@ -279,6 +282,7 @@ def get_chat_service(
         usage_service=usage_service,
         queue_service=queue_service,
         resource_package_service=resource_package_service,
+        learning_path_service=agent_orchestration_service,
     )
 
 
@@ -328,6 +332,9 @@ def get_chat_service_with_streaming(
     resource_package_service: ResourcePackageService = Depends(
         get_resource_package_service
     ),
+    agent_orchestration_service: AgentOrchestrationService = Depends(
+        get_agent_orchestration_service
+    ),
 ) -> ChatService:
     """Get ChatService instance configured for streaming with SearchService."""
     return ChatService(
@@ -339,6 +346,7 @@ def get_chat_service_with_streaming(
         usage_service=usage_service,
         queue_service=queue_service,
         resource_package_service=resource_package_service,
+        learning_path_service=agent_orchestration_service,
     )
 
 

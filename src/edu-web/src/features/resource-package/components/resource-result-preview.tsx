@@ -2,9 +2,9 @@ import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { ExternalLinkIcon, Loader2Icon, PlayCircleIcon } from 'lucide-react'
 import { useEffect } from 'react'
 import type { GeneratedResource } from '@/data-acess/resource-package'
-import { flashcardsAtom, refreshFlashcardsAtom } from '@/data-acess/flashcard'
+import { flashcardsAtom } from '@/data-acess/flashcard'
 import { mindMapAtom, refreshMindMapAtom } from '@/data-acess/mind-map'
-import { quizQuestionsAtom, refreshQuizQuestionsAtom } from '@/data-acess/quiz'
+import { quizQuestionsAtom } from '@/data-acess/quiz'
 import { NoteContent } from '@/features/note/components/note-content'
 
 type ResourceReference = {
@@ -343,15 +343,6 @@ const QuizPreview = ({
   quizId: string
 }) => {
   const result = useAtomValue(quizQuestionsAtom(`${projectId}:${quizId}`))
-  const refresh = useAtomSet(refreshQuizQuestionsAtom, { mode: 'promise' })
-  useEffect(() => {
-    if (Result.isSuccess(result) && result.value.length > 0) return
-    const id = window.setInterval(
-      () => void refresh({ projectId, quizId }),
-      3000,
-    )
-    return () => window.clearInterval(id)
-  }, [projectId, quizId, refresh, result])
   if (result.waiting) return <Loading label="正在生成题目..." />
   if (!Result.isSuccess(result)) return <Empty label="题目暂时无法加载。" />
   if (result.value.length === 0)
@@ -390,15 +381,6 @@ const FlashcardsPreview = ({
   groupId: string
 }) => {
   const result = useAtomValue(flashcardsAtom(`${projectId}:${groupId}`))
-  const refresh = useAtomSet(refreshFlashcardsAtom, { mode: 'promise' })
-  useEffect(() => {
-    if (Result.isSuccess(result) && result.value.length > 0) return
-    const id = window.setInterval(
-      () => void refresh({ projectId, flashcardGroupId: groupId }),
-      3000,
-    )
-    return () => window.clearInterval(id)
-  }, [groupId, projectId, refresh, result])
   if (result.waiting) return <Loading label="正在生成闪卡..." />
   if (!Result.isSuccess(result)) return <Empty label="闪卡暂时无法加载。" />
   if (result.value.length === 0)

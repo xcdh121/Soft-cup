@@ -1,10 +1,9 @@
 import { Atom, Registry } from '@effect-atom/atom-react'
 import { HttpBody } from '@effect/platform'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
-import { Effect, Layer, Stream } from 'effect'
+import { Effect, Layer } from 'effect'
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
-import { appendSseChunk } from '@/lib/sse'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -120,7 +119,7 @@ export type GenerateResourcePackageInput = {
   generation_params?: Record<string, unknown>
 }
 
-type ResourcePackageStreamEvent = {
+export type ResourcePackageStreamEvent = {
   event: string
   package_id: string
   payload: Record<string, unknown>
@@ -173,16 +172,202 @@ export const upsertAgentProgressStep = (
   return steps.map((item, index) => (index === existingIndex ? step : item))
 }
 
-export const resourcePackageProgressAtom = Atom.make<{
+export type ResourcePackageProgress = {
   projectId: string
   status: ResourcePackageStatus
   packageId: string | null
   resources: Array<GeneratedResource>
   resourceStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>>
   agentSteps: Array<AgentProgressStep>
+  package?: ResourcePackage
   currentResourceType?: ResourceType
   error?: string
-} | null>(null)
+}
+
+export const resourcePackageProgressAtom =
+  Atom.make<ResourcePackageProgress | null>(null)
+
+export const applyResourcePackageStreamEvent = (
+  current: ResourcePackageProgress | null,
+  event: ResourcePackageStreamEvent,
+  options: {
+    projectId: string
+    requestedTypes?: Array<ResourceType>
+    difficultyLevel?: DifficultyLevel
+  },
+): ResourcePackageProgress => {
+  const samePackage =
+    current?.projectId === options.projectId &&
+    (!current.packageId ||
+      !event.package_id ||
+      current.packageId === event.package_id)
+  const base: ResourcePackageProgress = samePackage
+    ? current
+    : {
+        projectId: options.projectId,
+        status: 'generating',
+        packageId: event.package_id || null,
+        resources: [],
+        resourceStatuses: Object.fromEntries(
+          (options.requestedTypes ?? []).map((type) => [type, 'pending']),
+        ),
+        agentSteps: [],
+      }
+
+  let packageId = event.package_id || base.packageId
+  let status = base.status
+  let resources = base.resources
+  let resourceStatuses = base.resourceStatuses
+  let agentSteps = base.agentSteps
+  let resourcePackage = base.package
+  let error = base.error
+
+  if (event.event === 'package_snapshot') {
+    const snapshot = event.payload.package as ResourcePackage | undefined
+    if (snapshot) {
+      resourcePackage = snapshot
+      packageId = snapshot.id
+      status = snapshot.status
+      resources = snapshot.resources
+      resourceStatuses = {
+        ...Object.fromEntries(
+          snapshot.preferred_resource_types.map((type) => [type, 'pending']),
+        ),
+        ...Object.fromEntries(
+          resources.map((resource) => [
+            resource.resource_type,
+            resource.status,
+          ]),
+        ),
+      }
+    }
+  }
+
+  if (event.event === 'agent_step') {
+    agentSteps = upsertAgentProgressStep(agentSteps, {
+      agentName: String(event.payload.agent_name ?? 'SupervisorAgent'),
+      status: String(event.payload.status ?? 'running'),
+      summary: String(event.payload.summary ?? ''),
+      phase: event.payload.phase as string | undefined,
+      eventType: event.payload.event_type as string | undefined,
+      skillId: event.payload.skill_id as string | undefined,
+      skillDisplayName: event.payload.skill_display_name as string | undefined,
+      toolCallId: event.payload.tool_call_id as string | undefined,
+      toolName: event.payload.tool_name as string | undefined,
+      toolDisplayName: event.payload.tool_display_name as string | undefined,
+      evidenceCount: event.payload.evidence_count as number | undefined,
+      durationMs: event.payload.duration_ms as number | null | undefined,
+      fallbackUsed: event.payload.fallback_used as boolean | undefined,
+    })
+  }
+
+  if (
+    ['resource_completed', 'resource_generating', 'resource_failed'].includes(
+      event.event,
+    ) &&
+    event.payload.resource
+  ) {
+    const resource = event.payload.resource as GeneratedResource
+    resources = [
+      ...resources.filter((item) => item.id !== resource.id),
+      resource,
+    ]
+    resourceStatuses = {
+      ...resourceStatuses,
+      [resource.resource_type]: resource.status,
+    }
+  } else if (event.event === 'resource_started') {
+    resourceStatuses = {
+      ...resourceStatuses,
+      [event.payload.resource_type as ResourceType]: 'generating',
+    }
+  } else if (event.event === 'resource_delta') {
+    const resourceId = String(event.payload.resource_id ?? '')
+    const resourceType = event.payload.resource_type as ResourceType
+    const existing = resources.find((item) => item.id === resourceId)
+    const now = new Date().toISOString()
+    const partialResource: GeneratedResource = {
+      id: resourceId,
+      resource_package_id: packageId ?? '',
+      project_id: options.projectId,
+      user_id: existing?.user_id ?? '',
+      resource_type: resourceType,
+      title: String(
+        event.payload.title ?? existing?.title ?? '正在生成学习资源',
+      ),
+      summary: existing?.summary ?? null,
+      status: 'generating',
+      format: existing?.format ?? 'markdown',
+      content_text: String(
+        event.payload.content ?? existing?.content_text ?? '',
+      ),
+      content_json:
+        event.payload.content_json &&
+        typeof event.payload.content_json === 'object'
+          ? (event.payload.content_json as Record<string, unknown>)
+          : (existing?.content_json ?? null),
+      file_url: existing?.file_url ?? null,
+      preview_url:
+        typeof event.payload.preview_url === 'string'
+          ? event.payload.preview_url
+          : (existing?.preview_url ?? null),
+      cover_image_url: existing?.cover_image_url ?? null,
+      source_document_ids: existing?.source_document_ids ?? [],
+      knowledge_point_ids: existing?.knowledge_point_ids ?? [],
+      difficulty_level:
+        existing?.difficulty_level ?? options.difficultyLevel ?? 'intermediate',
+      estimated_minutes: existing?.estimated_minutes ?? null,
+      version: existing?.version ?? 1,
+      generation_order: existing?.generation_order ?? 0,
+      generator_agent: existing?.generator_agent ?? 'ResourceAgent',
+      generation_reason: existing?.generation_reason ?? null,
+      error_message: null,
+      created_at: existing?.created_at ?? now,
+      updated_at: now,
+      completed_at: null,
+    }
+    resources = [
+      ...resources.filter((item) => item.id !== resourceId),
+      partialResource,
+    ]
+    resourceStatuses = { ...resourceStatuses, [resourceType]: 'generating' }
+  }
+
+  if (event.event === 'package_completed') {
+    status = event.payload.status === 'failed' ? 'failed' : 'completed'
+  } else if (event.event === 'package_failed') {
+    status = 'failed'
+    error = String(event.payload.error ?? 'Resource package generation failed')
+  } else if (event.event !== 'package_snapshot') {
+    status = 'generating'
+  }
+
+  return {
+    projectId: options.projectId,
+    status,
+    packageId,
+    resources,
+    resourceStatuses,
+    agentSteps,
+    package: resourcePackage
+      ? {
+          ...resourcePackage,
+          status,
+          resources,
+          completed_resource_count: resources.filter(
+            (resource) => resource.status === 'completed',
+          ).length,
+          failed_resource_count: resources.filter(
+            (resource) => resource.status === 'failed',
+          ).length,
+        }
+      : undefined,
+    currentResourceType: event.payload.resource_type as
+      | ResourceType
+      | undefined,
+    error,
+  }
+}
 
 export const resourcePackagesAtom = Atom.family((projectId: string) =>
   runtime.atom(
@@ -229,7 +414,7 @@ export const generateResourcePackageAtom = runtime.fn(
       'programming_questions',
       'code_lab',
     ]
-    let resourceStatuses: Partial<
+    const resourceStatuses: Partial<
       Record<ResourceType, GeneratedResourceStatus>
     > = Object.fromEntries(requestedTypes.map((type) => [type, 'pending']))
     registry.set(resourcePackageProgressAtom, {
@@ -269,192 +454,26 @@ export const generateResourcePackageAtom = runtime.fn(
     })
 
     const response = yield* httpClient.post(
-      `/api/v1/projects/${input.projectId}/resource-packages/generate/stream`,
+      `/api/v1/projects/${input.projectId}/resource-packages/generate/start`,
       { body },
     )
-
-    let buffer = ''
-    let packageId = ''
-    let resources: Array<GeneratedResource> = []
-    let streamError: string | undefined
-    let agentSteps: Array<AgentProgressStep> = []
-    const decoder = new TextDecoder()
-    yield* response.stream.pipe(
-      Stream.map((chunk) => {
-        const parsed = appendSseChunk(
-          buffer,
-          decoder.decode(chunk, { stream: true }),
-        )
-        buffer = parsed.buffer
-        return parsed.blocks
-      }),
-      Stream.flatMap((blocks) => Stream.fromIterable(blocks)),
-      Stream.map((block) =>
-        block
-          .split('\n')
-          .filter((line) => line.startsWith('data: '))
-          .map((line) => line.slice(6))
-          .join('\n'),
-      ),
-      Stream.filter((line) => line.length > 0),
-      Stream.tap((line) =>
-        Effect.sync(() => {
-          const event = JSON.parse(line) as ResourcePackageStreamEvent
-          packageId = event.package_id || packageId
-          if (event.event === 'agent_step') {
-            const step: AgentProgressStep = {
-              agentName: String(event.payload.agent_name ?? 'SupervisorAgent'),
-              status: String(event.payload.status ?? 'running'),
-              summary: String(event.payload.summary ?? ''),
-              phase: event.payload.phase as string | undefined,
-              eventType: event.payload.event_type as string | undefined,
-              skillId: event.payload.skill_id as string | undefined,
-              skillDisplayName: event.payload.skill_display_name as
-                | string
-                | undefined,
-              toolCallId: event.payload.tool_call_id as string | undefined,
-              toolName: event.payload.tool_name as string | undefined,
-              toolDisplayName: event.payload.tool_display_name as
-                | string
-                | undefined,
-              evidenceCount: event.payload.evidence_count as number | undefined,
-              durationMs: event.payload.duration_ms as
-                | number
-                | null
-                | undefined,
-              fallbackUsed: event.payload.fallback_used as boolean | undefined,
-            }
-            agentSteps = upsertAgentProgressStep(agentSteps, step)
-          }
-          if (
-            [
-              'resource_completed',
-              'resource_generating',
-              'resource_failed',
-            ].includes(event.event)
-          ) {
-            const resource = event.payload.resource as GeneratedResource
-            resources = [
-              ...resources.filter((item) => item.id !== resource.id),
-              resource,
-            ]
-            resourceStatuses = {
-              ...resourceStatuses,
-              [resource.resource_type]: resource.status,
-            }
-          } else if (event.event === 'resource_started') {
-            resourceStatuses = {
-              ...resourceStatuses,
-              [event.payload.resource_type as ResourceType]: 'generating',
-            }
-          } else if (event.event === 'resource_delta') {
-            const resourceId = String(event.payload.resource_id ?? '')
-            const resourceType = event.payload.resource_type as ResourceType
-            const existing = resources.find((item) => item.id === resourceId)
-            const now = new Date().toISOString()
-            const partialResource: GeneratedResource = {
-              id: resourceId,
-              resource_package_id: packageId,
-              project_id: input.projectId,
-              user_id: existing?.user_id ?? '',
-              resource_type: resourceType,
-              title: String(
-                event.payload.title ?? existing?.title ?? '正在生成笔记',
-              ),
-              summary: existing?.summary ?? null,
-              status: 'generating',
-              format: existing?.format ?? 'markdown',
-              content_text: String(
-                event.payload.content ?? existing?.content_text ?? '',
-              ),
-              content_json:
-                event.payload.content_json &&
-                typeof event.payload.content_json === 'object'
-                  ? (event.payload.content_json as Record<string, unknown>)
-                  : (existing?.content_json ?? null),
-              file_url: existing?.file_url ?? null,
-              preview_url:
-                typeof event.payload.preview_url === 'string'
-                  ? event.payload.preview_url
-                  : (existing?.preview_url ?? null),
-              cover_image_url: existing?.cover_image_url ?? null,
-              source_document_ids: existing?.source_document_ids ?? [],
-              knowledge_point_ids: existing?.knowledge_point_ids ?? [],
-              difficulty_level:
-                existing?.difficulty_level ??
-                input.difficulty_level ??
-                'intermediate',
-              estimated_minutes: existing?.estimated_minutes ?? null,
-              version: existing?.version ?? 1,
-              generation_order: existing?.generation_order ?? 0,
-              generator_agent: existing?.generator_agent ?? 'ResourceAgent',
-              generation_reason: existing?.generation_reason ?? null,
-              error_message: null,
-              created_at: existing?.created_at ?? now,
-              updated_at: now,
-              completed_at: null,
-            }
-            resources = [
-              ...resources.filter((item) => item.id !== resourceId),
-              partialResource,
-            ]
-            resourceStatuses = {
-              ...resourceStatuses,
-              [resourceType]: 'generating',
-            }
-          }
-          if (event.event === 'package_failed') {
-            streamError = String(
-              event.payload.error ?? 'Resource package generation failed',
-            )
-          }
-          registry.set(resourcePackageProgressAtom, {
-            projectId: input.projectId,
-            status:
-              event.event === 'package_completed'
-                ? (event.payload.status as ResourcePackageStatus)
-                : event.event === 'package_failed'
-                  ? 'failed'
-                  : 'generating',
-            packageId,
-            resources,
-            resourceStatuses,
-            agentSteps,
-            currentResourceType: event.payload.resource_type as
-              | ResourceType
-              | undefined,
-            error: streamError,
-          })
-        }),
-      ),
-      Stream.runDrain,
+    const resourcePackage = (yield* response.json) as ResourcePackage
+    const progress = applyResourcePackageStreamEvent(
+      null,
+      {
+        event: 'package_snapshot',
+        package_id: resourcePackage.id,
+        payload: { package: resourcePackage },
+      },
+      {
+        projectId: input.projectId,
+        requestedTypes,
+        difficultyLevel: input.difficulty_level,
+      },
     )
-    if (streamError) throw new Error(streamError)
-    if (packageId.length === 0)
-      throw new Error('Resource package stream returned no package ID')
-
-    const packageResponse = yield* httpClient.get(
-      `/api/v1/projects/${input.projectId}/resource-packages/${packageId}`,
-    )
-    const resourcePackage = (yield* packageResponse.json) as ResourcePackage
 
     registry.refresh(resourcePackagesAtom(input.projectId))
-    registry.refresh(
-      generatedResourcesAtom(`${input.projectId}:${resourcePackage.id}`),
-    )
-    registry.set(resourcePackageProgressAtom, {
-      projectId: input.projectId,
-      status: resourcePackage.status,
-      packageId: resourcePackage.id,
-      resources: resourcePackage.resources,
-      resourceStatuses: Object.fromEntries(
-        resourcePackage.resources.map((resource) => [
-          resource.resource_type,
-          resource.status,
-        ]),
-      ),
-      agentSteps,
-    })
+    registry.set(resourcePackageProgressAtom, progress)
 
     return resourcePackage
   }),

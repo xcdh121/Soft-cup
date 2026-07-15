@@ -102,6 +102,12 @@ class QuizAgent:
             if count is not None:
                 options["count"] = count
 
+            # Make the database itself the incremental source of truth. The quiz
+            # detail page is a separate request and cannot consume the package's
+            # original SSE connection.
+            db.query(QuizQuestion).filter(QuizQuestion.quiz_id == quiz_id).delete()
+            db.commit()
+
             sent_count = 0
             final_result: QuizGenerationResult | None = None
             async for partial in generate_stream(
@@ -131,11 +137,44 @@ class QuizAgent:
                 for position, question in enumerate(
                     stable_questions[sent_count:], start=sent_count
                 ):
+                    knowledge_point_id = (
+                        requested_knowledge_point_id
+                        or resolve_knowledge_point_id(
+                            db,
+                            project.course_id,
+                            texts=[question.question_text, question.explanation],
+                        )
+                    )
+                    quiz_question = QuizQuestion(
+                        id=str(uuid4()),
+                        quiz_id=quiz_id,
+                        project_id=project_id,
+                        knowledge_point_id=knowledge_point_id,
+                        question_text=question.question_text,
+                        option_a=question.option_a,
+                        option_b=question.option_b,
+                        option_c=question.option_c,
+                        option_d=question.option_d,
+                        correct_option=question.correct_option,
+                        explanation=question.explanation,
+                        difficulty_level=question.difficulty_level,
+                        position=position,
+                        created_at=datetime.now(),
+                    )
+                    db.add(quiz_question)
+                    db.commit()
                     yield {
                         "event": "quiz_question_created",
                         "quiz_id": quiz_id,
                         "position": position,
-                        "question": question.model_dump(),
+                        "question": {
+                            **question.model_dump(),
+                            "id": quiz_question.id,
+                            "quiz_id": quiz_id,
+                            "project_id": project_id,
+                            "knowledge_point_id": knowledge_point_id,
+                            "position": position,
+                        },
                     }
                 sent_count = len(stable_questions)
 
@@ -145,34 +184,6 @@ class QuizAgent:
             quiz.name = final_result.name
             quiz.description = final_result.description
             quiz.updated_at = datetime.now()
-            db.query(QuizQuestion).filter(QuizQuestion.quiz_id == quiz_id).delete()
-            for position, item in enumerate(final_result.questions):
-                knowledge_point_id = (
-                    requested_knowledge_point_id
-                    or resolve_knowledge_point_id(
-                        db,
-                        project.course_id,
-                        texts=[item.question_text, item.explanation],
-                    )
-                )
-                db.add(
-                    QuizQuestion(
-                        id=str(uuid4()),
-                        quiz_id=quiz_id,
-                        project_id=project_id,
-                        knowledge_point_id=knowledge_point_id,
-                        question_text=item.question_text,
-                        option_a=item.option_a,
-                        option_b=item.option_b,
-                        option_c=item.option_c,
-                        option_d=item.option_d,
-                        correct_option=item.correct_option,
-                        explanation=item.explanation,
-                        difficulty_level=item.difficulty_level,
-                        position=position,
-                        created_at=datetime.now(),
-                    )
-                )
             db.commit()
             yield {
                 "event": "quiz_completed",

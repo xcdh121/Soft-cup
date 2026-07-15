@@ -14,6 +14,7 @@ from edu_ai.tools.note import tools as note_tools
 from edu_ai.tools.quiz import tools as quiz_tools
 from edu_ai.tools.rag import tools as rag_tools
 from edu_ai.tools.resource_package import tools as resource_package_tools
+from edu_ai.tools.study_plan import tools as study_plan_tools
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
     ModelRequest,
@@ -155,6 +156,7 @@ def make_chatbot(llm: BaseChatModel):
         *rag_tools,
         *content_management_tools,
         *resource_package_tools,
+        *study_plan_tools,
     ]
 
     return create_agent(

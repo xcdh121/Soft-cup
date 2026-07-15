@@ -106,6 +106,7 @@ class ChatService:
         usage_service=None,
         queue_service=None,
         resource_package_service=None,
+        learning_path_service=None,
     ) -> None:
         """Initialize the chat service.
 
@@ -122,6 +123,7 @@ class ChatService:
         self.usage_service = usage_service
         self._queue_service = queue_service
         self.resource_package_service = resource_package_service
+        self.learning_path_service = learning_path_service
         self.storage = LocalStorageService(storage_root)
         llm_config = LlmProviderConfig(
             model=llm_model or "gpt-4o-mini",
@@ -1280,6 +1282,7 @@ class ChatService:
             language=language_code,
             llm=self.llm_non_streaming,  # Use non-streaming LLM for tools
             resource_packages=self.resource_package_service,
+            learning_paths=self.learning_path_service,
             project_context=project_context,
             learner_profile=learner_profile,
             learning_evidence=learning_evidence,

@@ -8,7 +8,6 @@ import {
   TagsIcon,
 } from 'lucide-react'
 import type {
-  AgentProgressStep,
   DifficultyLevel,
   GeneratedResource,
   GeneratedResourceStatus,
@@ -38,7 +37,7 @@ import {
 import { ProjectHeader } from '@/features/project/components/project-header'
 import { ResourceResultPreview } from '@/features/resource-package/components/resource-result-preview'
 import { cn } from '@/lib/utils'
-import { AgentCollaborationPanel } from '@/components/agent-collaboration-panel'
+import { useResourcePackageStream } from '@/hooks/use-resource-package-stream'
 
 const RESOURCE_TYPE_OPTIONS: Array<{
   value: ResourceType
@@ -140,21 +139,27 @@ const statusToneMap: Record<
   pending: 'outline',
 }
 
-const AgentProgressPanel = ({ steps }: { steps: Array<AgentProgressStep> }) => {
-  return <AgentCollaborationPanel steps={steps} demoMode />
-}
-
 const ResourcePackageSelector = ({
   projectId,
   selectedPackageId,
+  livePackage,
   onSelect,
 }: {
   projectId: string
   selectedPackageId: string | null
+  livePackage?: ResourcePackage
   onSelect: (resourcePackage: ResourcePackage | null) => void
 }) => {
   const packagesResult = useAtomValue(resourcePackagesAtom(projectId))
-  const packages = Result.isSuccess(packagesResult) ? packagesResult.value : []
+  const persistedPackages = Result.isSuccess(packagesResult)
+    ? packagesResult.value
+    : []
+  const packages = livePackage
+    ? [
+        livePackage,
+        ...persistedPackages.filter((item) => item.id !== livePackage.id),
+      ]
+    : persistedPackages
   const [category, setCategory] = useState<'all' | ResourceType>('all')
   const filteredPackages = packages.filter(
     (resourcePackage) =>
@@ -165,7 +170,7 @@ const ResourcePackageSelector = ({
       ),
   )
 
-  if (packagesResult.waiting) {
+  if (packagesResult.waiting && !livePackage) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
@@ -174,7 +179,7 @@ const ResourcePackageSelector = ({
     )
   }
 
-  if (!Result.isSuccess(packagesResult)) {
+  if (!Result.isSuccess(packagesResult) && !livePackage) {
     return (
       <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
         资源包加载失败。
@@ -402,11 +407,9 @@ const ResourcePreviewPanel = ({
   streamingResources: Array<GeneratedResource>
   streamingStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>>
 }) => {
-  const hasStreamingResources = Object.values(streamingStatuses).some(
-    (status) => status === 'pending' || status === 'generating',
-  )
+  const hasLivePackage = Object.keys(streamingStatuses).length > 0
   if (
-    hasStreamingResources ||
+    hasLivePackage ||
     (!resourcePackage && Object.keys(streamingStatuses).length > 0)
   ) {
     return (
@@ -473,9 +476,13 @@ export const ResourcePackagePage = ({
   const courseOutlineResult = useAtomValue(projectCourseOutlineAtom(projectId))
   const globalPackageProgress = useAtomValue(resourcePackageProgressAtom)
   const packageProgress =
-    globalPackageProgress?.projectId === projectId
+    globalPackageProgress?.projectId === projectId &&
+    (!initialPackageId ||
+      !globalPackageProgress.packageId ||
+      globalPackageProgress.packageId === initialPackageId)
       ? globalPackageProgress
       : null
+  useResourcePackageStream({ projectId, packageId: initialPackageId })
   const packagesResult = useAtomValue(resourcePackagesAtom(projectId))
   const refreshResourcePackages = useAtomSet(refreshResourcePackagesAtom, {
     mode: 'promise',
@@ -486,26 +493,17 @@ export const ResourcePackagePage = ({
   }, [projectId, refreshResourcePackages])
 
   useEffect(() => {
-    if (
-      packageProgress?.status !== 'generating' ||
-      !packageProgress.packageId ||
-      packageProgress.packageId === initialPackageId
-    ) {
+    const progressPackageId = packageProgress?.packageId
+    if (!progressPackageId || progressPackageId === initialPackageId) {
       return
     }
     void navigate({
       to: '/dashboard/p/$projectId/resource-packages',
       params: { projectId },
-      search: { packageId: packageProgress.packageId },
+      search: { packageId: progressPackageId },
       replace: true,
     })
-  }, [
-    initialPackageId,
-    navigate,
-    packageProgress?.packageId,
-    packageProgress?.status,
-    projectId,
-  ])
+  }, [initialPackageId, navigate, packageProgress?.packageId, projectId])
 
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
@@ -529,34 +527,6 @@ export const ResourcePackagePage = ({
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
-    if (selectedPackage?.status !== 'generating') return
-    let cancelled = false
-    let timerId: number | undefined
-    const poll = async () => {
-      let shouldContinue = true
-      try {
-        const response = await fetch(
-          `/api/v1/projects/${projectId}/resource-packages/${selectedPackage.id}`,
-        )
-        if (response.ok && !cancelled) {
-          const nextPackage = (await response.json()) as ResourcePackage
-          setSelectedPackage(nextPackage)
-          shouldContinue = nextPackage.status === 'generating'
-        }
-      } finally {
-        if (!cancelled && shouldContinue) {
-          timerId = window.setTimeout(poll, 1500)
-        }
-      }
-    }
-    void poll()
-    return () => {
-      cancelled = true
-      if (timerId !== undefined) window.clearTimeout(timerId)
-    }
-  }, [projectId, selectedPackage?.id, selectedPackage?.status])
-
-  useEffect(() => {
     if (!initialPackageId || !Result.isSuccess(packagesResult)) return
     const requestedPackage = packagesResult.value.find(
       (resourcePackage) => resourcePackage.id === initialPackageId,
@@ -575,15 +545,8 @@ export const ResourcePackagePage = ({
   const isGenerateDisabled =
     !topic.trim() || selectedTypes.length === 0 || isSubmitting
 
-  useEffect(() => {
-    if (packageProgress?.status === 'generating') {
-      setSelectedPackage(null)
-    }
-  }, [packageProgress?.packageId, packageProgress?.status])
-
   const helperText = useMemo(
-    () =>
-      '资源包生成已与项目概览中的 AI 生成统一，统一走同一条多 Agent 生成链路。',
+    () => '提交后会立即创建资源包并进入结果页，生成内容会持续实时更新。',
     [],
   )
 
@@ -634,6 +597,12 @@ export const ResourcePackagePage = ({
       })
 
       setSelectedPackage(resourcePackage)
+      await navigate({
+        to: '/dashboard/p/$projectId/resource-packages',
+        params: { projectId },
+        search: { packageId: resourcePackage.id },
+        replace: true,
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -652,8 +621,6 @@ export const ResourcePackagePage = ({
             </div>
             <p className="text-sm text-muted-foreground">{helperText}</p>
           </div>
-
-          <AgentProgressPanel steps={packageProgress?.agentSteps ?? []} />
 
           {packageProgress?.status === 'generating' &&
           packageProgress.packageId ? (
@@ -900,8 +867,20 @@ export const ResourcePackagePage = ({
                   </div>
                   <ResourcePackageSelector
                     projectId={projectId}
-                    selectedPackageId={selectedPackage?.id ?? null}
-                    onSelect={setSelectedPackage}
+                    selectedPackageId={
+                      selectedPackage?.id ?? packageProgress?.packageId ?? null
+                    }
+                    livePackage={packageProgress?.package}
+                    onSelect={(resourcePackage) => {
+                      setSelectedPackage(resourcePackage)
+                      if (!resourcePackage) return
+                      void navigate({
+                        to: '/dashboard/p/$projectId/resource-packages',
+                        params: { projectId },
+                        search: { packageId: resourcePackage.id },
+                        replace: true,
+                      })
+                    }}
                   />
                 </div>
               </div>

@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 from datetime import datetime
+from time import monotonic
 from typing import Any
 
 from edu_core.exceptions import NotFoundError
@@ -150,6 +151,8 @@ class NoteAgent:
                     generation_topic = ", ".join(topics)
 
             previous_content = ""
+            emitted_content = ""
+            last_persisted_at = 0.0
             final_result: NoteGenerationResult | None = None
             async for partial in generate_stream(
                 llm=self.llm,
@@ -163,13 +166,28 @@ class NoteAgent:
             ):
                 content = partial.get("content")
                 if isinstance(content, str) and content != previous_content:
-                    delta = (
-                        content[len(previous_content) :]
-                        if content.startswith(previous_content)
-                        else content
-                    )
                     previous_content = content
-                    if delta:
+                    now = monotonic()
+                    should_publish = (
+                        not emitted_content
+                        or now - last_persisted_at >= 0.25
+                        or len(content) - len(emitted_content) >= 96
+                    )
+                    if should_publish:
+                        delta = (
+                            content[len(emitted_content) :]
+                            if content.startswith(emitted_content)
+                            else content
+                        )
+                        # Persist the latest stable snapshot before publishing the
+                        # event. Resource-package pages and note detail pages may
+                        # be opened by a different request, so an in-memory SSE
+                        # delta alone is not enough for them to render progress.
+                        note.content = content
+                        note.updated_at = datetime.now()
+                        db.commit()
+                        emitted_content = content
+                        last_persisted_at = now
                         yield {
                             "event": "note_delta",
                             "note_id": note_id,
@@ -183,6 +201,21 @@ class NoteAgent:
 
             if final_result is None:
                 raise ValueError("The model did not return a complete note")
+            if final_result.content != emitted_content:
+                delta = (
+                    final_result.content[len(emitted_content) :]
+                    if final_result.content.startswith(emitted_content)
+                    else final_result.content
+                )
+                note.content = final_result.content
+                note.updated_at = datetime.now()
+                db.commit()
+                yield {
+                    "event": "note_delta",
+                    "note_id": note_id,
+                    "delta": delta,
+                    "content": final_result.content,
+                }
             note.title = final_result.title
             note.description = final_result.description
             note.content = final_result.content
