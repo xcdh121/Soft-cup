@@ -132,7 +132,6 @@ const rootRoute = createRootRoute({
   component: () => (
     <>
       <Outlet />
-      <TanStackRouterDevtools />
     </>
   ),
 })
@@ -153,13 +152,10 @@ const rootRoute = createRootRoute({
         </nav>
       </header>
       <Outlet />
-      <TanStackRouterDevtools />
     </>
   ),
 })
 ```
-
-The `<TanStackRouterDevtools />` component is not required so you can remove it if you don't want it in your layout.
 
 More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
 
@@ -195,13 +191,10 @@ Then you'll need to create a `src/routes/__root.tsx` file with the contents of t
 
 ```tsx
 import { Outlet, createRootRoute } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
-
 export const Route = createRootRoute({
   component: () => (
     <>
       <Outlet />
-      <TanStackRouterDevtools />
     </>
   ),
 })
@@ -382,7 +375,6 @@ const rootRoute = createRootRoute({
     <>
       <Outlet />
       <ReactQueryDevtools buttonPosition="top-right" />
-      <TanStackRouterDevtools />
     </>
   ),
 })
