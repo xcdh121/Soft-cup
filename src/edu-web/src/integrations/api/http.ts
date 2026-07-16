@@ -25,7 +25,7 @@ export class ApiClientService extends Effect.Service<ApiClientService>()(
                   )
                 : (request) => request,
               HttpClientRequest.prependUrl(
-                import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8000',
+                import.meta.env.VITE_SERVER_URL ?? window.location.origin,
               ),
             )
           }),

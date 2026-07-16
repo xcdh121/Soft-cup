@@ -36,7 +36,7 @@ const ProjectRouteGuard = ({
         return
       }
 
-      const baseUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8000'
+      const baseUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin
       const response = await fetch(
         `${baseUrl}/api/v1/projects/${encodeURIComponent(projectId)}`,
         {

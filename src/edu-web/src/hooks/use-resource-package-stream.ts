@@ -13,7 +13,7 @@ import { env } from '@/env'
 import { authClient } from '@/lib/auth-client'
 import { appendSseChunk } from '@/lib/sse'
 
-const serverUrl = (env.VITE_SERVER_URL ?? 'http://localhost:8000').replace(
+const serverUrl = (env.VITE_SERVER_URL ?? window.location.origin).replace(
   /\/$/,
   '',
 )

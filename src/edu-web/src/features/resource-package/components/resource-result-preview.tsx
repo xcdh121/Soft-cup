@@ -41,7 +41,7 @@ const resolveGeneratedFileUrl = (fileUrl: string) => {
   if (/^https?:\/\//i.test(fileUrl) || fileUrl.startsWith('blob:')) {
     return fileUrl
   }
-  const baseUrl = (env.VITE_SERVER_URL ?? 'http://localhost:8000').replace(
+  const baseUrl = (env.VITE_SERVER_URL ?? window.location.origin).replace(
     /\/$/,
     '',
   )

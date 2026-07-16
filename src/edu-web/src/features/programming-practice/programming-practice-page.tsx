@@ -66,7 +66,7 @@ const getProgrammingRunOutput = (result: ProgrammingRunResult): string => {
   return '代码沙箱已返回运行结果，但程序没有产生输出。'
 }
 
-const serverUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8000'
+const serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin
 
 const programmingLanguages = [
   { value: 'python', label: 'Python' },

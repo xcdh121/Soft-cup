@@ -39,3 +39,9 @@ __pycache__/
 **/.ruff_cache
 **/.ruff_cache/**
 **/*.pyc
+
+# The API provisions these idempotent demo courses after registration/login.
+!scripts/
+scripts/*
+!scripts/seed_dsa_course.py
+!scripts/seed_ml_demo_course.py

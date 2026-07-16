@@ -404,9 +404,6 @@ def upsert_user(db) -> User:
             name="Local Dev User",
         )
         db.add(user)
-    else:
-        user.email = user.email or OWNER_EMAIL
-        user.name = user.name or "Local Dev User"
     return user
 
 

@@ -32,6 +32,13 @@ npm install
 npm start
 ```
 
+## Production Deployment
+
+For a Docker Compose deployment behind a single public-IP entry point, see
+[Production deployment](docs/PRODUCTION_DEPLOYMENT.md). It includes generated
+secrets, same-origin API proxying, persistent volumes, resource limits, and
+database/file backup scripts.
+
 ## Backend Config
 
 Create a root `.env` file with values like:

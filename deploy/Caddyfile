@@ -1,0 +1,8 @@
+wanjing.xyz {
+  encode zstd gzip
+  reverse_proxy web:80
+}
+
+http://47.82.109.128 {
+  reverse_proxy web:80
+}

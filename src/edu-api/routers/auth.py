@@ -2,6 +2,7 @@
 
 from auth import get_current_user
 from config import get_settings
+from default_courses import ensure_default_courses
 from edu_core.schemas.users import UserDto
 from edu_core.services import UserService
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -85,6 +86,7 @@ async def register(payload: RegisterRequest) -> AuthResponse:
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    ensure_default_courses(user.id)
     return _issue_token(user)
 
 
@@ -102,6 +104,7 @@ async def login(payload: CredentialsRequest) -> AuthResponse:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is disabled",
         )
+    ensure_default_courses(user.id)
     return _issue_token(user)
 
 

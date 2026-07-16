@@ -8,6 +8,7 @@ wheels/
 .localdata/
 output/
 tmp/
+backups/
 .playwright-mcp/
 
 # Virtual environments
