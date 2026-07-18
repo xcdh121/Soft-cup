@@ -56,6 +56,18 @@ EMBEDDING_BASE_URL=
 
 `LLM_BASE_URL` and `EMBEDDING_BASE_URL` can point to self-hosted OpenAI-compatible services.
 
+## API Documentation
+
+- Generated API reference: [docs/API.md](docs/API.md)
+- Interactive Scalar UI after startup: `http://localhost:8000/`
+- OpenAPI schema after startup: `http://localhost:8000/openapi.json`
+
+Regenerate the Markdown reference after changing routes or Pydantic models:
+
+```powershell
+.\.venv\Scripts\python.exe tools\generate_api_docs.py
+```
+
 ## Notes
 
 - The old Azure deployment path has been removed from the active workspace.
