@@ -34,6 +34,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Response } from '@/components/ai-elements/response'
 
 interface StudyPlanPageProps {
   projectId: string
@@ -200,9 +201,9 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                           {step.title || '正在生成步骤内容…'}
                         </div>
                         {step.reason && (
-                          <p className="mt-1 text-sm text-muted-foreground">
+                          <Response className="mt-1 text-sm text-muted-foreground">
                             {step.reason}
-                          </p>
+                          </Response>
                         )}
                       </div>
                     ))}
@@ -245,9 +246,9 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                       {/* Analysis */}
                       <div>
                         <h3 className="text-lg font-semibold mb-2">分析</h3>
-                        <p className="text-muted-foreground">
+                        <Response className="text-muted-foreground">
                           {displayedPlan.content.analysis}
-                        </p>
+                        </Response>
                       </div>
 
                       {/* Focus Areas */}
@@ -289,9 +290,9 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                                     {item.title}
                                   </div>
                                   {item.description && (
-                                    <div className="text-xs text-muted-foreground">
+                                    <Response className="text-xs text-muted-foreground">
                                       {item.description}
-                                    </div>
+                                    </Response>
                                   )}
                                 </div>
                                 <span className="text-xs uppercase tracking-wider font-bold text-muted-foreground opacity-70 border px-1.5 py-0.5 rounded">
@@ -360,7 +361,11 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                               </div>
                               <ul className="list-disc list-inside text-sm text-muted-foreground mt-1">
                                 {day.tasks.map((task, j) => (
-                                  <li key={j}>{task}</li>
+                                  <li key={j}>
+                                    <Response className="inline text-sm">
+                                      {task}
+                                    </Response>
+                                  </li>
                                 ))}
                               </ul>
                             </div>
@@ -370,9 +375,9 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
 
                       {/* Encouragement */}
                       <div className="bg-primary/5 p-4 rounded-lg border border-primary/10">
-                        <p className="font-medium text-primary italic text-center">
-                          "{displayedPlan.content.encouragement}"
-                        </p>
+                        <Response className="font-medium text-primary italic text-center">
+                          {`"${displayedPlan.content.encouragement}"`}
+                        </Response>
                       </div>
                     </CardContent>
                   </Card>

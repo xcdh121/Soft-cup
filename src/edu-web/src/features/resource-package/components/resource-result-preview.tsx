@@ -2,6 +2,7 @@ import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { ExternalLinkIcon, Loader2Icon, PlayCircleIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { GeneratedResource } from '@/data-acess/resource-package'
+import { Response } from '@/components/ai-elements/response'
 import { env } from '@/env'
 import { flashcardsAtom } from '@/data-acess/flashcard'
 import { mindMapAtom, refreshMindMapAtom } from '@/data-acess/mind-map'
@@ -180,7 +181,7 @@ const ProgrammingQuestionsPreview = ({
             ) : null}
           </div>
           <div className="mt-2 line-clamp-3 text-muted-foreground">
-            {question.description}
+            <Response className="text-sm">{question.description}</Response>
           </div>
           {question.examples[0] ? (
             <div className="mt-3 grid gap-2 rounded-md bg-muted/50 p-2 text-xs sm:grid-cols-2">
@@ -287,7 +288,7 @@ const VideoRecommendationsPreview = ({
             </div>
             {video.summary ? (
               <div className="line-clamp-2 text-xs text-muted-foreground">
-                {video.summary}
+                <Response className="text-xs">{video.summary}</Response>
               </div>
             ) : null}
             <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -395,7 +396,9 @@ const IncrementalFlashcardsPreview = ({
             >
               <div className="font-medium">{card.question}</div>
               <div className="mt-2 text-muted-foreground">
-                {String(card.answer ?? '')}
+                <Response className="text-sm">
+                  {String(card.answer ?? '')}
+                </Response>
               </div>
             </div>,
           ]
@@ -464,7 +467,9 @@ const FlashcardsPreview = ({
           className="rounded-lg border bg-background p-3 text-sm"
         >
           <div className="font-medium">{card.question}</div>
-          <div className="mt-2 text-muted-foreground">{card.answer}</div>
+          <div className="mt-2 text-muted-foreground">
+            <Response className="text-sm">{card.answer}</Response>
+          </div>
         </div>
       ))}
     </div>
@@ -555,11 +560,13 @@ export const ResourceResultPreview = ({
   }
 
   if (resource.content_text) {
+    const previewText = `${resource.content_text.slice(0, 1200)}${
+      resource.content_text.length > 1200 ? '...' : ''
+    }`
     return (
-      <div className="whitespace-pre-wrap text-sm">
-        {resource.content_text.slice(0, 1200)}
-        {resource.content_text.length > 1200 ? '...' : ''}
-      </div>
+      <Response className="text-sm">
+        {previewText}
+      </Response>
     )
   }
 

@@ -2,6 +2,7 @@ import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Loader2Icon } from 'lucide-react'
 import { useEffect } from 'react'
 import { MindMapView } from './mind-map-view'
+import { Response } from '@/components/ai-elements/response'
 import {
   mindMapAtom,
   mindMapProgressAtom,
@@ -25,10 +26,9 @@ export const MindMapContent = ({
 
   useEffect(() => {
     if (!Result.isSuccess(mindMapResult)) return
-    if (!mindMapResult.value) return
 
     const mapData = mindMapResult.value.map_data as
-      | { nodes?: unknown[]; edges?: unknown[] }
+      | { nodes?: Array<unknown>; edges?: Array<unknown> }
       | null
       | undefined
     if ((mapData?.nodes?.length ?? 0) > 0) return
@@ -44,14 +44,6 @@ export const MindMapContent = ({
 
   return Result.builder(mindMapResult)
     .onSuccess((mindMap) => {
-      if (!mindMap) {
-        return (
-          <div className="flex flex-1 items-center justify-center text-muted-foreground">
-            <p>未找到思维导图</p>
-          </div>
-        )
-      }
-
       const persistedMapData = mindMap.map_data as {
         nodes: Array<{
           id: string
@@ -90,9 +82,9 @@ export const MindMapContent = ({
       return (
         <div className={`flex flex-col h-full ${className || ''}`}>
           {mindMap.description && (
-            <div className="text-muted-foreground text-sm mb-4">
+            <Response className="text-muted-foreground text-sm mb-4">
               {mindMap.description}
-            </div>
+            </Response>
           )}
           <div className="flex-1 min-h-0 border rounded-lg overflow-hidden">
             {mapData.nodes.length > 0 ? (

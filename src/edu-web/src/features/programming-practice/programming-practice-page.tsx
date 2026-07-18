@@ -11,6 +11,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { useState } from 'react'
+import { Response } from '@/components/ai-elements/response'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -148,7 +149,7 @@ const GradeList = ({
         {items.map((item, index) => (
           <li key={`${item}-${index}`} className="flex gap-2 leading-6">
             <span aria-hidden>•</span>
-            <span>{item}</span>
+            <Response className="min-w-0 flex-1 text-sm">{item}</Response>
           </li>
         ))}
       </ul>
@@ -432,26 +433,26 @@ export const ProgrammingPracticePage = ({
               <CardTitle className="text-xl">{question.title}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              <p className="whitespace-pre-wrap text-sm leading-7">
+              <Response className="text-sm leading-7">
                 {question.description}
-              </p>
+              </Response>
 
               {question.inputFormat || question.outputFormat ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   {question.inputFormat ? (
                     <div>
                       <h3 className="mb-2 text-sm font-semibold">输入格式</h3>
-                      <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+                      <Response className="text-sm text-muted-foreground">
                         {question.inputFormat}
-                      </p>
+                      </Response>
                     </div>
                   ) : null}
                   {question.outputFormat ? (
                     <div>
                       <h3 className="mb-2 text-sm font-semibold">输出格式</h3>
-                      <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+                      <Response className="text-sm text-muted-foreground">
                         {question.outputFormat}
-                      </p>
+                      </Response>
                     </div>
                   ) : null}
                 </div>
@@ -475,9 +476,9 @@ export const ProgrammingPracticePage = ({
                           {example.output}
                         </pre>
                         {example.explanation ? (
-                          <p className="mt-3 text-muted-foreground">
+                          <Response className="mt-3 text-muted-foreground">
                             {example.explanation}
-                          </p>
+                          </Response>
                         ) : null}
                       </div>
                     ))}
@@ -488,7 +489,7 @@ export const ProgrammingPracticePage = ({
               {question.hints.length ? (
                 <div className="flex gap-2 rounded-xl border border-[#7DA0CA] bg-[#C1E8FF]/40 p-3 text-sm dark:border-[#5483B3] dark:bg-[#052659]/50">
                   <Lightbulb className="mt-0.5 size-4 shrink-0 text-[#5483B3]" />
-                  <span>{question.hints[0]}</span>
+                  <Response className="text-sm">{question.hints[0]}</Response>
                 </div>
               ) : null}
             </CardContent>
@@ -666,7 +667,9 @@ export const ProgrammingPracticePage = ({
                     </div>
                   </div>
 
-                  <p className="text-sm leading-7">{grade.summary}</p>
+                  <Response className="text-sm leading-7">
+                    {grade.summary}
+                  </Response>
 
                   <div className="grid gap-4 lg:grid-cols-3">
                     <GradeList
@@ -689,9 +692,9 @@ export const ProgrammingPracticePage = ({
                   {grade.complexity_analysis ? (
                     <div className="rounded-xl bg-background/80 p-4 text-sm">
                       <div className="mb-1 font-semibold">复杂度分析</div>
-                      <p className="leading-6 text-muted-foreground">
+                      <Response className="leading-6 text-muted-foreground">
                         {grade.complexity_analysis}
-                      </p>
+                      </Response>
                     </div>
                   ) : null}
 

@@ -223,7 +223,9 @@ export const QuizQuestionCard = ({
                 {currentQuestion.explanation && (
                   <div className="leading-relaxed text-muted-foreground">
                     <span className="font-medium">解析：</span>
-                    {currentQuestion.explanation}
+                    <Response className="mt-1 text-sm">
+                      {currentQuestion.explanation}
+                    </Response>
                   </div>
                 )}
               </div>

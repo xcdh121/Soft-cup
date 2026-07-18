@@ -5,6 +5,7 @@ import { Option } from 'effect'
 import { Loader2Icon } from 'lucide-react'
 import { FlashcardContent } from './flashcard-content'
 import type { FlashcardDto } from '@/integrations/api/client'
+import { Response } from '@/components/ai-elements/response'
 import { flashcardDetailRoute } from '@/routes/_config'
 import { refreshFlashcardsAtom } from '@/data-acess/flashcard'
 import { useGeneratedResourceSnapshot } from '@/hooks/use-generated-resource-snapshot'
@@ -172,9 +173,9 @@ export const FlashcardDetail = ({ flashcardGroupId, ...props }: Props) => {
               <div className="text-xs text-muted-foreground">
                 闪卡 {index + 1}
               </div>
-              <div className="mt-2 font-medium">{card.question}</div>
+              <Response className="mt-2 font-medium">{card.question}</Response>
               <div className="mt-3 text-sm text-muted-foreground">
-                {card.answer}
+                <Response className="text-sm">{card.answer}</Response>
               </div>
             </div>
           ))}

@@ -60,7 +60,9 @@ export const NoteContent = ({
           className={`flex min-h-0 flex-col space-y-4 overflow-y-auto overscroll-contain pb-8 ${className || ''}`}
         >
           {description && (
-            <div className="text-muted-foreground text-sm">{description}</div>
+            <Response className="text-muted-foreground text-sm">
+              {description}
+            </Response>
           )}
           {noteStream.isGenerating ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
