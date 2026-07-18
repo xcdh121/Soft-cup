@@ -15,15 +15,14 @@ import {
   bindCourseBookAtom,
   courseBooksAtom,
   documentAtom,
+  documentFileBufferAtom,
   documentPreviewAtom,
   reprocessDocumentAtom,
   type CourseBook,
   type DocumentCitation,
 } from '@/data-acess/document'
-import { env } from '@/env'
 import { useDocumentPolling } from '@/hooks/use-document-polling'
 import type { DocumentDto } from '@/integrations/api'
-import { authClient } from '@/lib/auth-client'
 import { cn } from '@/lib/utils'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Link } from '@tanstack/react-router'
@@ -122,6 +121,7 @@ type PdfPageLoadResult = {
 
 type PdfFileSource =
   | string
+  | { data: Uint8Array }
   | {
       url: string
       httpHeaders?: Record<string, string>
@@ -199,6 +199,7 @@ const getRangeElement = (range: Range) => {
   return null
 }
 
+<<<<<<< Updated upstream
 const serverUrl = (env.VITE_SERVER_URL ?? 'http://localhost:8000').replace(
   /\/$/,
   '',
@@ -209,6 +210,8 @@ const createDocumentFileUrl = (projectId: string, documentId: string) =>
     projectId,
   )}/documents/${encodeURIComponent(documentId)}/file`
 
+=======
+>>>>>>> Stashed changes
 const LoadingState = ({ label }: { label: string }) => (
   <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
     <Loader2Icon className="size-4 animate-spin" />
@@ -850,6 +853,7 @@ const PdfReader = ({
   const [messages, setMessages] = useState<Array<AiMessage>>([])
   const [question, setQuestion] = useState('')
   const [sending, setSending] = useState(false)
+  const [pdfLoadError, setPdfLoadError] = useState<string | null>(null)
   const [preloadReady, setPreloadReady] = useState(false)
   const [chapterSidebarWidth, setChapterSidebarWidth] = useState(
     DEFAULT_CHAPTER_SIDEBAR_WIDTH,
@@ -905,6 +909,7 @@ const PdfReader = ({
     setCurrentPage(1)
     setPageInput('1')
     setPreloadReady(false)
+    setPdfLoadError(null)
     setPageAspectRatios({})
     setPendingSelection(null)
     pageRefs.current.clear()
@@ -1371,10 +1376,19 @@ const PdfReader = ({
               }
               error={
                 <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-                  PDF 加载失败
+                  <div>PDF 加载失败</div>
+                  {pdfLoadError ? (
+                    <div className="mt-2 max-w-xl break-words text-xs opacity-80">
+                      {pdfLoadError}
+                    </div>
+                  ) : null}
                 </div>
               }
+              onLoadError={(error) => {
+                setPdfLoadError(error.message || String(error))
+              }}
               onLoadSuccess={({ numPages: loadedPages }) => {
+                setPdfLoadError(null)
                 setNumPages(loadedPages)
                 setCurrentPage(1)
                 setPageInput('1')
@@ -1468,6 +1482,31 @@ const PdfReader = ({
   )
 }
 
+const PdfBufferReader = ({
+  document,
+  fileBuffer,
+  projectId,
+}: {
+  document: DocumentDto
+  fileBuffer: ArrayBuffer
+  projectId: string
+}) => {
+  const fileSource = useMemo<PdfFileSource>(
+    // PDF.js transfers this TypedArray to its worker. Copy the ArrayBuffer so
+    // the cached response remains usable if React remounts the reader.
+    () => ({ data: new Uint8Array(fileBuffer.slice(0)) }),
+    [fileBuffer],
+  )
+
+  return (
+    <PdfReader
+      document={document}
+      fileSource={fileSource}
+      projectId={projectId}
+    />
+  )
+}
+
 const PdfDocumentContent = ({
   document,
   documentId,
@@ -1477,51 +1516,27 @@ const PdfDocumentContent = ({
   documentId: string
   projectId: string
 }) => {
-  const [accessToken, setAccessToken] = useState<string | null>(null)
-  const [sessionChecked, setSessionChecked] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-
-    void authClient.auth.getSession().then(({ data }) => {
-      if (cancelled) return
-      setAccessToken(data.session?.access_token ?? null)
-      setSessionChecked(true)
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const fileUrl = useMemo(
-    () => createDocumentFileUrl(projectId, documentId),
-    [documentId, projectId],
+  const fileResult = useAtomValue(
+    documentFileBufferAtom(`${projectId}:${documentId}`),
   )
 
-  const fileSource = useMemo<PdfFileSource>(() => {
-    if (!accessToken) return fileUrl
-
-    return {
-      url: fileUrl,
-      httpHeaders: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      withCredentials: false,
-    }
-  }, [accessToken, fileUrl])
-
-  if (!sessionChecked) {
-    return <LoadingState label="正在准备 PDF 阅读器..." />
-  }
-
-  return (
-    <PdfReader
-      document={document}
-      fileSource={fileSource}
-      projectId={projectId}
-    />
-  )
+  return Result.builder(fileResult)
+    .onInitialOrWaiting(() => <LoadingState label="正在下载 PDF..." />)
+    .onFailure(() => (
+      <div className="flex flex-1 items-center justify-center p-6">
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          PDF 文件下载失败，请刷新页面重试
+        </div>
+      </div>
+    ))
+    .onSuccess((fileBuffer) => (
+      <PdfBufferReader
+        document={document}
+        fileBuffer={fileBuffer}
+        projectId={projectId}
+      />
+    ))
+    .render()
 }
 
 const DocumentNotReadyState = ({
