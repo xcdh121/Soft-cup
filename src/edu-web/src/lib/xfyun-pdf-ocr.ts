@@ -58,7 +58,7 @@ const getErrorMessage = async (response: Response) => {
 }
 
 const taskUrl = (projectId: string, taskNo?: string) => {
-  const baseUrl = env.VITE_SERVER_URL ?? 'http://localhost:8000'
+  const baseUrl = env.VITE_SERVER_URL ?? window.location.origin
   const root = `${baseUrl}/api/v1/projects/${encodeURIComponent(projectId)}/pdf-ocr/tasks`
   return taskNo ? `${root}/${encodeURIComponent(taskNo)}` : root
 }
@@ -121,7 +121,7 @@ export const uploadChatPdfAttachment = async ({
   chatId: string
   file: File
 }): Promise<ChatPdfAttachment> => {
-  const baseUrl = env.VITE_SERVER_URL ?? 'http://localhost:8000'
+  const baseUrl = env.VITE_SERVER_URL ?? window.location.origin
   const formData = new FormData()
   formData.append('file', file)
   const response = await fetch(

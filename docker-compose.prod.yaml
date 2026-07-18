@@ -1,0 +1,214 @@
+name: edu-agent
+
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-eduagent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}@db:5432/${POSTGRES_DB:-eduagent}
+  STORAGE_ROOT: /app/.localdata
+  TASK_QUEUE_BACKEND: arq
+  TASK_QUEUE_NAME: edu-agent:tasks
+  REDIS_URL: redis://redis:6379/0
+  TASK_JOB_TIMEOUT_SECONDS: ${TASK_JOB_TIMEOUT_SECONDS:-900}
+  TASK_JOB_MAX_TRIES: ${TASK_JOB_MAX_TRIES:-3}
+  AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Set AUTH_JWT_SECRET in .env.production}
+  ALLOW_DEV_AUTH_BYPASS: "false"
+
+x-json-logging: &json-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  web:
+    image: edu-agent-web:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: src/edu-web/Dockerfile
+      args:
+        VITE_SERVER_URL: ${VITE_SERVER_URL:-}
+        VITE_AVATAR_SERVER_URL: ${VITE_AVATAR_SERVER_URL:-}
+        VITE_AVATAR_APP_ID: ${VITE_AVATAR_APP_ID:-}
+        VITE_AVATAR_API_KEY: ${VITE_AVATAR_API_KEY:-}
+        VITE_AVATAR_API_SECRET: ${VITE_AVATAR_API_SECRET:-}
+        VITE_AVATAR_SCENE_ID: ${VITE_AVATAR_SCENE_ID:-}
+        VITE_AVATAR_ID: ${VITE_AVATAR_ID:-}
+        VITE_AVATAR_VCN: ${VITE_AVATAR_VCN:-}
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    mem_limit: ${WEB_MEMORY_LIMIT:-128m}
+    cpus: ${WEB_CPU_LIMIT:-0.25}
+    logging: *json-logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    depends_on:
+      web:
+        condition: service_healthy
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: ${CADDY_MEMORY_LIMIT:-128m}
+    cpus: ${CADDY_CPU_LIMIT:-0.25}
+    logging: *json-logging
+
+  api:
+    image: edu-agent-api:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: src/edu-api/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${PRODUCTION_ENV_FILE:-.env.production}
+    environment:
+      <<: *app-environment
+      CODE_EXECUTION_API_URL: http://piston:2000/api/v2/execute
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      piston:
+        condition: service_started
+    volumes:
+      - storage_data:/app/.localdata
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    mem_limit: ${API_MEMORY_LIMIT:-768m}
+    cpus: ${API_CPU_LIMIT:-0.75}
+    logging: *json-logging
+
+  worker:
+    image: edu-agent-worker:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: src/edu-worker/Dockerfile
+    command: ["arq", "worker.WorkerSettings"]
+    restart: unless-stopped
+    env_file:
+      - ${PRODUCTION_ENV_FILE:-.env.production}
+    environment:
+      <<: *app-environment
+      WORKER_MAX_JOBS: ${WORKER_MAX_JOBS:-1}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - storage_data:/app/.localdata
+    mem_limit: ${WORKER_MEMORY_LIMIT:-1024m}
+    cpus: ${WORKER_CPU_LIMIT:-0.75}
+    logging: *json-logging
+
+  migrate:
+    image: edu-agent-api:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: src/edu-api/Dockerfile
+    command: ["alembic", "-c", "/app/alembic.ini", "upgrade", "heads"]
+    restart: "no"
+    env_file:
+      - ${PRODUCTION_ENV_FILE:-.env.production}
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-eduagent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}@db:5432/${POSTGRES_DB:-eduagent}
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: ${MIGRATE_MEMORY_LIMIT:-512m}
+    logging: *json-logging
+
+  piston:
+    image: ghcr.io/engineer-man/piston
+    restart: unless-stopped
+    privileged: true
+    expose:
+      - "2000"
+    environment:
+      PISTON_RUN_TIMEOUT: "5000"
+      PISTON_COMPILE_TIMEOUT: "10000"
+      PISTON_RUN_MEMORY_LIMIT: "256000000"
+      PISTON_COMPILE_MEMORY_LIMIT: "256000000"
+      PISTON_MAX_CONCURRENT_JOBS: ${PISTON_MAX_CONCURRENT_JOBS:-1}
+      PISTON_DISABLE_NETWORKING: "true"
+      PISTON_OUTPUT_MAX_SIZE: "65536"
+    volumes:
+      - piston_packages:/piston/packages
+      # Piston chowns package contents during startup, so runtime mounts must
+      # remain writable. Read-only bind mounts make the container restart.
+      - ./tools/piston-runtimes/python:/piston/packages/python/3.7.3
+      - ./tools/piston-runtimes/gcc:/piston/packages/gcc/8.3.0
+    tmpfs:
+      - /tmp:exec,size=256m
+    mem_limit: ${PISTON_MEMORY_LIMIT:-768m}
+    cpus: ${PISTON_CPU_LIMIT:-0.75}
+    logging: *json-logging
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "96mb", "--maxmemory-policy", "noeviction"]
+    restart: unless-stopped
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: ${REDIS_MEMORY_LIMIT:-160m}
+    cpus: ${REDIS_CPU_LIMIT:-0.25}
+    logging: *json-logging
+
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-eduagent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-eduagent}
+    expose:
+      - "5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    shm_size: 128m
+    mem_limit: ${DB_MEMORY_LIMIT:-768m}
+    cpus: ${DB_CPU_LIMIT:-0.50}
+    logging: *json-logging
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:
+  piston_packages:
+  caddy_data:
+  caddy_config:

@@ -76,3 +76,6 @@ class WorkerSettings:
     redis_settings = redis_settings_from_url(settings.redis_url)
     queue_name = settings.task_queue_name
     job_timeout = settings.task_job_timeout_seconds
+    # Document parsing and embedding can be memory intensive. Keep production
+    # concurrency explicit instead of inheriting arq's default of 10 jobs.
+    max_jobs = settings.worker_max_jobs

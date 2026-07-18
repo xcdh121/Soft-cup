@@ -32,7 +32,7 @@ export const importResourcePackage = async (
   const {
     data: { session },
   } = await authClient.auth.getSession()
-  const baseUrl = env.VITE_SERVER_URL ?? 'http://localhost:8000'
+  const baseUrl = env.VITE_SERVER_URL ?? window.location.origin
   const response = await fetch(
     `${baseUrl}/api/v1/projects/${encodeURIComponent(input.projectId)}/resource-packages/import`,
     {

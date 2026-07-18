@@ -10,6 +10,7 @@ COPY pyproject.toml uv.lock alembic.ini /app/
 # 2. Copy Source Code
 # CRITICAL: We copy the whole 'src' so 'edu-shared' is available to the API
 COPY src /app/src
+COPY scripts/seed_dsa_course.py scripts/seed_ml_demo_course.py /app/scripts/
 
 # 3. Install Dependencies
 WORKDIR /app/src/edu-api

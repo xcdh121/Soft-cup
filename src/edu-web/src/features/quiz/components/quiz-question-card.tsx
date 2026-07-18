@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { AiExplanationMessage } from '@/data-acess/quiz-ai-explanation'
+import { Response } from '@/components/ai-elements/response'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -262,13 +263,21 @@ export const QuizQuestionCard = ({
               <div
                 key={`${message.role}-${index}`}
                 className={cn(
-                  'whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-7',
+                  'rounded-2xl px-4 py-3 text-sm leading-7',
                   message.role === 'user'
-                    ? 'ml-10 bg-primary text-primary-foreground'
+                    ? 'ml-10 whitespace-pre-wrap bg-primary text-primary-foreground'
                     : 'mr-4 border bg-card',
                 )}
               >
-                {message.content || (
+                {message.content ? (
+                  message.role === 'assistant' ? (
+                    <Response className="text-sm leading-7">
+                      {message.content}
+                    </Response>
+                  ) : (
+                    message.content
+                  )
+                ) : (
                   <span className="flex items-center gap-2 text-muted-foreground">
                     <LoaderCircle className="size-4 animate-spin" />
                     {streamStatus || '正在生成本题解析…'}
