@@ -7,7 +7,6 @@ import {
   CircleDollarSign,
   CreditCard,
   Database,
-  FileText,
   Gauge,
   LayoutDashboard,
   ListChecks,
@@ -42,6 +41,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { adminApi } from '@/data-acess/billing-admin'
+import { CourseCreateDialog } from '@/features/admin/course-create-dialog'
 import { authClient } from '@/lib/auth-client'
 
 type Tab =
@@ -95,6 +95,7 @@ export function AdminPage() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [courseDialogOpen, setCourseDialogOpen] = useState(false)
 
   const signOut = async () => {
     await authClient.auth.signOut()
@@ -142,19 +143,6 @@ export function AdminPage() {
       await load()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : `${label}失败`)
-    }
-  }
-
-  const createCourse = async () => {
-    const name = window.prompt('请输入平台课程名称')?.trim()
-    if (!name) return
-    const code = window.prompt('请输入课程代码（可留空）')?.trim() || undefined
-    try {
-      await adminApi.createCourse({ name, code })
-      setNotice('平台课程草稿已创建')
-      await load()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '创建课程失败')
     }
   }
 
@@ -217,7 +205,7 @@ export function AdminPage() {
             </div>
             <div className="flex gap-2">
               {tab === 'courses' && (
-                <Button onClick={() => void createCourse()}>
+                <Button onClick={() => setCourseDialogOpen(true)}>
                   新建平台课程
                 </Button>
               )}
@@ -275,6 +263,14 @@ export function AdminPage() {
           {tab === 'audit' && <AuditTable rows={pageItems} />}
         </main>
       </div>
+      <CourseCreateDialog
+        open={courseDialogOpen}
+        onOpenChange={setCourseDialogOpen}
+        onCreated={async () => {
+          setNotice('平台课程草稿已创建')
+          await load()
+        }}
+      />
     </div>
   )
 }
@@ -846,7 +842,7 @@ function DistributionCard({
 }: {
   title: string
   description: string
-  icon: typeof FileText
+  icon: typeof Shield
   items: Array<{ label: string; count: number }>
 }) {
   const total = Math.max(

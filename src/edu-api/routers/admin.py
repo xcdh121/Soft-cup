@@ -1,16 +1,27 @@
 """Administrator API. Every endpoint is denied by default to non-admin users."""
 
+from pathlib import Path
+from typing import Literal
+from uuid import uuid4
+
 from auth import require_admin
 from config import get_settings
 from edu_core.schemas.users import UserDto
 from edu_core.services import AdminService, BillingError, BillingService
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from security import hash_password
 
 from routers.billing import manual_payment_allowed
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+
+COURSE_COVER_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
+MAX_COURSE_COVER_BYTES = 5 * 1024 * 1024
 
 
 class ReasonRequest(BaseModel):
@@ -52,7 +63,9 @@ class HandlingRequest(ReasonRequest):
 class CourseCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     code: str | None = Field(default=None, max_length=100)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=120)
+    cover_url: str | None = Field(default=None, max_length=2000)
+    status: Literal["active", "draft", "archived"] = "active"
 
 
 class CourseUpdateRequest(ReasonRequest):
@@ -235,9 +248,34 @@ def courses(
     return admin_service().list_courses(page=page, page_size=page_size, status=status, search=search)
 
 
+@router.post("/course-covers", response_model=dict, status_code=201)
+async def upload_course_cover(file: UploadFile = File(...)):
+    extension = COURSE_COVER_TYPES.get(file.content_type or "")
+    if not extension:
+        raise HTTPException(status_code=415, detail="课程封面仅支持 JPG、PNG 或 WebP 图片")
+    content = await file.read(MAX_COURSE_COVER_BYTES + 1)
+    if not content:
+        raise HTTPException(status_code=400, detail="课程封面不能为空")
+    if len(content) > MAX_COURSE_COVER_BYTES:
+        raise HTTPException(status_code=413, detail="课程封面不能超过 5MB")
+
+    cover_directory = Path(get_settings().storage_root) / "course-covers"
+    cover_directory.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid4().hex}{extension}"
+    (cover_directory / filename).write_bytes(content)
+    return {"url": f"/api/v1/course-covers/{filename}"}
+
+
 @router.post("/courses", response_model=dict, status_code=201)
 def create_course(payload: CourseCreateRequest, admin: UserDto = Depends(require_admin)):
-    return admin_service().create_course(admin_id=admin.id, name=payload.name, code=payload.code, description=payload.description)
+    return admin_service().create_course(
+        admin_id=admin.id,
+        name=payload.name,
+        code=payload.code,
+        description=payload.description,
+        cover_url=payload.cover_url,
+        status=payload.status,
+    )
 
 
 @router.patch("/courses/{course_id}", response_model=dict)

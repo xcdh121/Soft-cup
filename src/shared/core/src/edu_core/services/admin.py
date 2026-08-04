@@ -349,9 +349,31 @@ class AdminService:
             items = [{**self._course_dict(row), "chapter_count": db.query(func.count(CourseChapter.id)).filter(CourseChapter.course_id == row.id).scalar() or 0, "project_count": db.query(func.count(Project.id)).filter(Project.course_id == row.id).scalar() or 0} for row in rows]
             return self._page(items, total, page, page_size)
 
-    def create_course(self, *, admin_id: str, name: str, code: str | None, description: str | None) -> dict[str, Any]:
+    def create_course(
+        self,
+        *,
+        admin_id: str,
+        name: str,
+        code: str | None,
+        description: str | None,
+        cover_url: str | None,
+        status: str,
+    ) -> dict[str, Any]:
+        if status not in {"active", "draft", "archived"}:
+            raise BillingError("课程状态无效")
         with self._session() as db:
-            course = Course(id=str(uuid4()), owner_id=admin_id, name=name, code=code, description=description, status="active", visibility="platform", publish_status="draft", version=1)
+            course = Course(
+                id=str(uuid4()),
+                owner_id=admin_id,
+                name=name,
+                code=code,
+                description=description,
+                cover_url=cover_url,
+                status=status,
+                visibility="platform",
+                publish_status="draft",
+                version=1,
+            )
             db.add(course)
             db.flush()
             after = self._course_dict(course)
@@ -449,7 +471,7 @@ class AdminService:
 
     @staticmethod
     def _course_dict(course: Course) -> dict[str, Any]:
-        return {"id": course.id, "owner_id": course.owner_id, "code": course.code, "name": course.name, "description": course.description, "visibility": course.visibility, "publish_status": course.publish_status, "published_at": course.published_at, "published_by": course.published_by, "version": course.version, "cover_url": course.cover_url, "created_at": course.created_at, "updated_at": course.updated_at}
+        return {"id": course.id, "owner_id": course.owner_id, "code": course.code, "name": course.name, "description": course.description, "status": course.status, "visibility": course.visibility, "publish_status": course.publish_status, "published_at": course.published_at, "published_by": course.published_by, "version": course.version, "cover_url": course.cover_url, "created_at": course.created_at, "updated_at": course.updated_at}
 
     @staticmethod
     def _safe_text(value: str | None) -> str | None:

@@ -38,7 +38,9 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers: {
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init?.body && !(init.body instanceof FormData)
+        ? { 'Content-Type': 'application/json' }
+        : {}),
       ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
       ...init?.headers,
     },
@@ -134,7 +136,21 @@ export const adminApi = {
     }),
   courses: () =>
     request<Page<Record<string, any>>>('/api/v1/admin/courses?page_size=50'),
-  createCourse: (body: { name: string; code?: string; description?: string }) =>
+  uploadCourseCover: (file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return request<{ url: string }>('/api/v1/admin/course-covers', {
+      method: 'POST',
+      body,
+    })
+  },
+  createCourse: (body: {
+    name: string
+    code?: string
+    description?: string
+    cover_url?: string
+    status: 'active' | 'draft' | 'archived'
+  }) =>
     request('/api/v1/admin/courses', {
       method: 'POST',
       body: JSON.stringify(body),
