@@ -26,6 +26,14 @@ const SignUpPage = lazy(() =>
     default: m.SignUpPage,
   })),
 )
+const BillingPage = lazy(() =>
+  import('@/features/billing/billing-page').then((m) => ({
+    default: m.BillingPage,
+  })),
+)
+const AdminPage = lazy(() =>
+  import('@/features/admin/admin-page').then((m) => ({ default: m.AdminPage })),
+)
 const ChatDetailRoute = lazy(() =>
   import('./chat-detail-route').then((m) => ({ default: m.ChatDetailRoute })),
 )
@@ -144,13 +152,12 @@ const AgentRuntimeRoute = lazy(() =>
     default: m.AgentRuntimeRoute,
   })),
 )
-const requireAuth = async () => {
+const requireLearner = async () => {
   const {
     data: { session },
   } = await authClient.auth.getSession()
-  const isAuthenticated = !!session
 
-  if (!isAuthenticated) {
+  if (!session) {
     const isSignInPage = window.location.pathname === '/sign-in'
 
     throw redirect({
@@ -160,6 +167,19 @@ const requireAuth = async () => {
       },
     })
   }
+
+  if (session.user.is_admin) {
+    throw redirect({ to: '/admin' })
+  }
+}
+
+const requireAdmin = async () => {
+  const {
+    data: { session },
+  } = await authClient.auth.getSession()
+  if (!session)
+    throw redirect({ to: '/sign-in', search: { redirect: '/admin' } })
+  if (!session.user.is_admin) throw redirect({ to: '/dashboard' })
 }
 
 export const rootRoute = createRootRoute({
@@ -170,7 +190,7 @@ export const rootRoute = createRootRoute({
 export const dashboardRoute = createRoute({
   path: '/dashboard',
   getParentRoute: () => rootRoute,
-  beforeLoad: requireAuth,
+  beforeLoad: requireLearner,
   component: () => (
     <Suspense fallback={<LoadingPage />}>
       <DashboardRoute />
@@ -205,6 +225,27 @@ export const signUpRoute = createRoute({
   component: () => (
     <Suspense fallback={<LoadingPage />}>
       <SignUpPage />
+    </Suspense>
+  ),
+})
+
+export const pricingRoute = createRoute({
+  path: '/pricing',
+  getParentRoute: () => rootRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <BillingPage publicMode />
+    </Suspense>
+  ),
+})
+
+export const adminRoute = createRoute({
+  path: '/admin',
+  getParentRoute: () => rootRoute,
+  beforeLoad: requireAdmin,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <AdminPage />
     </Suspense>
   ),
 })
@@ -501,6 +542,16 @@ export const agentRuntimeRoute = createRoute({
   ),
 })
 
+export const billingRoute = createRoute({
+  path: '/billing',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <BillingPage />
+    </Suspense>
+  ),
+})
+
 export const routeTree = rootRoute.addChildren([
   dashboardRoute.addChildren([
     dashboardIndexRoute,
@@ -532,9 +583,12 @@ export const routeTree = rootRoute.addChildren([
     learningEvaluationChoiceRoute,
     learningEvaluationPracticeRoute,
     agentRuntimeRoute,
+    billingRoute,
     settingsRoute,
   ]),
   indexRoute,
   signInRoute,
   signUpRoute,
+  pricingRoute,
+  adminRoute,
 ])

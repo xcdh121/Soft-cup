@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     auth_admin_usernames: str = ""
     allow_dev_auth_bypass: bool = False
 
+    # Billing and payment callbacks. Provider secrets never leave the API process.
+    billing_environment: str = "development"
+    billing_manual_payment_enabled: bool = True
+    billing_order_expiry_minutes: int = 30
+    billing_manual_payment_recipient: str = ""
+    billing_manual_wechat_qr_url: str = ""
+    billing_manual_qq_qr_url: str = ""
+    payment_webhook_secret: str = ""
+    payment_callback_base_url: str = ""
+
     # LLM / embedding providers (OpenAI-compatible endpoints or local servers)
     llm_model: str = "gpt-4o-mini"
     llm_api_key: str = ""

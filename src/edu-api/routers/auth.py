@@ -4,7 +4,7 @@ from auth import get_current_user
 from config import get_settings
 from default_courses import ensure_default_courses
 from edu_core.schemas.users import UserDto
-from edu_core.services import UserService
+from edu_core.services import BillingService, UserService
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from security import (
@@ -77,16 +77,19 @@ async def register(payload: RegisterRequest) -> AuthResponse:
         for username in settings.auth_admin_usernames.split(",")
         if username.strip()
     }
+    is_admin = payload.username in admin_usernames
     try:
         user = UserService().create_local_user(
             username=payload.username,
             name=payload.name,
             password_hash=hash_password(payload.password),
-            is_admin=payload.username in admin_usernames,
+            is_admin=is_admin,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
-    ensure_default_courses(user.id)
+    if not user.is_admin:
+        ensure_default_courses(user.id)
+        BillingService().ensure_trial_entitlement(user_id=user.id)
     return _issue_token(user)
 
 
@@ -104,7 +107,8 @@ async def login(payload: CredentialsRequest) -> AuthResponse:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is disabled",
         )
-    ensure_default_courses(user.id)
+    if not user.is_admin:
+        ensure_default_courses(user.id)
     return _issue_token(user)
 
 

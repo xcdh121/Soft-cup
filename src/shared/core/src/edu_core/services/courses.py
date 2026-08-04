@@ -11,6 +11,7 @@ from edu_db.models import (
     Project,
 )
 from edu_db.session import get_session_factory
+from sqlalchemy import or_
 
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.courses import (
@@ -51,7 +52,13 @@ class CourseService:
         with self._get_db_session() as db:
             courses = (
                 db.query(Course)
-                .filter(Course.owner_id == owner_id)
+                .filter(
+                    or_(
+                        Course.owner_id == owner_id,
+                        (Course.visibility == "platform")
+                        & (Course.publish_status == "published"),
+                    )
+                )
                 .order_by(Course.created_at.desc())
                 .all()
             )
@@ -59,7 +66,7 @@ class CourseService:
 
     def get_course(self, course_id: str, owner_id: str) -> CourseDto:
         with self._get_db_session() as db:
-            course = self._get_owned_course(db, course_id, owner_id)
+            course = self._get_readable_course(db, course_id, owner_id)
             return CourseDto.model_validate(course)
 
     def update_course(
@@ -99,7 +106,7 @@ class CourseService:
         self, course_id: str, owner_id: str
     ) -> list[ProjectDto]:
         with self._get_db_session() as db:
-            self._get_owned_course(db, course_id, owner_id)
+            self._get_readable_course(db, course_id, owner_id)
             projects = (
                 db.query(Project)
                 .filter(
@@ -146,7 +153,7 @@ class CourseService:
         self, course_id: str, owner_id: str
     ) -> list[CourseChapterDto]:
         with self._get_db_session() as db:
-            self._get_owned_course(db, course_id, owner_id)
+            self._get_readable_course(db, course_id, owner_id)
             chapters = (
                 db.query(CourseChapter)
                 .filter(CourseChapter.course_id == course_id)
@@ -205,7 +212,7 @@ class CourseService:
         self, course_id: str, owner_id: str
     ) -> list[KnowledgePointDto]:
         with self._get_db_session() as db:
-            self._get_owned_course(db, course_id, owner_id)
+            self._get_readable_course(db, course_id, owner_id)
             knowledge_points = (
                 db.query(KnowledgePoint)
                 .filter(KnowledgePoint.course_id == course_id)
@@ -221,7 +228,7 @@ class CourseService:
         self, knowledge_point_id: str, owner_id: str
     ) -> KnowledgePointDto:
         with self._get_db_session() as db:
-            point = self._get_owned_knowledge_point(
+            point = self._get_readable_knowledge_point(
                 db, knowledge_point_id, owner_id
             )
             return KnowledgePointDto.model_validate(point)
@@ -331,7 +338,7 @@ class CourseService:
         self, course_id: str, owner_id: str
     ) -> list[KnowledgePointRelationDto]:
         with self._get_db_session() as db:
-            self._get_owned_course(db, course_id, owner_id)
+            self._get_readable_course(db, course_id, owner_id)
             relations = (
                 db.query(KnowledgePointRelation)
                 .filter(KnowledgePointRelation.course_id == course_id)
@@ -368,6 +375,24 @@ class CourseService:
         course = (
             db.query(Course)
             .filter(Course.id == course_id, Course.owner_id == owner_id)
+            .first()
+        )
+        if not course:
+            raise NotFoundError(f"Course {course_id} not found")
+        return course
+
+    @staticmethod
+    def _get_readable_course(db, course_id: str, owner_id: str) -> Course:
+        course = (
+            db.query(Course)
+            .filter(
+                Course.id == course_id,
+                or_(
+                    Course.owner_id == owner_id,
+                    (Course.visibility == "platform")
+                    & (Course.publish_status == "published"),
+                ),
+            )
             .first()
         )
         if not course:
@@ -420,6 +445,27 @@ class CourseService:
             .filter(
                 KnowledgePoint.id == knowledge_point_id,
                 Course.owner_id == owner_id,
+            )
+            .first()
+        )
+        if not point:
+            raise NotFoundError(f"Knowledge point {knowledge_point_id} not found")
+        return point
+
+    @staticmethod
+    def _get_readable_knowledge_point(
+        db, knowledge_point_id: str, owner_id: str
+    ) -> KnowledgePoint:
+        point = (
+            db.query(KnowledgePoint)
+            .join(Course, KnowledgePoint.course_id == Course.id)
+            .filter(
+                KnowledgePoint.id == knowledge_point_id,
+                or_(
+                    Course.owner_id == owner_id,
+                    (Course.visibility == "platform")
+                    & (Course.publish_status == "published"),
+                ),
             )
             .first()
         )

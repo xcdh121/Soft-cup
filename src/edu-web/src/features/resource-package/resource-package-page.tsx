@@ -536,6 +536,7 @@ export const ResourcePackagePage = ({
     'practice_set',
     'flashcards',
     'ppt_outline',
+    'image',
     'pptx',
     'programming_questions',
     'video_recommendations',

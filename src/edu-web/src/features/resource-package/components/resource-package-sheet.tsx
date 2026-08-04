@@ -396,6 +396,7 @@ const ResourcePackageSheetBody = ({
     'practice_set',
     'flashcards',
     'ppt_outline',
+    'image',
     'pptx',
     'video_recommendations',
   ])

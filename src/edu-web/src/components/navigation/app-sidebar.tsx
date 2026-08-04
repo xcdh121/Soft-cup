@@ -1,4 +1,9 @@
-import { BrainCircuitIcon, GraduationCapIcon, Settings2 } from 'lucide-react'
+import {
+  BrainCircuitIcon,
+  CreditCard,
+  GraduationCapIcon,
+  Settings2,
+} from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { CurrentProjectNav } from './current-project-nav'
 import { NavMain } from './nav-main'
@@ -58,6 +63,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               title: '智能协作观测台',
               url: '/dashboard/agent-runtime',
               icon: BrainCircuitIcon,
+            },
+            {
+              title: '套餐与额度',
+              url: '/dashboard/billing',
+              icon: CreditCard,
             },
             {
               title: 'Settings',

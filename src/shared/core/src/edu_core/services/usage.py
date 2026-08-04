@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 from datetime import UTC, datetime, time
 from typing import Literal
+from uuid import uuid4
 
 from edu_db.models import (
     AgentRun,
@@ -16,6 +17,7 @@ from edu_db.session import get_session_factory
 
 from edu_core.exceptions import UsageLimitExceededError
 from edu_core.schemas.usage import ToolUsageDto, UsageDto, UsageLimitDto
+from edu_core.services.quota import QuotaService
 
 
 class UsageService:
@@ -64,6 +66,17 @@ class UsageService:
         Raises:
             UsageLimitExceeded: If the user has exceeded their usage limit
         """
+        quota_service = QuotaService()
+        if quota_service.has_active_entitlement(user_id):
+            operation_id = str(uuid4())
+            quota_service.consume(
+                user_id=user_id,
+                resource_type=usage_type,
+                idempotency_key=f"usage:{usage_type}:{operation_id}",
+                business_type="legacy_usage",
+                business_id=operation_id,
+            )
+            return
         with self._get_db_session() as db:
             try:
                 usage = db.query(UserUsage).filter(UserUsage.user_id == user_id).first()

@@ -86,7 +86,9 @@ const ProjectRouteGuard = ({
 
   return (
     <div className="flex h-svh items-center justify-center text-sm text-muted-foreground">
-      {status === 'missing' ? '项目不可访问，正在返回项目列表...' : '正在验证项目...'}
+      {status === 'missing'
+        ? '项目不可访问，正在返回项目列表...'
+        : '正在验证项目...'}
     </div>
   )
 }
@@ -124,10 +126,15 @@ export const AppShell = () => {
 
   // Only show sidebar on dashboard routes
   const isDashboardRoute = location.pathname.startsWith('/dashboard')
+  const isAdminRoute = location.pathname.startsWith('/admin')
   const isDocumentDetailRoute = /^\/dashboard\/p\/[^/]+\/d\/[^/]+/.test(
     location.pathname,
   )
   const projectId = location.pathname.match(/^\/dashboard\/p\/([^/]+)/)?.[1]
+
+  if (isAdminRoute) {
+    return <Outlet />
+  }
 
   if (!isAuthenticated || !isDashboardRoute) {
     return (

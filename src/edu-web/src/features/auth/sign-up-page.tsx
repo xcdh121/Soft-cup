@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 export const SignUpPage = () => {
-  const { signUp, isLoading, signUpError, isAuthenticated } = useAuth()
+  const { signUp, isLoading, signUpError, isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
   const search = useSearch({ from: '/sign-up' })
   const [name, setName] = useState('')
@@ -17,17 +17,19 @@ export const SignUpPage = () => {
 
   useEffect(() => {
     if (!isAuthenticated) return
+    if (user?.is_admin) {
+      sessionStorage.removeItem('auth.redirect')
+      void navigate({ to: '/admin', replace: true })
+      return
+    }
     const redirectUrl =
       search?.redirect || sessionStorage.getItem('auth.redirect')
     sessionStorage.removeItem('auth.redirect')
-    navigate({
-      to: redirectUrl
-        ? redirectUrl.startsWith('/dashboard')
-          ? redirectUrl
-          : `/dashboard${redirectUrl}`
-        : '/dashboard',
+    void navigate({
+      to: redirectUrl?.startsWith('/dashboard') ? redirectUrl : '/dashboard',
+      replace: true,
     })
-  }, [isAuthenticated, navigate, search?.redirect])
+  }, [isAuthenticated, navigate, search?.redirect, user?.is_admin])
 
   useEffect(() => {
     if (signUpError) {

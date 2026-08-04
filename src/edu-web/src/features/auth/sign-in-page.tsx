@@ -7,29 +7,31 @@ import loginBackground from '../../../../source/7.jpg'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { isAuthenticatedAtom, signInAtom } from '@/data-acess/auth'
+import { authAtom, signInAtom } from '@/data-acess/auth'
 
 export const SignInPage = () => {
   const [signInResult, signIn] = useAtom(signInAtom)
-  const isAuthenticated = useAtomValue(isAuthenticatedAtom)
+  const { session, user } = useAtomValue(authAtom)
   const navigate = useNavigate()
   const search = useSearch({ from: '/sign-in' })
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
 
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!session || !user) return
+    if (user.is_admin) {
+      sessionStorage.removeItem('auth.redirect')
+      void navigate({ to: '/admin', replace: true })
+      return
+    }
     const redirectUrl =
       search?.redirect || sessionStorage.getItem('auth.redirect')
     sessionStorage.removeItem('auth.redirect')
-    navigate({
-      to: redirectUrl
-        ? redirectUrl.startsWith('/dashboard')
-          ? redirectUrl
-          : `/dashboard${redirectUrl}`
-        : '/dashboard',
+    void navigate({
+      to: redirectUrl?.startsWith('/dashboard') ? redirectUrl : '/dashboard',
+      replace: true,
     })
-  }, [isAuthenticated, navigate, search?.redirect])
+  }, [navigate, search?.redirect, session, user])
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -53,10 +55,7 @@ export const SignInPage = () => {
         <div className="w-full max-w-[470px] rounded-[32px] border border-white/80 bg-white/96 px-8 py-10 shadow-[0_28px_80px_rgba(30,64,78,0.14)] backdrop-blur-md sm:min-h-[620px] sm:px-12 sm:py-11">
           <div className="flex items-start justify-between gap-5">
             <div>
-              <div
-                className="h-[68px] w-40 overflow-hidden"
-                aria-label="万径"
-              >
+              <div className="h-[68px] w-40 overflow-hidden" aria-label="万径">
                 <img
                   src={brandLogo}
                   alt="万径"
