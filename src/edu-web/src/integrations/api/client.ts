@@ -1254,6 +1254,22 @@ export class UsageLimitDto extends S.Class<UsageLimitDto>('UsageLimitDto')({
 }) {}
 
 /**
+ * Aggregated usage for a tool invoked by the authenticated user today.
+ */
+export class ToolUsageDto extends S.Class<ToolUsageDto>('ToolUsageDto')({
+  /** Stable tool identifier */
+  tool_name: S.String,
+  /** Number of invocations today */
+  total: S.Int,
+  /** Number of successful invocations today */
+  successful: S.Int,
+  /** Number of failed invocations today */
+  failed: S.Int,
+  /** Timestamp of the most recent invocation today */
+  last_used_at: S.NullOr(S.String),
+}) {}
+
+/**
  * DTO for user usage statistics.
  */
 export class UsageDto extends S.Class<UsageDto>('UsageDto')({
@@ -1277,6 +1293,10 @@ export class UsageDto extends S.Class<UsageDto>('UsageDto')({
    * Document upload usage statistics
    */
   document_uploads: UsageLimitDto,
+  /**
+   * Usage for every tool invoked by the user today
+   */
+  tool_usage: S.Array(ToolUsageDto),
 }) {}
 
 export class UserDto extends S.Class<UserDto>('UserDto')({

@@ -15,10 +15,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
 from routers import (
+    admin_router,
     agent_runs_router,
     auth_router,
+    billing_router,
     chats_router,
     course_books_router,
+    course_covers_router,
     courses_router,
     dashboard_router,
     diagnosis_router,
@@ -111,9 +114,11 @@ class Api:
             return {"status": "healthy", "api": self.config.name}
 
         # Register all routers
+        self.app.include_router(admin_router)
         self.app.include_router(projects_router)
         self.app.include_router(agent_runs_router)
         self.app.include_router(courses_router)
+        self.app.include_router(course_covers_router)
         self.app.include_router(course_books_router)
         self.app.include_router(learner_profiles_router)
         self.app.include_router(knowledge_states_router)
@@ -140,6 +145,7 @@ class Api:
         self.app.include_router(usage_router)
         self.app.include_router(users_router)
         self.app.include_router(auth_router)
+        self.app.include_router(billing_router)
 
     def setup_openapi(self):
         """Setup Scalar OpenAPI documentation UI."""

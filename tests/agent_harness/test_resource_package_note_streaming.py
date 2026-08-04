@@ -148,6 +148,7 @@ class ResourcePackageNoteStreamingTest(unittest.IsolatedAsyncioTestCase):
             note_service=note_service,
             note_streamer=note_streamer,
         )
+        service._update_partial_generated_resource = MagicMock()
         events = []
 
         async def event_sink(event):
@@ -174,12 +175,22 @@ class ResourcePackageNoteStreamingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(generated["title"], "Sorting note")
         self.assertEqual(generated["content_text"], "Hello world")
         self.assertFalse(generated["content_json"]["stream_on_client"])
-        self.assertEqual([event.event for event in events], [
-            "resource_delta",
-            "resource_delta",
-        ])
+        self.assertEqual(
+            [event.event for event in events],
+            [
+                "resource_delta",
+                "resource_delta",
+            ],
+        )
         self.assertEqual(events[-1].payload["content"], "Hello world")
         self.assertTrue(events[-1].payload["completed"])
+        self.assertEqual(
+            [
+                call.kwargs["content_text"]
+                for call in service._update_partial_generated_resource.call_args_list
+            ],
+            ["Hello", "Hello world"],
+        )
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
 # Include only what Dockerfiles need
 # Web build files
 !package.json
+!package-lock.json
 !pnpm-lock.yaml
 !pnpm-workspace.yaml
 !vite.config.ts

@@ -87,7 +87,7 @@ export function UpsertProjectDialog() {
     defaultValues: {
       name: '',
       description: '',
-      language_code: 'cs',
+      language_code: 'zh',
       course_id: 'none',
     },
   })
@@ -97,7 +97,7 @@ export function UpsertProjectDialog() {
       form.reset({
         name: project?.name ?? '',
         description: project?.description ?? '',
-        language_code: project?.language_code ?? 'cs',
+        language_code: project?.language_code ?? 'zh',
         course_id: project?.course_id ?? 'none',
       })
     }

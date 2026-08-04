@@ -85,6 +85,12 @@ class FlashcardAgent:
             if difficulty is not None:
                 options["difficulty"] = difficulty
 
+            # A streamed regeneration replaces the previous collection. Clear it
+            # before generation so every subsequently committed row represents a
+            # card from the current run.
+            db.query(Flashcard).filter(Flashcard.group_id == group_id).delete()
+            db.commit()
+
             sent_count = 0
             final_result: FlashcardGroupGenerationResult | None = None
             async for partial in generate_stream(
@@ -111,28 +117,46 @@ class FlashcardAgent:
                 for position, card in enumerate(
                     stable_cards[sent_count:], start=sent_count
                 ):
-                    yield {"event": "flashcard_created", "group_id": group_id,
-                           "position": position, "flashcard": card.model_dump()}
+                    knowledge_point_id = (
+                        requested_knowledge_point_id
+                        or resolve_knowledge_point_id(
+                            db,
+                            project.course_id,
+                            texts=[card.question, card.answer],
+                        )
+                    )
+                    flashcard = Flashcard(
+                        id=str(uuid4()),
+                        group_id=group_id,
+                        project_id=project_id,
+                        knowledge_point_id=knowledge_point_id,
+                        question=card.question,
+                        answer=card.answer,
+                        difficulty_level=card.difficulty_level,
+                        position=position,
+                        created_at=datetime.now(),
+                    )
+                    db.add(flashcard)
+                    db.commit()
+                    yield {
+                        "event": "flashcard_created",
+                        "group_id": group_id,
+                        "position": position,
+                        "flashcard": {
+                            **card.model_dump(),
+                            "id": flashcard.id,
+                            "group_id": group_id,
+                            "project_id": project_id,
+                            "knowledge_point_id": knowledge_point_id,
+                            "position": position,
+                        },
+                    }
                 sent_count = len(stable_cards)
 
             if final_result is None:
                 raise ValueError("The model did not return a complete flashcard group")
             group.name, group.description = final_result.name, final_result.description
             group.updated_at = datetime.now()
-            db.query(Flashcard).filter(Flashcard.group_id == group_id).delete()
-            for position, item in enumerate(final_result.flashcards):
-                knowledge_point_id = requested_knowledge_point_id or resolve_knowledge_point_id(
-                    db,
-                    project.course_id,
-                    texts=[item.question, item.answer],
-                )
-                db.add(Flashcard(
-                    id=str(uuid4()), group_id=group_id, project_id=project_id,
-                    knowledge_point_id=knowledge_point_id,
-                    question=item.question, answer=item.answer,
-                    difficulty_level=item.difficulty_level, position=position,
-                    created_at=datetime.now(),
-                ))
             db.commit()
             yield {"event": "flashcards_completed", "group_id": group_id,
                    "name": group.name, "description": group.description,

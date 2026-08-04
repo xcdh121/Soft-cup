@@ -1,6 +1,9 @@
+from .admin import router as admin_router
 from .agent_runs import router as agent_runs_router
 from .auth import router as auth_router
+from .billing import router as billing_router
 from .chats import router as chats_router
+from .course_covers import router as course_covers_router
 from .courses import knowledge_points_router
 from .courses import router as courses_router
 from .dashboard import router as dashboard_router
@@ -31,10 +34,13 @@ from .usage import router as usage_router
 from .users import router as users_router
 
 __all__ = [
+    "admin_router",
     "agent_runs_router",
     "auth_router",
+    "billing_router",
     "chats_router",
     "course_books_router",
+    "course_covers_router",
     "courses_router",
     "dashboard_router",
     "diagnosis_router",

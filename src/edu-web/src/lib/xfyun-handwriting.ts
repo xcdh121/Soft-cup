@@ -44,7 +44,7 @@ export const recognizeHandwriting = async ({
   formData.append('language', language)
   formData.append('include_location', 'false')
 
-  const baseUrl = env.VITE_SERVER_URL ?? 'http://localhost:8000'
+  const baseUrl = env.VITE_SERVER_URL ?? window.location.origin
   const response = await fetch(
     `${baseUrl}/api/v1/projects/${encodeURIComponent(projectId)}/handwriting-recognition/recognize`,
     {

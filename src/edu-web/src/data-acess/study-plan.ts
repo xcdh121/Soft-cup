@@ -241,7 +241,7 @@ const mapLearningPathToStudyPlan = (
       action_items: buildActionItems(path),
       schedule: buildSchedule(path),
       encouragement:
-        'Follow the path step by step, strengthen weak points first, then verify improvement with practice.',
+        '不积跬步，无以至千里',
     },
     weak_topics: focusAreas,
     created_at: response.created_at,

@@ -404,9 +404,6 @@ def upsert_user(db) -> User:
             name="Local Dev User",
         )
         db.add(user)
-    else:
-        user.email = user.email or OWNER_EMAIL
-        user.name = user.name or "Local Dev User"
     return user
 
 
@@ -421,10 +418,10 @@ def upsert_course(db) -> Course:
             id=str(uuid4()),
             owner_id=OWNER_ID,
             code=COURSE_CODE,
-            name="机器学习基础（演示版）",
+            name="机器学习基础",
         )
         db.add(course)
-    course.name = "机器学习基础（演示版）"
+    course.name = "机器学习基础"
     course.description = (
         "从数据准备、经典模型到评估与推理的机器学习入门 Demo，"
         "包含章节、知识点、练习建议和延伸资料。"

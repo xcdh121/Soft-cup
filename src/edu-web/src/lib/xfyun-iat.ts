@@ -29,7 +29,7 @@ const fetchXfyunIatUrl = async (): Promise<XfyunIatUrlDto> => {
     headers.Authorization = `Bearer ${session.access_token}`
   }
 
-  const baseUrl = env.VITE_SERVER_URL ?? 'http://localhost:8000'
+  const baseUrl = env.VITE_SERVER_URL ?? window.location.origin
   const response = await fetch(`${baseUrl}/api/v1/speech/xfyun-iat-url`, {
     headers,
   })

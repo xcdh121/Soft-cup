@@ -123,10 +123,10 @@ type PdfFileSource =
   | string
   | { data: Uint8Array }
   | {
-      url: string
-      httpHeaders?: Record<string, string>
-      withCredentials?: boolean
-    }
+    url: string
+    httpHeaders?: Record<string, string>
+    withCredentials?: boolean
+  }
 
 type DocumentContentProps = {
   documentId: string
@@ -199,19 +199,6 @@ const getRangeElement = (range: Range) => {
   return null
 }
 
-<<<<<<< Updated upstream
-const serverUrl = (env.VITE_SERVER_URL ?? 'http://localhost:8000').replace(
-  /\/$/,
-  '',
-)
-
-const createDocumentFileUrl = (projectId: string, documentId: string) =>
-  `${serverUrl}/api/v1/projects/${encodeURIComponent(
-    projectId,
-  )}/documents/${encodeURIComponent(documentId)}/file`
-
-=======
->>>>>>> Stashed changes
 const LoadingState = ({ label }: { label: string }) => (
   <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
     <Loader2Icon className="size-4 animate-spin" />
@@ -953,9 +940,9 @@ const PdfReader = ({
         pageRect.top <= trackingLine && pageRect.bottom >= trackingLine
           ? 0
           : Math.min(
-              Math.abs(pageRect.top - trackingLine),
-              Math.abs(pageRect.bottom - trackingLine),
-            )
+            Math.abs(pageRect.top - trackingLine),
+            Math.abs(pageRect.bottom - trackingLine),
+          )
 
       if (distance < closestDistance) {
         closestDistance = distance
@@ -1292,9 +1279,8 @@ const PdfReader = ({
     <div
       className="grid h-full min-h-0 flex-1 overflow-hidden bg-muted/30"
       style={{
-        gridTemplateColumns: `${chapterSidebarWidth}px ${DRAG_HANDLE_WIDTH}px minmax(0, 1fr) ${DRAG_HANDLE_WIDTH}px ${
-          aiOpen ? aiSidebarWidth : 48
-        }px`,
+        gridTemplateColumns: `${chapterSidebarWidth}px ${DRAG_HANDLE_WIDTH}px minmax(0, 1fr) ${DRAG_HANDLE_WIDTH}px ${aiOpen ? aiSidebarWidth : 48
+          }px`,
       }}
     >
       <CoursePdfSidebar
@@ -1369,7 +1355,7 @@ const PdfReader = ({
                   pageWidth={pageWidth}
                   pageHeight={Math.round(
                     pageWidth *
-                      (pageAspectRatios[1] ?? PDF_PAGE_HEIGHT_RATIO),
+                    (pageAspectRatios[1] ?? PDF_PAGE_HEIGHT_RATIO),
                   )}
                   pageCount={presetPageCount}
                 />
@@ -1408,9 +1394,9 @@ const PdfReader = ({
                 const shouldRenderPage = renderedPageNumbers.has(pageNumber)
                 const pageHeight = Math.round(
                   pageWidth *
-                    (pageAspectRatios[pageNumber] ??
-                      pageAspectRatios[1] ??
-                      PDF_PAGE_HEIGHT_RATIO),
+                  (pageAspectRatios[pageNumber] ??
+                    pageAspectRatios[1] ??
+                    PDF_PAGE_HEIGHT_RATIO),
                 )
                 return (
                   <div

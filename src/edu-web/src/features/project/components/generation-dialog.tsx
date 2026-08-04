@@ -5,6 +5,7 @@ import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import type { CourseChapter } from '@/data-acess/course-library'
+import type { GenerateResourcePackageInput } from '@/data-acess/resource-package'
 import {
   Dialog,
   DialogContent,
@@ -26,7 +27,6 @@ import {
 } from '@/components/ui/select'
 import { projectCourseOutlineAtom } from '@/data-acess/course-library'
 import { generateResourcePackageAtom } from '@/data-acess/resource-package'
-import type { GenerateResourcePackageInput } from '@/data-acess/resource-package'
 
 type GenerationDialogStore = {
   isOpen: boolean
@@ -48,7 +48,10 @@ type GenerationType =
   | 'note'
   | 'mindmap'
   | 'ppt_outline'
+  | 'image'
   | 'pptx'
+  | 'programming_questions'
+  | 'video_recommendations'
 type LengthOption = 'less' | 'normal' | 'more'
 type DifficultyOption = 'easy' | 'medium' | 'hard'
 
@@ -192,7 +195,13 @@ export function GenerationDialog() {
             ? '思维导图'
             : selectedType === 'ppt_outline'
               ? 'PPT 大纲'
-              : 'PPT'
+              : selectedType === 'image'
+                ? 'AI 图片'
+                : selectedType === 'pptx'
+                  ? 'PPT'
+                  : selectedType === 'programming_questions'
+                    ? '编程练习'
+                    : '视频推荐'
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
@@ -208,7 +217,7 @@ export function GenerationDialog() {
         <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-hidden">
           <div className="space-y-2 shrink-0">
             <Label>资源类型</Label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <Button
                 type="button"
                 variant={selectedType === 'note' ? 'default' : 'outline'}
@@ -251,11 +260,43 @@ export function GenerationDialog() {
               </Button>
               <Button
                 type="button"
+                variant={selectedType === 'image' ? 'default' : 'outline'}
+                onClick={() => setSelectedType('image')}
+                disabled={isGenerating}
+              >
+                AI 图片
+              </Button>
+              <Button
+                type="button"
                 variant={selectedType === 'pptx' ? 'default' : 'outline'}
                 onClick={() => setSelectedType('pptx')}
                 disabled={isGenerating}
               >
                 PPT
+              </Button>
+              <Button
+                type="button"
+                variant={
+                  selectedType === 'programming_questions'
+                    ? 'default'
+                    : 'outline'
+                }
+                onClick={() => setSelectedType('programming_questions')}
+                disabled={isGenerating}
+              >
+                编程练习
+              </Button>
+              <Button
+                type="button"
+                variant={
+                  selectedType === 'video_recommendations'
+                    ? 'default'
+                    : 'outline'
+                }
+                onClick={() => setSelectedType('video_recommendations')}
+                disabled={isGenerating}
+              >
+                视频推荐
               </Button>
             </div>
           </div>
@@ -467,8 +508,14 @@ function toResourcePackageType(selectedType: GenerationType) {
       return 'mind_map'
     case 'ppt_outline':
       return 'ppt_outline'
+    case 'image':
+      return 'image'
     case 'pptx':
       return 'pptx'
+    case 'programming_questions':
+      return 'programming_questions'
+    case 'video_recommendations':
+      return 'video_recommendations'
   }
 }
 

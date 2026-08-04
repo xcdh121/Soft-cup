@@ -47,7 +47,7 @@ type QuizAnalysisStreamEvent =
   | { type: 'error'; message: string }
   | { type: 'done' }
 
-const serverUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8000'
+const serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin
 
 const getOptionText = (
   question: QuizQuestionDto,

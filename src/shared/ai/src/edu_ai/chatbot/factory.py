@@ -14,6 +14,7 @@ from edu_ai.tools.note import tools as note_tools
 from edu_ai.tools.quiz import tools as quiz_tools
 from edu_ai.tools.rag import tools as rag_tools
 from edu_ai.tools.resource_package import tools as resource_package_tools
+from edu_ai.tools.study_plan import tools as study_plan_tools
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
     ModelRequest,
@@ -72,8 +73,6 @@ _NOTE_TOOLS_BLOCKED_AFTER_CREATION = {
     "note_list",
     "note_get",
 }
-
-
 def _note_created_since_last_user_message(messages: list[Any]) -> bool:
     """Return whether this agent turn has already queued a note creation."""
     for message in reversed(messages):
@@ -155,6 +154,7 @@ def make_chatbot(llm: BaseChatModel):
         *rag_tools,
         *content_management_tools,
         *resource_package_tools,
+        *study_plan_tools,
     ]
 
     return create_agent(

@@ -13,7 +13,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -150,13 +149,19 @@ export function NavUser() {
                 <div className="px-2 py-1.5 space-y-2">
                   <UsageSection />
                 </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <LogOutIcon />
-                  退出登录
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              type="button"
+              tooltip="退出登录"
+              onClick={handleSignOut}
+              className="text-slate-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+            >
+              <LogOutIcon />
+              <span>退出登录</span>
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       )

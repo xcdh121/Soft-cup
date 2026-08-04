@@ -91,9 +91,19 @@ const RESOURCE_TYPE_OPTIONS: Array<{
     description: 'Slide-by-slide speaking outline',
   },
   {
+    value: 'image',
+    label: 'AI image',
+    description: 'XFYun text-to-image generation',
+  },
+  {
     value: 'pptx',
     label: 'PPTX',
     description: 'Generated presentation file link',
+  },
+  {
+    value: 'programming_questions',
+    label: 'Programming practice',
+    description: 'Generated coding exercises',
   },
   {
     value: 'video_recommendations',
@@ -263,7 +273,7 @@ const ResourcePreview = ({
             <Badge variant="outline">{resource.difficulty_level}</Badge>
           </div>
 
-          {resource.file_url ? (
+          {resource.file_url && resource.resource_type !== 'image' ? (
             <div className="mt-3">
               <a
                 href={resource.file_url}
@@ -386,6 +396,7 @@ const ResourcePackageSheetBody = ({
     'practice_set',
     'flashcards',
     'ppt_outline',
+    'image',
     'pptx',
     'video_recommendations',
   ])
@@ -523,7 +534,7 @@ const ResourcePackageSheetBody = ({
 
             <div className="space-y-3">
               <Label>Resource types</Label>
-              <div className="grid gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {RESOURCE_TYPE_OPTIONS.map((option) => {
                   const checked = selectedTypes.includes(option.value)
                   return (

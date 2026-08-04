@@ -96,6 +96,36 @@ class ResourcePackageToolTests(unittest.IsolatedAsyncioTestCase):
             "personalized tutor recommendation",
         )
 
+    async def test_generates_image_package_and_returns_result_link(self):
+        calls: list[dict] = []
+
+        class FakeResourcePackageService:
+            async def generate_resource_package(self, **kwargs):
+                calls.append(kwargs)
+                return SimpleNamespace(
+                    id="image-package-1",
+                    status="completed",
+                    completed_resource_count=1,
+                    failed_resource_count=0,
+                )
+
+        context = SimpleNamespace(
+            user_id="user-1",
+            project_id="project-1",
+            resource_packages=FakeResourcePackageService(),
+        )
+        result_text = await generate_resource_package.coroutine(
+            topic="二叉树遍历",
+            resource_types=["image"],
+            runtime=SimpleNamespace(context=context),
+        )
+        result = json.loads(result_text)
+
+        self.assertEqual(result["package_id"], "image-package-1")
+        self.assertEqual(result["resource_types"], ["image"])
+        self.assertEqual(calls[0]["payload"]["resource_types"], ["image"])
+        self.assertIn("packageId=image-package-1", result["resource_package_url"])
+
     async def test_derives_recommendation_from_saved_profile_and_weak_point(self):
         calls: list[dict] = []
 

@@ -296,9 +296,6 @@ def upsert_user(db) -> User:
             name="Local Dev User",
         )
         db.add(user)
-    else:
-        user.email = user.email or OWNER_EMAIL
-        user.name = user.name or "Local Dev User"
     return user
 
 
@@ -313,9 +310,10 @@ def upsert_course(db) -> Course:
             id=str(uuid4()),
             owner_id=OWNER_ID,
             code=COURSE_CODE,
-            name="数据结构与算法知识库 MVP",
+            name="数据结构与算法知识库",
         )
         db.add(course)
+    course.name = "数据结构与算法知识库"
     course.description = "面向网页完整浏览链路的算法课程资料库：课程、章节、知识点、正文和资源链接。"
     course.status = "active"
     return course

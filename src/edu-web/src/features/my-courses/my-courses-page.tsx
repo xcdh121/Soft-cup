@@ -7,16 +7,16 @@ import {
   Layers3Icon,
   Loader2Icon,
 } from 'lucide-react'
-import { coursesAtom } from '@/data-acess/course-library'
-import type { Course } from '@/data-acess/course-library'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
-import { SidebarTrigger } from '@/components/ui/sidebar'
 import courseStructureCover from '../../../../source/1.png'
 import courseClassroomCover from '../../../../source/2.png'
 import courseLearningCover from '../../../../source/3.png'
 import machineLearningCover from '../../../../source/6.png'
+import type { Course } from '@/data-acess/course-library'
+import { coursesAtom } from '@/data-acess/course-library'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
+import { SidebarTrigger } from '@/components/ui/sidebar'
 
 const courseCovers = [
   courseStructureCover,
@@ -24,7 +24,16 @@ const courseCovers = [
   courseLearningCover,
 ]
 
-const getCourseCover = (course: Course) => {
+const serverUrl = (
+  import.meta.env.VITE_SERVER_URL ?? window.location.origin
+).replace(/\/$/, '')
+
+const resolveCourseCover = (url: string) =>
+  /^(?:https?:|data:|blob:)/i.test(url)
+    ? url
+    : `${serverUrl}${url.startsWith('/') ? '' : '/'}${url}`
+
+const getFallbackCourseCover = (course: Course) => {
   if (course.code === 'ML-DEMO') return machineLearningCover
 
   const seed = `${course.id}${course.code ?? ''}`
@@ -35,6 +44,11 @@ const getCourseCover = (course: Course) => {
 
   return courseCovers[hash % courseCovers.length]
 }
+
+const getCourseCover = (course: Course) =>
+  course.cover_url?.trim()
+    ? resolveCourseCover(course.cover_url.trim())
+    : getFallbackCourseCover(course)
 
 const statusLabel: Record<string, string> = {
   active: '进行中',
@@ -55,6 +69,9 @@ const CourseCard = ({ course }: { course: Course }) => (
           src={getCourseCover(course)}
           alt=""
           className="size-full object-cover transition duration-500 group-hover:scale-[1.025]"
+          onError={(event) => {
+            event.currentTarget.src = getFallbackCourseCover(course)
+          }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/45 via-transparent to-transparent" />
         <Badge className="absolute left-4 top-4 border-white/20 bg-slate-950/70 text-white shadow-sm backdrop-blur-sm hover:bg-slate-950/70">

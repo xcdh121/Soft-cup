@@ -14,6 +14,12 @@ class CourseDto(BaseModel):
     name: str = Field(..., description="Course name")
     description: str | None = Field(None, description="Course description")
     status: str = Field(..., description="Course status")
+    visibility: str = Field("private", description="private or platform")
+    publish_status: str = Field("draft", description="Publication lifecycle")
+    published_at: datetime | None = None
+    published_by: str | None = None
+    version: int = 1
+    cover_url: str | None = None
     created_at: datetime = Field(..., description="Course creation time")
     updated_at: datetime = Field(..., description="Course update time")
 

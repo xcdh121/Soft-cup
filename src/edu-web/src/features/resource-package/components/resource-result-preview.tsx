@@ -1,11 +1,13 @@
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { ExternalLinkIcon, Loader2Icon, PlayCircleIcon } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { GeneratedResource } from '@/data-acess/resource-package'
-import { flashcardsAtom, refreshFlashcardsAtom } from '@/data-acess/flashcard'
+import { env } from '@/env'
+import { flashcardsAtom } from '@/data-acess/flashcard'
 import { mindMapAtom, refreshMindMapAtom } from '@/data-acess/mind-map'
-import { quizQuestionsAtom, refreshQuizQuestionsAtom } from '@/data-acess/quiz'
+import { quizQuestionsAtom } from '@/data-acess/quiz'
 import { NoteContent } from '@/features/note/components/note-content'
+import { authClient } from '@/lib/auth-client'
 
 type ResourceReference = {
   target_id: string
@@ -33,6 +35,74 @@ type ProgrammingQuestion = {
   }>
   hints: Array<string>
   difficulty?: string
+}
+
+const resolveGeneratedFileUrl = (fileUrl: string) => {
+  if (/^https?:\/\//i.test(fileUrl) || fileUrl.startsWith('blob:')) {
+    return fileUrl
+  }
+  const baseUrl = (env.VITE_SERVER_URL ?? window.location.origin).replace(
+    /\/$/,
+    '',
+  )
+  return `${baseUrl}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`
+}
+
+const GeneratedImagePreview = ({ resource }: { resource: GeneratedResource }) => {
+  const fileUrl = resource.preview_url ?? resource.file_url
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    if (!fileUrl) {
+      setFailed(true)
+      return
+    }
+    const controller = new AbortController()
+    let objectUrl: string | null = null
+    setImageUrl(null)
+    setFailed(false)
+
+    void (async () => {
+      try {
+        const {
+          data: { session },
+        } = await authClient.auth.getSession()
+        const headers: Record<string, string> = {}
+        if (session?.access_token) {
+          headers.Authorization = `Bearer ${session.access_token}`
+        }
+        const response = await fetch(resolveGeneratedFileUrl(fileUrl), {
+          headers,
+          signal: controller.signal,
+        })
+        if (!response.ok) throw new Error(`Image request failed: ${response.status}`)
+        objectUrl = URL.createObjectURL(await response.blob())
+        if (!controller.signal.aborted) setImageUrl(objectUrl)
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setFailed(true)
+        }
+      }
+    })()
+
+    return () => {
+      controller.abort()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [fileUrl])
+
+  if (failed || !fileUrl) return <Empty label="图片预览暂时不可用。" />
+  if (!imageUrl) return <Loading label="正在加载生成的图片..." />
+  return (
+    <a href={imageUrl} target="_blank" rel="noreferrer">
+      <img
+        src={imageUrl}
+        alt={resource.title}
+        className="max-h-[36rem] w-full rounded-xl border bg-muted object-contain"
+      />
+    </a>
+  )
 }
 
 const getProgrammingQuestions = (
@@ -343,15 +413,6 @@ const QuizPreview = ({
   quizId: string
 }) => {
   const result = useAtomValue(quizQuestionsAtom(`${projectId}:${quizId}`))
-  const refresh = useAtomSet(refreshQuizQuestionsAtom, { mode: 'promise' })
-  useEffect(() => {
-    if (Result.isSuccess(result) && result.value.length > 0) return
-    const id = window.setInterval(
-      () => void refresh({ projectId, quizId }),
-      3000,
-    )
-    return () => window.clearInterval(id)
-  }, [projectId, quizId, refresh, result])
   if (result.waiting) return <Loading label="正在生成题目..." />
   if (!Result.isSuccess(result)) return <Empty label="题目暂时无法加载。" />
   if (result.value.length === 0)
@@ -390,15 +451,6 @@ const FlashcardsPreview = ({
   groupId: string
 }) => {
   const result = useAtomValue(flashcardsAtom(`${projectId}:${groupId}`))
-  const refresh = useAtomSet(refreshFlashcardsAtom, { mode: 'promise' })
-  useEffect(() => {
-    if (Result.isSuccess(result) && result.value.length > 0) return
-    const id = window.setInterval(
-      () => void refresh({ projectId, flashcardGroupId: groupId }),
-      3000,
-    )
-    return () => window.clearInterval(id)
-  }, [groupId, projectId, refresh, result])
   if (result.waiting) return <Loading label="正在生成闪卡..." />
   if (!Result.isSuccess(result)) return <Empty label="闪卡暂时无法加载。" />
   if (result.value.length === 0)
@@ -496,6 +548,10 @@ export const ResourceResultPreview = ({
     return (
       <VideoRecommendationsPreview videos={getVideoRecommendations(resource)} />
     )
+  }
+
+  if (resource.resource_type === 'image') {
+    return <GeneratedImagePreview resource={resource} />
   }
 
   if (resource.content_text) {

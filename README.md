@@ -32,6 +32,13 @@ npm install
 npm start
 ```
 
+## Production Deployment
+
+For a Docker Compose deployment behind a single public-IP entry point, see
+[Production deployment](docs/PRODUCTION_DEPLOYMENT.md). It includes generated
+secrets, same-origin API proxying, persistent volumes, resource limits, and
+database/file backup scripts.
+
 ## Backend Config
 
 Create a root `.env` file with values like:
@@ -55,6 +62,18 @@ EMBEDDING_BASE_URL=
 ```
 
 `LLM_BASE_URL` and `EMBEDDING_BASE_URL` can point to self-hosted OpenAI-compatible services.
+
+## API Documentation
+
+- Generated API reference: [docs/API.md](docs/API.md)
+- Interactive Scalar UI after startup: `http://localhost:8000/`
+- OpenAPI schema after startup: `http://localhost:8000/openapi.json`
+
+Regenerate the Markdown reference after changing routes or Pydantic models:
+
+```powershell
+.\.venv\Scripts\python.exe tools\generate_api_docs.py
+```
 
 ## Notes
 

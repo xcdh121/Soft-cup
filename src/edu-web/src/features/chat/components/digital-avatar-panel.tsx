@@ -145,6 +145,7 @@ export const DigitalAvatarPanel = () => {
   )
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [needsInteraction, setNeedsInteraction] = useState(false)
+  const [soundEnabled, setSoundEnabled] = useState(false)
 
   useEffect(() => {
     conversationEndRef.current?.scrollIntoView({
@@ -186,6 +187,7 @@ export const DigitalAvatarPanel = () => {
     setStatus('connecting')
     setErrorMessage(null)
     setNeedsInteraction(false)
+    setSoundEnabled(false)
 
     avatar
       .on(SDKEvents.nlp, (event: unknown) => {
@@ -273,8 +275,15 @@ export const DigitalAvatarPanel = () => {
       })
 
     const player = avatar.player ?? avatar.createPlayer()
+    player.volume = 1
     player.on(PlayerEvents.playNotAllowed, () => {
-      if (!disposed) setNeedsInteraction(true)
+      if (!disposed) {
+        setNeedsInteraction(true)
+        setSoundEnabled(false)
+      }
+    })
+    player.on(PlayerEvents.playing, () => {
+      if (!disposed) setSoundEnabled(!player.muted)
     })
     player.on(PlayerEvents.error, (error: unknown) => {
       if (!disposed) {
@@ -350,6 +359,24 @@ export const DigitalAvatarPanel = () => {
     }
   }, [instanceKey, isOpen])
 
+  const resumePlayback = useCallback(async () => {
+    const player = avatarRef.current?.player
+    if (!player) return false
+
+    try {
+      player.volume = 1
+      player.muted = false
+      await player.resume()
+      setNeedsInteraction(false)
+      setSoundEnabled(true)
+      return true
+    } catch (error) {
+      setSoundEnabled(false)
+      setErrorMessage(getErrorMessage(error))
+      return false
+    }
+  }, [])
+
   const askQuestion = useCallback(async () => {
     const text = question.trim()
     const avatar = avatarRef.current
@@ -358,6 +385,7 @@ export const DigitalAvatarPanel = () => {
     }
 
     try {
+      await resumePlayback()
       if (isSpeakingRef.current) await avatar.interrupt()
       pendingAssistantMessageIdRef.current = null
       voiceQuestionMessageIdRef.current = null
@@ -378,7 +406,7 @@ export const DigitalAvatarPanel = () => {
       setStatus('error')
       setErrorMessage(getErrorMessage(error))
     }
-  }, [question])
+  }, [question, resumePlayback])
 
   const toggleRecording = useCallback(async () => {
     const avatar = avatarRef.current
@@ -386,6 +414,7 @@ export const DigitalAvatarPanel = () => {
     if (!avatar || !recorder || !isReadyRef.current) return
 
     try {
+      await resumePlayback()
       if (isRecordingRef.current) {
         await recorder.stopRecord()
         isRecordingRef.current = false
@@ -421,16 +450,7 @@ export const DigitalAvatarPanel = () => {
         `语音提问启动失败，请检查麦克风权限和 HTTPS 环境：${getErrorMessage(error)}`,
       )
     }
-  }, [])
-
-  const resumePlayback = async () => {
-    try {
-      await avatarRef.current?.player?.resume()
-      setNeedsInteraction(false)
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    }
-  }
+  }, [resumePlayback])
 
   const unavailable =
     !isAvatarConfigured || status === 'connecting' || status === 'error'
@@ -564,7 +584,7 @@ export const DigitalAvatarPanel = () => {
                 )}
 
                 {needsInteraction && (
-                  <div className="absolute inset-x-5 bottom-5 border border-white/15 bg-black/80 p-4 text-white backdrop-blur">
+                  <div className="absolute inset-x-5 bottom-5 z-10 border border-white/15 bg-black/80 p-4 text-white backdrop-blur">
                     <p className="text-xs leading-5">
                       浏览器阻止了有声自动播放，请点击启用声音。
                     </p>
@@ -582,16 +602,32 @@ export const DigitalAvatarPanel = () => {
 
               <footer className="flex items-center justify-between border-t border-white/10 px-5 py-3 text-xs text-slate-400">
                 <span>支持文字提问与语音交互</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={!isAvatarConfigured}
-                  className="rounded-none text-slate-300 hover:bg-white/10 hover:text-white"
-                  onClick={() => setInstanceKey((key) => key + 1)}
-                >
-                  <RefreshCwIcon className="size-4" />
-                  重新连接
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={
+                      !isAvatarConfigured ||
+                      status === 'connecting' ||
+                      status === 'error'
+                    }
+                    className="rounded-none text-slate-300 hover:bg-white/10 hover:text-white"
+                    onClick={() => void resumePlayback()}
+                  >
+                    <Volume2Icon className="size-4" />
+                    {soundEnabled ? '声音已开启' : '开启声音'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!isAvatarConfigured}
+                    className="rounded-none text-slate-300 hover:bg-white/10 hover:text-white"
+                    onClick={() => setInstanceKey((key) => key + 1)}
+                  >
+                    <RefreshCwIcon className="size-4" />
+                    重新连接
+                  </Button>
+                </div>
               </footer>
             </section>
 

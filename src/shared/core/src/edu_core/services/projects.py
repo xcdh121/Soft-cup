@@ -23,7 +23,7 @@ class ProjectService:
         owner_id: str,
         name: str,
         description: str | None = None,
-        language_code: str | None = "en",
+        language_code: str | None = "zh",
         course_id: str | None = None,
     ) -> ProjectDto:
         """Create a new project.
@@ -32,7 +32,7 @@ class ProjectService:
             owner_id: The project owner's user ID
             name: The project name
             description: Optional project description
-            language_code: Language code for the project (default: "en")
+            language_code: Language code for the project (default: "zh")
             course_id: Optional parent course ID
 
         Returns:
@@ -47,7 +47,7 @@ class ProjectService:
                     course_id=course_id,
                     name=name,
                     description=description,
-                    language_code=language_code or "en",
+                    language_code=language_code or "zh",
                     created_at=datetime.now(),
                 )
                 db.add(project)

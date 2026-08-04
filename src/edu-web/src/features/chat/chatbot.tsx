@@ -1,6 +1,12 @@
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Link } from '@tanstack/react-router'
-import { ArrowRightIcon, CopyIcon, GlobeIcon, Loader2Icon } from 'lucide-react'
+import {
+  ArrowRightIcon,
+  CalendarDaysIcon,
+  CopyIcon,
+  GlobeIcon,
+  Loader2Icon,
+} from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { MultiAgentCallSequence } from './components/multi-agent-call-sequence'
@@ -135,11 +141,13 @@ interface ChatbotProps {
   projectId: string
 }
 
-const formatToolName = (name: string) =>
-  name
+const formatToolName = (name: string) => {
+  if (name === 'study_plan_get_latest') return '读取个性化学习计划'
+  return name
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
 
 const normalizeToolInput = (toolInput: unknown): Record<string, unknown> => {
   if (!toolInput) return {}
@@ -211,6 +219,27 @@ const getResourcePackageResult = (
   return typeof packageId === 'string' ? { ...value, packageId } : null
 }
 
+type StudyPlanToolResult = Record<string, unknown> & {
+  status: 'available' | 'not_found'
+}
+
+const getStudyPlanResult = (
+  toolName: string,
+  output: unknown,
+): StudyPlanToolResult | null => {
+  if (
+    toolName !== 'study_plan_get_latest' ||
+    !output ||
+    typeof output !== 'object'
+  ) {
+    return null
+  }
+  const value = output as Record<string, unknown>
+  return value.status === 'available' || value.status === 'not_found'
+    ? (value as StudyPlanToolResult)
+    : null
+}
+
 const toToolUiState = (
   state: string,
 ):
@@ -274,6 +303,58 @@ const ResourcePackageLink = ({
         className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
       >
         {isGenerating ? '查看生成进度' : '查看资源包'}
+        <ArrowRightIcon className="size-4" />
+      </Link>
+    </div>
+  )
+}
+
+const StudyPlanLink = ({
+  message,
+  projectId,
+}: {
+  message: ChatMessageDto
+  projectId: string
+}) => {
+  const result = message.parts
+    ?.filter((part): part is ToolCallPartDto => part.type === 'tool_call')
+    .map((toolCall) => {
+      const { output } = parseToolOutput(toolCall)
+      return getStudyPlanResult(toolCall.tool_name, output)
+    })
+    .find((value) => value !== null)
+
+  if (!result) return null
+
+  const hasPlan = result.status === 'available'
+  const learningPath =
+    result.learning_path && typeof result.learning_path === 'object'
+      ? (result.learning_path as Record<string, unknown>)
+      : undefined
+  const title =
+    typeof learningPath?.title === 'string'
+      ? learningPath.title
+      : '个性化学习计划'
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 p-3">
+      <CalendarDaysIcon className="size-5 text-primary" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium">
+          {hasPlan ? title : '还没有个性化学习计划'}
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {hasPlan
+            ? '已读取“个性化学习”页面中的最新计划'
+            : '前往学习计划页面生成第一份计划'}
+        </p>
+      </div>
+      <Link
+        to="/dashboard/p/$projectId/study-plan"
+        params={{ projectId }}
+        className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+      >
+        {hasPlan ? '打开学习计划' : '去生成计划'}
         <ArrowRightIcon className="size-4" />
       </Link>
     </div>
@@ -750,6 +831,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                     message={message}
                     projectId={projectId}
                   />
+                  <StudyPlanLink message={message} projectId={projectId} />
                 </div>
               ))}
               {isStreaming && (

@@ -1,9 +1,9 @@
 import { Atom } from '@effect-atom/atom-react'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Effect, Layer } from 'effect'
+import type { ProjectDto } from '@/integrations/api/client'
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
-import type { ProjectDto } from '@/integrations/api/client'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -19,6 +19,7 @@ export type Course = {
   name: string
   description: string | null
   status: string
+  cover_url: string | null
   created_at: string
   updated_at: string
 }
@@ -154,7 +155,9 @@ export const courseKnowledgePointsAtom = Atom.family((courseId: string) =>
 
 export const courseResourcesAtom = Atom.family((courseId: string) =>
   runtime
-    .atom(getJson<Array<CourseResource>>(`/api/v1/courses/${courseId}/resources`))
+    .atom(
+      getJson<Array<CourseResource>>(`/api/v1/courses/${courseId}/resources`),
+    )
     .pipe(Atom.keepAlive),
 )
 

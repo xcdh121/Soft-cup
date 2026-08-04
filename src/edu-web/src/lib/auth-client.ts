@@ -23,7 +23,7 @@ type ValidationIssue = { loc?: Array<string | number>; msg?: string }
 
 const storageKey = 'edu-agent.auth.session'
 const listeners = new Set<AuthListener>()
-const baseUrl = env.VITE_SERVER_URL ?? 'http://localhost:8000'
+const baseUrl = env.VITE_SERVER_URL ?? window.location.origin
 
 const decodeExpiry = (token: string): number | null => {
   try {

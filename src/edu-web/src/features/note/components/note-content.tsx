@@ -1,8 +1,9 @@
-import { Response } from '@/components/ai-elements/response'
-import { noteAtom, noteProgressAtom, refreshNoteAtom } from '@/data-acess/note'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Loader2Icon } from 'lucide-react'
 import { useEffect } from 'react'
+import { noteAtom, noteProgressAtom, refreshNoteAtom } from '@/data-acess/note'
+import { Response } from '@/components/ai-elements/response'
+import { useGeneratedNoteStream } from '@/hooks/use-generated-note-stream'
 
 type NoteContentProps = {
   noteId: string
@@ -18,10 +19,11 @@ export const NoteContent = ({
   const noteResult = useAtomValue(noteAtom(`${projectId}:${noteId}`))
   const streamProgress = useAtomValue(noteProgressAtom)
   const refreshNote = useAtomSet(refreshNoteAtom, { mode: 'promise' })
+  const noteStream = useGeneratedNoteStream({ projectId, noteId })
 
   useEffect(() => {
+    if (noteStream.snapshot) return
     if (!Result.isSuccess(noteResult)) return
-    if (!noteResult.value) return
     if (noteResult.value.content.trim()) return
 
     const intervalId = window.setInterval(() => {
@@ -31,7 +33,7 @@ export const NoteContent = ({
     }, 3000)
 
     return () => window.clearInterval(intervalId)
-  }, [noteId, noteResult, projectId, refreshNote])
+  }, [noteId, noteResult, noteStream.snapshot, projectId, refreshNote])
 
   return Result.builder(noteResult)
     .onInitialOrWaiting(() => (
@@ -46,26 +48,26 @@ export const NoteContent = ({
       </div>
     ))
     .onSuccess((note) => {
-      if (!note) {
-        return (
-          <div className="flex flex-1 items-center justify-center text-muted-foreground">
-            <p>未找到笔记</p>
-          </div>
-        )
-      }
-
-      const content =
-        streamProgress?.noteId === noteId && streamProgress.content
+      const content = noteStream.snapshot
+        ? noteStream.snapshot.content
+        : streamProgress?.noteId === noteId && streamProgress.content
           ? streamProgress.content
           : note.content
+      const description = noteStream.snapshot?.description ?? note.description
 
       return (
-        <div className={`flex flex-col space-y-4 ${className || ''}`}>
-          {note.description && (
-            <div className="text-muted-foreground text-sm">
-              {note.description}
-            </div>
+        <div
+          className={`flex min-h-0 flex-col space-y-4 overflow-y-auto overscroll-contain pb-8 ${className || ''}`}
+        >
+          {description && (
+            <div className="text-muted-foreground text-sm">{description}</div>
           )}
+          {noteStream.isGenerating ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2Icon className="size-4 animate-spin" />
+              <span>笔记正在生成，内容会持续更新…</span>
+            </div>
+          ) : null}
           {content.trim() ? (
             <div className="prose prose-sm dark:prose-invert max-w-none">
               <Response>{content}</Response>

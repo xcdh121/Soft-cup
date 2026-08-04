@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     auth_admin_usernames: str = ""
     allow_dev_auth_bypass: bool = False
 
+    # Billing and payment callbacks. Provider secrets never leave the API process.
+    billing_environment: str = "development"
+    billing_manual_payment_enabled: bool = True
+    billing_order_expiry_minutes: int = 30
+    billing_manual_payment_recipient: str = ""
+    billing_manual_wechat_qr_url: str = ""
+    billing_manual_qq_qr_url: str = ""
+    payment_webhook_secret: str = ""
+    payment_callback_base_url: str = ""
+
     # LLM / embedding providers (OpenAI-compatible endpoints or local servers)
     llm_model: str = "gpt-4o-mini"
     llm_api_key: str = ""
@@ -57,6 +67,18 @@ class Settings(BaseSettings):
     xfyun_ppt_default_ai_image: str = "normal"
     xfyun_ppt_poll_interval_seconds: float = 3.0
     xfyun_ppt_poll_timeout_seconds: float = 180.0
+
+    # XFYun Spark text-to-image generation
+    xfyun_image_generation_enabled: bool = False
+    xfyun_image_generation_app_id: str = ""
+    xfyun_image_generation_api_key: str = ""
+    xfyun_image_generation_api_secret: str = ""
+    xfyun_image_generation_base_url: str = (
+        "https://spark-api.cn-huabei-1.xf-yun.com/v2.1/tti"
+    )
+    xfyun_image_generation_timeout_seconds: float = 120.0
+    xfyun_image_generation_default_width: int = 512
+    xfyun_image_generation_default_height: int = 512
 
     # XFYun Chinese speech recognition (IAT)
     xfyun_iat_enabled: bool = False

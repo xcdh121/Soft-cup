@@ -68,7 +68,7 @@ type LeaderboardEntry = {
   study_count: number
 }
 
-const serverUrl = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8000'
+const serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin
 
 const dashboardSlides = [
   {

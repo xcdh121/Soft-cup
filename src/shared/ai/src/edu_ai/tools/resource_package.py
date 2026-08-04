@@ -15,6 +15,7 @@ ResourceType = Literal[
     "practice_set",
     "flashcards",
     "ppt_outline",
+    "image",
     "pptx",
     "programming_questions",
     "code_lab",
@@ -111,6 +112,7 @@ def _preference_resource_types(fields: dict[str, Any]) -> list[ResourceType]:
     mappings: tuple[tuple[tuple[str, ...], ResourceType], ...] = (
         (("视频", "video"), "video_recommendations"),
         (("思维导图", "图解", "visual", "diagram", "mind map"), "mind_map"),
+        (("图片", "插图", "配图", "海报", "image", "illustration"), "image"),
         (("闪卡", "卡片", "flashcard"), "flashcards"),
         (("刷题", "练习", "题目", "practice", "quiz", "exercise"), "practice_set"),
         (("编程", "代码", "实操", "programming", "coding"), "programming_questions"),
@@ -227,7 +229,8 @@ def _personalization_basis(
         "Generate a unified learning resource package for the current project. "
         "Use this for every request that creates learning content, including a "
         "single note, mind map, quiz/practice set, flashcard set, PPT/PPTX, PPT "
-        "outline, video recommendation, or several resource types together. "
+        "outline, generated image/illustration, video recommendation, or several "
+        "resource types together. "
         "For requests based on the learner's situation, omit topic, resource_types, "
         "goal, and difficulty_level when they are not explicitly supplied; the tool "
         "will derive them from the saved profile and learning evidence."

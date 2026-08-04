@@ -10,7 +10,7 @@ class ProjectCreate(BaseModel):
     name: str = Field(..., description="Name of the project")
     description: str | None = Field(None, description="Description of the project")
     language_code: str = Field(
-        default="en", description="Language code for the project"
+        default="zh", description="Language code for the project"
     )
     course_id: str | None = Field(None, description="Optional parent course ID")
 

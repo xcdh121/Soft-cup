@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import contextmanager
@@ -12,6 +13,7 @@ from edu_db.models import (
     Document,
     GeneratedResource,
     KnowledgePoint,
+    Note,
     Project,
     ResourcePackage,
 )
@@ -27,6 +29,7 @@ from edu_core.schemas.resource_packages import (
     ResourcePackageStreamEventDto,
 )
 from edu_core.services.baidu_search import BaiduSearchClient
+from edu_core.services.xfyun_image_generation import XfyunImageGenerationClient
 from edu_core.services.xfyun_ppt import XfyunPptClient, XfyunPptError
 from edu_core.storage import LocalStorageService
 
@@ -51,6 +54,7 @@ class ResourcePackageService:
         quiz_service: "QuizService | None" = None,
         flashcard_group_service: "FlashcardGroupService | None" = None,
         mind_map_service: "MindMapService | None" = None,
+        xfyun_image_generation_client: XfyunImageGenerationClient | None = None,
         xfyun_ppt_client: XfyunPptClient | None = None,
         baidu_search_client: BaiduSearchClient | None = None,
         llm_config: LlmProviderConfig | None = None,
@@ -70,6 +74,7 @@ class ResourcePackageService:
         self.quiz_service = quiz_service
         self.flashcard_group_service = flashcard_group_service
         self.mind_map_service = mind_map_service
+        self.xfyun_image_generation_client = xfyun_image_generation_client
         self.xfyun_ppt_client = xfyun_ppt_client
         self.baidu_search_client = baidu_search_client
         self.llm_config = llm_config
@@ -130,6 +135,127 @@ class ResourcePackageService:
             if not resource:
                 raise NotFoundError(f"Generated resource {resource_id} not found")
             return self._resource_to_dto(resource)
+
+    def resolve_generated_resource_file(
+        self, user_id: str, project_id: str, resource_id: str
+    ) -> Path:
+        """Resolve an owned generated image without exposing storage paths."""
+        with self._get_db_session() as db:
+            resource = (
+                db.query(GeneratedResource)
+                .filter(
+                    GeneratedResource.id == resource_id,
+                    GeneratedResource.project_id == project_id,
+                    GeneratedResource.user_id == user_id,
+                    GeneratedResource.resource_type == "image",
+                )
+                .first()
+            )
+            if not resource or not resource.file_url:
+                raise NotFoundError(f"Generated resource file {resource_id} not found")
+        return self.storage.resolve(
+            self._generated_image_storage_path(project_id, resource_id)
+        )
+
+    def get_generated_resource_by_target(
+        self,
+        user_id: str,
+        project_id: str,
+        target_type: str,
+        target_id: str,
+    ) -> GeneratedResourceDto:
+        """Return the newest package resource linked to a learning item.
+
+        Detail pages only know the note, quiz, or flashcard-group ID. This lookup
+        lets them keep polling while the owning generated resource is pending or
+        generating, and stop immediately after it completes or fails.
+        """
+        resource_type_by_target = {
+            "note": "lecture_note",
+            "quiz": "practice_set",
+            "flashcards": "flashcards",
+            "mind_map": "mind_map",
+        }
+        resource_type = resource_type_by_target.get(target_type)
+        if resource_type is None:
+            raise NotFoundError(f"Unsupported generated resource target {target_type}")
+
+        with self._get_db_session() as db:
+            candidates = (
+                db.query(GeneratedResource)
+                .filter(
+                    GeneratedResource.project_id == project_id,
+                    GeneratedResource.user_id == user_id,
+                    GeneratedResource.resource_type == resource_type,
+                )
+                .order_by(GeneratedResource.created_at.desc())
+                .all()
+            )
+            for resource in candidates:
+                content = resource.content_json or {}
+                if (
+                    str(content.get("target_id") or "") == target_id
+                    and str(content.get("target_type") or "") == target_type
+                ):
+                    return self._resource_to_dto(resource)
+        raise NotFoundError(
+            f"Generated resource for {target_type} target {target_id} not found"
+        )
+
+    async def stream_generated_note_snapshots(
+        self,
+        user_id: str,
+        project_id: str,
+        resource_id: str,
+        note_id: str,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream persisted note snapshots until generation reaches a terminal state."""
+        previous: tuple[str, str, str | None, str] | None = None
+        heartbeat_ticks = 0
+        while True:
+            with self._get_db_session() as db:
+                resource = (
+                    db.query(GeneratedResource)
+                    .filter(
+                        GeneratedResource.id == resource_id,
+                        GeneratedResource.project_id == project_id,
+                        GeneratedResource.user_id == user_id,
+                    )
+                    .first()
+                )
+                note = (
+                    db.query(Note)
+                    .filter(Note.id == note_id, Note.project_id == project_id)
+                    .first()
+                )
+                if resource is None or note is None:
+                    raise NotFoundError(f"Generated note {note_id} not found")
+                snapshot_key = (
+                    note.content or "",
+                    note.title,
+                    note.description,
+                    resource.status,
+                )
+                snapshot = {
+                    "event": "note_snapshot",
+                    "resource_id": resource.id,
+                    "note_id": note.id,
+                    "status": resource.status,
+                    "title": note.title,
+                    "description": note.description,
+                    "content": note.content or "",
+                    "updated_at": note.updated_at.isoformat(),
+                }
+
+            heartbeat_ticks += 1
+            if snapshot_key != previous or heartbeat_ticks >= 40:
+                yield snapshot
+                previous = snapshot_key
+                heartbeat_ticks = 0
+
+            if snapshot["status"] in {"completed", "failed"}:
+                return
+            await asyncio.sleep(0.25)
 
     def import_resource(
         self,
@@ -550,6 +676,62 @@ Problem and answer JSON:
                 **(payload.get("generation_params") or {}),
             }
 
+            # Persist the package before diagnosis or generation starts. Both the
+            # chat tool and the web form can now return a stable progress URL at
+            # once, while the expensive orchestration continues in the background.
+            initial_trace: list[dict[str, Any]] = []
+            self._append_agent_event(
+                initial_trace,
+                package_id,
+                "package_status_changed",
+                {"status": "generating"},
+            )
+            package = ResourcePackage(
+                id=package_id,
+                project_id=project_id,
+                user_id=user_id,
+                profile_id=payload.get("profile_id"),
+                learning_path_id=payload.get("learning_path_id"),
+                title=payload.get("title") or f"{target_topic} resource package",
+                description=payload.get("description")
+                or f"Personalized package for {target_topic}",
+                generation_mode=payload.get("generation_mode", "manual"),
+                status="generating",
+                target_topic=target_topic,
+                target_goal=target_goal,
+                difficulty_level=difficulty_level,
+                estimated_minutes=payload.get("estimated_minutes"),
+                source_document_ids=source_document_ids,
+                knowledge_point_ids=self._merge_distinct(
+                    payload.get("knowledge_point_ids") or [],
+                    [point.id for point in chapter_points],
+                ),
+                weak_knowledge_point_ids=self._merge_distinct(
+                    payload.get("weak_knowledge_point_ids") or []
+                ),
+                preferred_resource_types=resource_types,
+                generation_params=generation_params,
+                agent_trace=initial_trace,
+                resource_count=len(resource_types),
+                completed_resource_count=0,
+                failed_resource_count=0,
+                created_at=now,
+                updated_at=now,
+                completed_at=None,
+            )
+            db.add(package)
+            db.commit()
+            await self._publish_stream_event(
+                event_sink,
+                package_id,
+                "package_started",
+                {
+                    "status": "generating",
+                    "resource_count": len(resource_types),
+                    "resource_types": resource_types,
+                },
+            )
+
             diagnosis = await self._get_or_create_diagnosis(
                 user_id=user_id,
                 project_id=project_id,
@@ -580,37 +762,6 @@ Problem and answer JSON:
                 "recommendations": diagnosis.recommendations,
             }
 
-            package = ResourcePackage(
-                id=package_id,
-                project_id=project_id,
-                user_id=user_id,
-                profile_id=payload.get("profile_id"),
-                learning_path_id=payload.get("learning_path_id"),
-                title=payload.get("title") or f"{target_topic} resource package",
-                description=payload.get("description")
-                or f"Personalized package for {target_topic}",
-                generation_mode=payload.get("generation_mode", "manual"),
-                status="generating",
-                target_topic=target_topic,
-                target_goal=target_goal,
-                difficulty_level=difficulty_level,
-                estimated_minutes=payload.get("estimated_minutes"),
-                source_document_ids=source_document_ids,
-                knowledge_point_ids=knowledge_point_ids,
-                weak_knowledge_point_ids=weak_points,
-                preferred_resource_types=resource_types,
-                generation_params=generation_params,
-                agent_trace=[],
-                resource_count=len(resource_types),
-                completed_resource_count=0,
-                failed_resource_count=0,
-                created_at=now,
-                updated_at=now,
-                completed_at=None,
-            )
-            db.add(package)
-            db.flush()
-
             agent_trace = self._build_agent_trace_from_events(
                 package_id=package_id,
                 diagnosis=diagnosis,
@@ -623,6 +774,10 @@ Problem and answer JSON:
                 {"status": "generating"},
             )
             package.agent_trace = agent_trace
+            package.knowledge_point_ids = knowledge_point_ids
+            package.weak_knowledge_point_ids = weak_points
+            package.generation_params = generation_params
+            package.updated_at = datetime.now(UTC)
             recommendation_pool = list(diagnosis.recommendations)
             resources_to_generate: list[tuple[GeneratedResource, str]] = []
             for order, resource_type in enumerate(resource_types):
@@ -674,20 +829,12 @@ Problem and answer JSON:
                 db.add(resource)
                 resources_to_generate.append((resource, resource_type))
             db.commit()
+            db.refresh(package)
             await self._publish_stream_event(
-                event_sink, package_id, "package_started",
-                {
-                    "status": "generating",
-                    "resource_count": len(resource_types),
-                    "resources": [
-                        {
-                            "id": resource.id,
-                            "resource_type": resource_type,
-                            "preview_url": resource.preview_url,
-                        }
-                        for resource, resource_type in resources_to_generate
-                    ],
-                },
+                event_sink,
+                package_id,
+                "package_snapshot",
+                {"package": self._model_to_dto(package).model_dump(mode="json")},
             )
 
             source_context = self._combine_source_context(
@@ -905,6 +1052,9 @@ Problem and answer JSON:
             )
             generated = await self._generate_resource_content_async(
                 resource_type=resource.resource_type,
+                project_id=project_id,
+                resource_id=resource.id,
+                user_id=user_id,
                 topic=package.target_topic,
                 goal=package.target_goal,
                 difficulty_level=resource.difficulty_level,
@@ -954,14 +1104,59 @@ Problem and answer JSON:
     async def stream_resource_package_events(
         self, user_id: str, project_id: str, package_id: str
     ):
-        package = self.get_resource_package(user_id, project_id, package_id)
-        for event in package.agent_trace:
-            yield ResourcePackageStreamEventDto(
-                event=event["event"],
-                package_id=package_id,
-                timestamp=datetime.fromisoformat(event["timestamp"]),
-                payload=event["payload"],
+        """Stream durable package snapshots so navigation and refresh never lose progress."""
+        previous_snapshot: str | None = None
+        emitted_trace_count = 0
+        heartbeat_ticks = 0
+        lifecycle_events = {
+            "package_status_changed",
+            "resource_started",
+            "resource_completed",
+            "resource_failed",
+            "resource_generating",
+            "diagnosis_linked",
+        }
+
+        while True:
+            package = self.get_resource_package(user_id, project_id, package_id)
+            trace = list(package.agent_trace or [])
+            for event in trace[emitted_trace_count:]:
+                event_name = str(event.get("event") or "agent_step")
+                if event_name in lifecycle_events:
+                    continue
+                payload = dict(event.get("payload") or {})
+                yield ResourcePackageStreamEventDto(
+                    event="agent_step",
+                    package_id=package_id,
+                    timestamp=datetime.fromisoformat(event["timestamp"]),
+                    payload={
+                        "event_type": event_name,
+                        "agent_name": payload.pop("agent", None)
+                        or payload.get("agent_name")
+                        or "SupervisorAgent",
+                        **payload,
+                    },
+                )
+            emitted_trace_count = len(trace)
+
+            package_payload = package.model_dump(mode="json")
+            snapshot_key = json.dumps(
+                package_payload, ensure_ascii=False, sort_keys=True, default=str
             )
+            heartbeat_ticks += 1
+            if snapshot_key != previous_snapshot or heartbeat_ticks >= 40:
+                yield ResourcePackageStreamEventDto(
+                    event="package_snapshot",
+                    package_id=package_id,
+                    timestamp=datetime.now(UTC),
+                    payload={"package": package_payload},
+                )
+                previous_snapshot = snapshot_key
+                heartbeat_ticks = 0
+
+            if package.status in {"completed", "failed"}:
+                return
+            await asyncio.sleep(0.25)
 
     async def _publish_stream_event(
         self,
@@ -1222,6 +1417,9 @@ Problem and answer JSON:
 
         generated = await self._generate_resource_content_async(
             resource_type=resource_type,
+            project_id=project_id,
+            resource_id=resource_id,
+            user_id=user_id,
             topic=topic,
             goal=goal,
             difficulty_level=difficulty_level,
@@ -1273,6 +1471,19 @@ Problem and answer JSON:
                 summary = event.get("description") or summary
 
             if event_type in {"note_delta", "note_completed"}:
+                content_json = {
+                    **(generated.get("content_json") or {}),
+                    "stream_on_client": event_type != "note_completed",
+                }
+                self._update_partial_generated_resource(
+                    resource_id=resource_id,
+                    title=title,
+                    content_json=content_json,
+                    content_text=content,
+                    summary=summary,
+                    resource_format=generated.get("format"),
+                    preview_url=generated.get("preview_url"),
+                )
                 await self._publish_stream_event(
                     event_sink,
                     package_id,
@@ -1431,6 +1642,7 @@ Problem and answer JSON:
         resource_id: str,
         title: str,
         content_json: dict[str, Any],
+        content_text: str | None = None,
         summary: str | None = None,
         resource_format: str | None = None,
         preview_url: str | None = None,
@@ -1447,6 +1659,8 @@ Problem and answer JSON:
             resource.title = title
             resource.status = "generating"
             resource.content_json = content_json
+            if content_text is not None:
+                resource.content_text = content_text
             if summary is not None:
                 resource.summary = summary
             if resource_format is not None:
@@ -1521,6 +1735,7 @@ Problem and answer JSON:
             "flashcards": 20,
             "mind_map": 15,
             "ppt_outline": 20,
+            "image": 5,
             "pptx": 25,
             "programming_questions": 35,
             "code_lab": 40,
@@ -1665,6 +1880,9 @@ Problem and answer JSON:
         self,
         *,
         resource_type: str,
+        project_id: str,
+        resource_id: str,
+        user_id: str,
         topic: str,
         goal: str | None,
         difficulty_level: str,
@@ -1675,6 +1893,18 @@ Problem and answer JSON:
         documents: list[Document],
         generation_params: dict[str, Any],
     ) -> dict:
+        if resource_type == "image":
+            return await self._generate_xfyun_image(
+                project_id=project_id,
+                resource_id=resource_id,
+                user_id=user_id,
+                topic=topic,
+                goal=goal,
+                document_context=document_context,
+                custom_instructions=custom_instructions,
+                generation_params=generation_params,
+            )
+
         if resource_type == "programming_questions":
             return await self._generate_programming_questions(
                 topic=topic,
@@ -1740,6 +1970,83 @@ Problem and answer JSON:
             weak_points=weak_points,
             custom_instructions=custom_instructions,
         )
+
+    async def _generate_xfyun_image(
+        self,
+        *,
+        project_id: str,
+        resource_id: str,
+        user_id: str,
+        topic: str,
+        goal: str | None,
+        document_context: str,
+        custom_instructions: str | None,
+        generation_params: dict[str, Any],
+    ) -> dict[str, Any]:
+        client = self.xfyun_image_generation_client
+        if client is None or not client.is_enabled:
+            raise ValueError("XFYun image generation is not configured")
+
+        prompt_parts = [f"生成一张用于学习资源的高质量图片。主题: {topic}。"]
+        if goal:
+            prompt_parts.append(f"学习目标: {goal}。")
+        if custom_instructions:
+            prompt_parts.append(f"具体要求: {custom_instructions.strip()}")
+        if document_context and document_context != "No source context was selected.":
+            prompt_parts.append(f"课程语境: {document_context[:400]}")
+        image_style = str(generation_params.get("image_style") or "").strip()
+        if image_style:
+            prompt_parts.append(f"图片风格: {image_style}。")
+        prompt = "\n".join(prompt_parts)[:1000]
+
+        width = self._optional_int(generation_params.get("image_width"))
+        height = self._optional_int(generation_params.get("image_height"))
+        result = await client.generate(
+            prompt,
+            width=width,
+            height=height,
+            uid=user_id,
+        )
+
+        storage_path = self._generated_image_storage_path(project_id, resource_id)
+        # Keep the exact provider bytes so the regulatory metadata embedded by
+        # XFYun is not lost through image decoding or re-encoding.
+        self.storage.write_bytes(storage_path, result["image_bytes"])
+        file_url = (
+            f"/api/v1/projects/{project_id}/generated-resources/{resource_id}/file"
+        )
+        return {
+            "title": f"{topic} AI 图片",
+            "summary": f"根据“{topic}”生成的教学图片。",
+            "format": "png",
+            "file_url": file_url,
+            "preview_url": file_url,
+            "cover_image_url": file_url,
+            "generator_agent": "MediaAgent",
+            "generation_reason": "使用讯飞 Spark 文生图生成, 并原样保存图片字节与隐式标识元数据。",
+            "estimated_minutes": 5,
+            "content_json": {
+                "provider": "xfyun_spark_tti",
+                "prompt": prompt,
+                "width": result["width"],
+                "height": result["height"],
+                "sid": result.get("sid"),
+                "implicit_label_preserved": True,
+            },
+        }
+
+    @staticmethod
+    def _optional_int(value: Any) -> int | None:
+        if value in (None, ""):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid integer value: {value}") from exc
+
+    @staticmethod
+    def _generated_image_storage_path(project_id: str, resource_id: str) -> str:
+        return f"projects/{project_id}/generated-resources/{resource_id}.png"
 
     async def _generate_programming_questions(
         self,

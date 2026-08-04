@@ -1,14 +1,23 @@
 """Service for tracking and enforcing user usage limits."""
 
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from typing import Literal
+from uuid import uuid4
 
-from edu_db.models import UserUsage
+from edu_db.models import (
+    AgentRun,
+    AgentToolCall,
+    Chat,
+    ChatMessage,
+    ChatMessagePart,
+    UserUsage,
+)
 from edu_db.session import get_session_factory
 
 from edu_core.exceptions import UsageLimitExceededError
-from edu_core.schemas.usage import UsageDto, UsageLimitDto
+from edu_core.schemas.usage import ToolUsageDto, UsageDto, UsageLimitDto
+from edu_core.services.quota import QuotaService
 
 
 class UsageService:
@@ -57,6 +66,17 @@ class UsageService:
         Raises:
             UsageLimitExceeded: If the user has exceeded their usage limit
         """
+        quota_service = QuotaService()
+        if quota_service.has_active_entitlement(user_id):
+            operation_id = str(uuid4())
+            quota_service.consume(
+                user_id=user_id,
+                resource_type=usage_type,
+                idempotency_key=f"usage:{usage_type}:{operation_id}",
+                business_type="legacy_usage",
+                business_id=operation_id,
+            )
+            return
         with self._get_db_session() as db:
             try:
                 usage = db.query(UserUsage).filter(UserUsage.user_id == user_id).first()
@@ -173,9 +193,88 @@ class UsageService:
                         used=usage.document_uploads_today,
                         limit=self.max_document_uploads_per_day,
                     ),
+                    tool_usage=self._get_daily_tool_usage(db, user_id),
                 )
             except Exception:
                 raise
+
+    def _get_daily_tool_usage(self, db, user_id: str) -> list[ToolUsageDto]:
+        """Aggregate all persisted tool calls for the current UTC day.
+
+        Tool calls can originate from the conversational tutor or from the
+        multi-agent orchestration runtime. Both stores are included so the
+        settings page reflects the user's complete tool activity.
+        """
+        now = datetime.now(UTC)
+        day_start = datetime.combine(now.date(), time.min, tzinfo=UTC)
+
+        agent_rows = (
+            db.query(
+                AgentToolCall.tool_name,
+                AgentToolCall.status,
+                AgentToolCall.started_at,
+            )
+            .join(AgentRun, AgentRun.id == AgentToolCall.run_id)
+            .filter(
+                AgentRun.user_id == user_id,
+                AgentToolCall.started_at >= day_start,
+            )
+            .all()
+        )
+        chat_rows = (
+            db.query(
+                ChatMessagePart.tool_name,
+                ChatMessagePart.tool_state,
+                ChatMessagePart.created_at,
+            )
+            .join(ChatMessage, ChatMessage.id == ChatMessagePart.message_id)
+            .join(Chat, Chat.id == ChatMessage.chat_id)
+            .filter(
+                Chat.user_id == user_id,
+                ChatMessagePart.part_type == "tool_call",
+                ChatMessagePart.tool_name.isnot(None),
+                ChatMessagePart.created_at >= day_start,
+            )
+            .all()
+        )
+
+        totals: dict[str, dict[str, int | datetime | None]] = {}
+
+        def add_call(
+            tool_name: str | None,
+            status: str | None,
+            used_at: datetime | None,
+            successful_status: str,
+            failed_status: str,
+        ) -> None:
+            if not tool_name:
+                return
+            summary = totals.setdefault(
+                tool_name,
+                {"total": 0, "successful": 0, "failed": 0, "last_used_at": None},
+            )
+            summary["total"] = int(summary["total"] or 0) + 1
+            if status == successful_status:
+                summary["successful"] = int(summary["successful"] or 0) + 1
+            elif status == failed_status:
+                summary["failed"] = int(summary["failed"] or 0) + 1
+
+            last_used_at = summary["last_used_at"]
+            if used_at and (last_used_at is None or used_at > last_used_at):
+                summary["last_used_at"] = used_at
+
+        for tool_name, status, used_at in agent_rows:
+            add_call(tool_name, status, used_at, "completed", "failed")
+        for tool_name, status, used_at in chat_rows:
+            add_call(tool_name, status, used_at, "output-available", "output-error")
+
+        return [
+            ToolUsageDto(tool_name=tool_name, **summary)
+            for tool_name, summary in sorted(
+                totals.items(),
+                key=lambda item: (-int(item[1]["total"] or 0), item[0]),
+            )
+        ]
 
     def _reset_daily_counters_if_needed(self, usage: UserUsage) -> UserUsage:
         """Reset daily counters if it's a new day.
