@@ -83,18 +83,22 @@ class KTAgent(BaseOrchestrationAgent):
 
     def _summarize_explicit_states(
         self, states: list[dict]
-    ) -> tuple[dict, dict[str, dict]]:
+    ) -> dict:
         weak_points = []
         strong_points = []
         scores = []
         for state in states:
+            status = str(state.get("status") or "not_started")
+            if status in {"not_started", "missing", "unobserved"}:
+                # Absence of learning evidence is not negative evidence.
+                continue
             score = int(state.get("mastery_score", 0))
             scores.append(score)
             point = {
                 "knowledge_point_id": state.get("knowledge_point_id"),
                 "mastery_score": score,
                 "trend": state.get("trend", Trend.STABLE.value),
-                "status": state.get("status", "struggling" if score < 70 else "ok"),
+                "status": status,
             }
             if score < 70:
                 weak_points.append(point)

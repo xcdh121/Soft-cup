@@ -289,6 +289,84 @@ class LearnerProfileService:
                 for revision in revisions
             ]
 
+    def confirm_field(
+        self,
+        project_id: str,
+        user_id: str,
+        field_key: str,
+        value,
+    ) -> LearnerProfileDto:
+        if field_key not in PROFILE_FIELDS:
+            raise ValueError(f"Unknown learner profile field: {field_key}")
+        with self._get_db_session() as db:
+            self._get_owned_project(db, project_id, user_id)
+            profile = self._get_profile(db, project_id, user_id)
+            old_data = dict(profile.profile_data or {})
+            new_data = {
+                **old_data,
+                field_key: {
+                    "value": value,
+                    "confidence": 1.0,
+                    "status": "confirmed",
+                    "evidence": [
+                        {
+                            "source_type": "user_confirmation",
+                            "source_id": user_id,
+                        }
+                    ],
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+            }
+            profile.profile_data = new_data
+            self._record_revisions(
+                db,
+                profile,
+                old_data,
+                new_data,
+                source_type="user_confirmation",
+                source_id=user_id,
+            )
+            self._update_completeness(profile)
+            db.commit()
+            db.refresh(profile)
+            return LearnerProfileDto.model_validate(profile)
+
+    def revert_revision(
+        self, project_id: str, user_id: str, revision_id: str
+    ) -> LearnerProfileDto:
+        with self._get_db_session() as db:
+            self._get_owned_project(db, project_id, user_id)
+            profile = self._get_profile(db, project_id, user_id)
+            revision = (
+                db.query(LearnerProfileRevision)
+                .filter(
+                    LearnerProfileRevision.id == revision_id,
+                    LearnerProfileRevision.profile_id == profile.id,
+                )
+                .first()
+            )
+            if not revision:
+                raise NotFoundError(f"Learner profile revision {revision_id} not found")
+            old_data = dict(profile.profile_data or {})
+            new_data = dict(old_data)
+            if revision.old_value is None:
+                new_data.pop(revision.field_key, None)
+            else:
+                new_data[revision.field_key] = revision.old_value
+            profile.profile_data = new_data
+            self._record_revisions(
+                db,
+                profile,
+                old_data,
+                new_data,
+                source_type="revision_revert",
+                source_id=revision.id,
+            )
+            self._update_completeness(profile)
+            db.commit()
+            db.refresh(profile)
+            return LearnerProfileDto.model_validate(profile)
+
     @staticmethod
     def _record_revisions(
         db,

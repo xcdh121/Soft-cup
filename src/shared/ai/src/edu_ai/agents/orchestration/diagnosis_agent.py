@@ -79,18 +79,51 @@ class DiagnosisAgent(BaseOrchestrationAgent):
             if not matched_patterns:
                 confidence = min(confidence, 0.65)
 
+            ranked_causes = []
+            for rank, point in enumerate(weak_points[:3], start=1):
+                candidate_id = str(point["knowledge_point_id"])
+                candidate_detail = details.get(candidate_id, {})
+                attempts = int(candidate_detail.get("attempt_count", 0) or 0)
+                correct = int(candidate_detail.get("correct_count", 0) or 0)
+                candidate_confidence = min(
+                    0.85,
+                    float(candidate_detail.get("confidence", confidence)),
+                )
+                ranked_causes.append(
+                    {
+                        "claim_id": f"{context.run_id}_claim_{rank:02d}",
+                        "type": "persistent_error_pattern"
+                        if attempts >= 3
+                        else "weak_mastery",
+                        "label": "Repeated errors indicate an unstable concept model"
+                        if attempts >= 3 and correct < attempts
+                        else "Insufficient mastery of the knowledge point",
+                        "knowledge_point_id": candidate_id,
+                        "confidence": candidate_confidence,
+                        "evidence_refs": [
+                            {
+                                "source_type": "knowledge_state",
+                                "source_id": candidate_id,
+                            }
+                        ],
+                        "counter_evidence": [
+                            {
+                                "type": "correct_attempts",
+                                "count": correct,
+                            }
+                        ]
+                        if correct
+                        else [],
+                        "requires_more_evidence": candidate_confidence < 0.7,
+                    }
+                )
+
             diagnosis = {
                 "summary": (
                     "The current primary weak point is "
                     f"{detail.get('topic', point_id)}. Prioritize concept repair and practice feedback."
                 ),
-                "root_causes": [
-                    {
-                        "type": "weak_mastery",
-                        "label": "Insufficient mastery of the knowledge point",
-                        "confidence": confidence,
-                    }
-                ],
+                "root_causes": ranked_causes,
                 "related_knowledge_points": [
                     {
                         "id": point["knowledge_point_id"],

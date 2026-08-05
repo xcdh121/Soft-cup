@@ -666,6 +666,14 @@ class StudyPlan(Base):
 
 class AgentRun(Base):
     __tablename__ = "agent_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "project_id",
+            "idempotency_key",
+            name="uq_agent_runs_owner_idempotency",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     project_id: Mapped[str] = mapped_column(
@@ -679,8 +687,19 @@ class AgentRun(Base):
     status: Mapped[str] = mapped_column(String, index=True)
     trigger: Mapped[dict] = mapped_column(JSON, default=dict)
     context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    request_meta: Mapped[dict] = mapped_column(JSON, default=dict)
     final_result: Mapped[dict] = mapped_column(JSON, default=dict)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    orchestration_version: Mapped[str] = mapped_column(
+        String, default="orchestration-v2"
+    )
+    context_snapshot_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    budget: Mapped[dict] = mapped_column(JSON, default=dict)
+    usage: Mapped[dict] = mapped_column(JSON, default=dict)
+    versions: Mapped[dict] = mapped_column(JSON, default=dict)
+    last_event_sequence: Mapped[int] = mapped_column(Integer, default=0)
+    idempotency_key: Mapped[str | None] = mapped_column(String, nullable=True)
     current_agent_name: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     heartbeat_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -728,6 +747,46 @@ class AgentRun(Base):
     tool_calls = relationship(
         "AgentToolCall", back_populates="run", cascade="all, delete-orphan"
     )
+    steps = relationship(
+        "AgentRunStep",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="AgentRunStep.position",
+    )
+    feedback_entries = relationship(
+        "AgentRunFeedback", back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class AgentRunStep(Base):
+    __tablename__ = "agent_run_steps"
+    __table_args__ = (
+        UniqueConstraint("run_id", "node_id", name="uq_agent_run_steps_node"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    node_id: Mapped[str] = mapped_column(String, index=True)
+    agent_name: Mapped[str] = mapped_column(String, index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String, default="queued", index=True)
+    depends_on: Mapped[list[str]] = mapped_column(JSON, default=list)
+    optional: Mapped[bool] = mapped_column(Boolean, default=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=1)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    input_artifact_versions: Mapped[dict] = mapped_column(JSON, default=dict)
+    output_artifact_versions: Mapped[dict] = mapped_column(JSON, default=dict)
+    error_code: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    run = relationship("AgentRun", back_populates="steps")
 
 
 class SkillExecution(Base):
@@ -793,6 +852,9 @@ class AgentToolCall(Base):
 
 class AgentEvent(Base):
     __tablename__ = "agent_events"
+    __table_args__ = (
+        UniqueConstraint("run_id", "sequence", name="uq_agent_events_sequence"),
+    )
 
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: str(uuid4())
@@ -806,6 +868,7 @@ class AgentEvent(Base):
     status: Mapped[str] = mapped_column(String, index=True)
     summary: Mapped[str] = mapped_column(Text)
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    sequence: Mapped[int] = mapped_column(Integer, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
@@ -826,11 +889,37 @@ class AgentArtifact(Base):
     agent_name: Mapped[str] = mapped_column(String, index=True)
     artifact_key: Mapped[str] = mapped_column(String, index=True)
     artifact: Mapped[dict] = mapped_column(JSON, default=dict)
+    schema_version: Mapped[str] = mapped_column(String, default="1.0")
+    artifact_version: Mapped[int] = mapped_column(Integer, default=1)
+    content_hash: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    source_snapshot_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    dependency_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    validation_status: Mapped[str] = mapped_column(String, default="valid", index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 
     run = relationship("AgentRun", back_populates="artifacts")
+
+
+class AgentRunFeedback(Base):
+    __tablename__ = "agent_run_feedback"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    action: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    run = relationship("AgentRun", back_populates="feedback_entries")
 
 
 class Diagnosis(Base):
@@ -1542,6 +1631,66 @@ class KnowledgeStateEvent(Base):
 
     knowledge_state = relationship(
         "StudentKnowledgeState", back_populates="events"
+    )
+
+
+class LearningEvidenceEvent(Base):
+    __tablename__ = "learning_evidence_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    knowledge_point_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String, index=True)
+    source_type: Mapped[str] = mapped_column(String, index=True)
+    source_id: Mapped[str] = mapped_column(String, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
+class CollectiveInsight(Base):
+    __tablename__ = "collective_insights"
+    __table_args__ = (
+        UniqueConstraint(
+            "course_id",
+            "knowledge_point_id",
+            "pattern_type",
+            "window_start",
+            "window_end",
+            name="uq_collective_insights_window",
+        ),
+        CheckConstraint("sample_size >= 0", name="ck_collective_insights_sample_size"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    course_id: Mapped[str] = mapped_column(
+        String, ForeignKey("courses.id", ondelete="CASCADE"), index=True
+    )
+    knowledge_point_id: Mapped[str] = mapped_column(
+        String, ForeignKey("knowledge_points.id", ondelete="CASCADE"), index=True
+    )
+    pattern_type: Mapped[str] = mapped_column(String, index=True)
+    sample_size: Mapped[int] = mapped_column(Integer)
+    aggregate: Mapped[dict] = mapped_column(JSON, default=dict)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    version: Mapped[str] = mapped_column(String, default="collective-v1")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
     )
 
 

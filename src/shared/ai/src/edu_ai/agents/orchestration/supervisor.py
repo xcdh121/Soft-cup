@@ -13,6 +13,11 @@ from edu_core.schemas.agent_orchestration import (
     RunStatus,
     SupervisorPreflight,
     SupervisorRunResult,
+    BudgetPolicy,
+    ExecutionPlan,
+    PlanNode,
+    RetryClass,
+    RetryPolicy,
 )
 
 from edu_ai.agents.orchestration.base import BaseOrchestrationAgent
@@ -24,6 +29,10 @@ from edu_ai.agents.orchestration.kt_agent import KTAgent
 from edu_ai.agents.orchestration.planner_agent import PlannerAgent
 from edu_ai.agents.orchestration.profile_agent import ProfileAgent
 from edu_ai.agents.orchestration.resource_agent import ResourceAgent
+from edu_ai.agents.orchestration.content_agent import ContentAgent
+from edu_ai.agents.orchestration.assessment_agent import AssessmentAgent
+from edu_ai.agents.orchestration.media_agent import MediaAgent
+from edu_ai.agents.orchestration.evaluator import Evaluator
 
 
 class SupervisorAgent:
@@ -39,7 +48,11 @@ class SupervisorAgent:
             CollectiveInsightAgent(),
             DiagnosisAgent(),
             resource_agent or ResourceAgent(),
+            ContentAgent(),
+            AssessmentAgent(),
+            MediaAgent(),
             PlannerAgent(llm_config=llm_config),
+            Evaluator(),
         ]
 
     async def run(
@@ -47,7 +60,7 @@ class SupervisorAgent:
         request: OrchestrationRunRequest,
         event_sink: Callable[[AgentEvent], Awaitable[None]] | None = None,
     ) -> SupervisorRunResult:
-        run_id = f"run_{uuid4().hex}"
+        run_id = str(request.meta.get("run_id") or f"run_{uuid4().hex}")
         context = AgentRunContext(
             run_id=run_id,
             project_id=request.project_id,
@@ -338,6 +351,88 @@ class SupervisorAgent:
                 final_result={"error": str(exc)},
             )
 
+    def build_execution_plan(
+        self,
+        request: OrchestrationRunRequest,
+    ) -> ExecutionPlan:
+        """Build and validate the persisted DAG before a run is accepted."""
+
+        context = AgentRunContext(
+            run_id=str(request.meta.get("run_id") or "preflight"),
+            project_id=request.project_id,
+            student_id=request.student_id,
+            goal=request.goal,
+            trigger=request.trigger,
+            context=request.context,
+            artifacts=dict(request.artifacts),
+            meta=dict(request.meta),
+        )
+        preflight = self._preflight(context)
+        route = self._decide_route(preflight, context)
+        nodes: list[PlanNode] = []
+        ids_by_agent = {
+            agent_name: f"{position:02d}-{agent_name.value}"
+            for position, agent_name in enumerate(route, start=1)
+        }
+        previous: str | None = None
+        for position, agent_name in enumerate(route, start=1):
+            node_id = ids_by_agent[agent_name]
+            if request.meta.get("agent_runtime_v2"):
+                dependency_agents = {
+                    AgentName.PROFILE: [],
+                    AgentName.KT: [],
+                    AgentName.COLLECTIVE_INSIGHT: [],
+                    AgentName.DIAGNOSIS: [
+                        AgentName.PROFILE,
+                        AgentName.KT,
+                        AgentName.COLLECTIVE_INSIGHT,
+                    ],
+                    AgentName.RESOURCE: [AgentName.DIAGNOSIS],
+                    AgentName.CONTENT: [AgentName.RESOURCE],
+                    AgentName.ASSESSMENT: [AgentName.RESOURCE],
+                    AgentName.MEDIA: [AgentName.RESOURCE],
+                    AgentName.PLANNER: [
+                        AgentName.DIAGNOSIS,
+                        AgentName.CONTENT,
+                        AgentName.ASSESSMENT,
+                        AgentName.MEDIA,
+                    ],
+                    AgentName.EVALUATOR: [AgentName.PLANNER],
+                }.get(agent_name, [])
+                depends_on = [
+                    ids_by_agent[item]
+                    for item in dependency_agents
+                    if item in ids_by_agent
+                ]
+            else:
+                depends_on = [previous] if previous else []
+            is_optional = agent_name in {
+                AgentName.COLLECTIVE_INSIGHT,
+                AgentName.CONTENT,
+                AgentName.ASSESSMENT,
+                AgentName.MEDIA,
+                AgentName.EVALUATOR,
+            }
+            nodes.append(
+                PlanNode(
+                    node_id=node_id,
+                    agent_name=agent_name,
+                    depends_on=depends_on,
+                    optional=is_optional,
+                    timeout_seconds=120
+                    if agent_name in {AgentName.RESOURCE, AgentName.PLANNER}
+                    else 60,
+                    retry_policy=RetryPolicy(
+                        max_attempts=2 if is_optional else 1,
+                        retry_class=RetryClass.TRANSIENT
+                        if is_optional
+                        else RetryClass.NEVER,
+                    ),
+                )
+            )
+            previous = node_id
+        return ExecutionPlan(nodes=nodes, budget=request.budget)
+
     def _build_final_result(self, context: AgentRunContext) -> dict:
         return {
             "diagnosis": context.artifacts.get("diagnosis", {}).get("diagnosis", {}),
@@ -347,6 +442,12 @@ class SupervisorAgent:
             "learning_path": context.artifacts.get("learning_path", {}).get(
                 "learning_path"
             ),
+            "content_resources": context.artifacts.get("content_resources", {}),
+            "assessment_resources": context.artifacts.get(
+                "assessment_resources", {}
+            ),
+            "media_resources": context.artifacts.get("media_resources", {}),
+            "evaluation": context.artifacts.get("evaluation", {}),
         }
 
     def _preflight(self, context: AgentRunContext) -> SupervisorPreflight:
@@ -432,6 +533,28 @@ class SupervisorAgent:
             and AgentName.COLLECTIVE_INSIGHT in route
         ):
             route.remove(AgentName.COLLECTIVE_INSIGHT)
+
+        if context.meta.get("agent_runtime_v2"):
+            if preflight.goal == "recommendations":
+                route.extend(
+                    [AgentName.CONTENT, AgentName.ASSESSMENT, AgentName.MEDIA]
+                )
+            elif preflight.goal == "learning_path":
+                route = [
+                    AgentName.PROFILE,
+                    AgentName.KT,
+                    AgentName.DIAGNOSIS,
+                    AgentName.RESOURCE,
+                    AgentName.CONTENT,
+                    AgentName.ASSESSMENT,
+                    AgentName.MEDIA,
+                    AgentName.PLANNER,
+                    AgentName.EVALUATOR,
+                ]
+
+        resume_skip_agents = set(context.meta.get("resume_skip_agents") or [])
+        if resume_skip_agents:
+            route = [agent for agent in route if agent.value not in resume_skip_agents]
 
         return route
 

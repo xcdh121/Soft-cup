@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "categories": [
+    {"name": "insufficient_evidence", "count": 30, "goal": "diagnosis", "required_degrade": "insufficient_evidence", "forbidden": ["certain_weakness"]},
+    {"name": "single_weakness_or_prerequisite", "count": 40, "goal": "diagnosis", "required_agents": ["ProfileAgent", "KTAgent", "DiagnosisAgent"]},
+    {"name": "multiple_weaknesses_or_conflicts", "count": 30, "goal": "learning_path", "required_agents": ["ProfileAgent", "KTAgent", "DiagnosisAgent", "PlannerAgent"]},
+    {"name": "resource_or_dependency_failure", "count": 20, "goal": "recommendations", "acceptable_terminal": ["partially_completed", "failed"], "required_reason_code": "dependency_unavailable"}
+  ]
+}

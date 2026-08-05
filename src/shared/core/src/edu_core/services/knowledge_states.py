@@ -1,14 +1,19 @@
 """Service for project-scoped student knowledge states."""
 
+import math
+
 from contextlib import contextmanager
 from uuid import uuid4
 
 from edu_db.models import (
+    AgentArtifact,
+    AgentRun,
     Flashcard,
     FlashcardGroup,
     KnowledgePoint,
     KnowledgePointRelation,
     KnowledgeStateEvent,
+    LearningEvidenceEvent,
     PracticeRecord,
     Project,
     Quiz,
@@ -180,6 +185,7 @@ class KnowledgeStateService:
                     evidence={"reason": "manual API update"},
                 )
             )
+            self._mark_learning_paths_stale(db, project_id, user_id)
             db.commit()
             db.refresh(state)
             return self._to_dto(project_id, user_id, point, state)
@@ -266,8 +272,13 @@ class KnowledgeStateService:
                     states_by_point[point.id] = state
 
                 score_before = float(state.mastery_score or 0)
-                target_score = 100.0 if record.was_correct else 0.0
-                score_after = round(score_before * 0.7 + target_score * 0.3, 2)
+                score_after = self._updated_mastery(
+                    score_before=score_before,
+                    was_correct=record.was_correct,
+                    difficulty=point.difficulty_level,
+                    occurred_at=record.created_at,
+                    previous_at=state.last_practiced_at,
+                )
                 impact = round(score_after - score_before, 2)
 
                 state.mastery_score = score_after
@@ -291,6 +302,16 @@ class KnowledgeStateService:
                     "topic": record.topic,
                     "was_correct": record.was_correct,
                     "impact": impact,
+                    "difficulty": point.difficulty_level,
+                    "occurred_at": record.created_at.isoformat()
+                    if record.created_at
+                    else None,
+                    "model_version": "deterministic-kt-v2",
+                    "contributions": {
+                        "time_decay": True,
+                        "guess_probability": 0.2,
+                        "slip_probability": 0.08,
+                    },
                 }
                 state.evidence = [
                     *(state.evidence or []),
@@ -313,9 +334,29 @@ class KnowledgeStateService:
                         evidence=evidence_item,
                     )
                 )
+                db.add(
+                    LearningEvidenceEvent(
+                        id=str(uuid4()),
+                        project_id=project_id,
+                        user_id=user_id,
+                        knowledge_point_id=point.id,
+                        event_type="practice_result",
+                        source_type="practice_record",
+                        source_id=record.id,
+                        idempotency_key=f"practice_record:{record.id}",
+                        occurred_at=record.created_at,
+                        payload={
+                            "was_correct": record.was_correct,
+                            "item_type": record.item_type,
+                            "model_version": "deterministic-kt-v2",
+                        },
+                    )
+                )
                 processed_count += 1
                 updated[point.id] = (point, state)
 
+            if processed_count:
+                self._mark_learning_paths_stale(db, project_id, user_id)
             db.commit()
             for _, state in updated.values():
                 db.refresh(state)
@@ -329,6 +370,62 @@ class KnowledgeStateService:
                     for point, state in updated.values()
                 ],
             )
+
+    @staticmethod
+    def _mark_learning_paths_stale(db, project_id: str, user_id: str) -> None:
+        run_ids = db.query(AgentRun.id).filter(
+            AgentRun.project_id == project_id,
+            AgentRun.user_id == user_id,
+        )
+        db.query(AgentArtifact).filter(
+            AgentArtifact.run_id.in_(run_ids),
+            AgentArtifact.artifact_key == "learning_path",
+            AgentArtifact.validation_status == "valid",
+        ).update(
+            {AgentArtifact.validation_status: "stale"},
+            synchronize_session=False,
+        )
+
+    @staticmethod
+    def _updated_mastery(
+        *,
+        score_before: float,
+        was_correct: bool,
+        difficulty: str,
+        occurred_at,
+        previous_at,
+    ) -> float:
+        """Deterministic, explainable KT update with decay, guess, and slip."""
+
+        decayed = max(0.0, min(100.0, score_before))
+        if occurred_at and previous_at:
+            elapsed_days = max(0.0, (occurred_at - previous_at).total_seconds() / 86400)
+            decayed *= math.exp(-elapsed_days / 120.0)
+        difficulty_weight = {
+            "beginner": 0.24,
+            "easy": 0.24,
+            "intermediate": 0.30,
+            "medium": 0.30,
+            "advanced": 0.36,
+            "hard": 0.36,
+        }.get(str(difficulty).lower(), 0.30)
+        guess_probability = 0.20
+        slip_probability = 0.08
+        observed = 1.0 if was_correct else 0.0
+        # De-bias the observed result by the configured guess/slip rates.  A
+        # fully correct/incorrect observation stays compatible with the v1
+        # 100/0 target while the parameters remain explicit and auditable.
+        latent_evidence = (observed - guess_probability) / (
+            1.0 - guess_probability - slip_probability
+        )
+        evidence_target = max(0.0, min(1.0, latent_evidence)) * 100.0
+        return round(
+            max(
+                0.0,
+                min(100.0, decayed * (1.0 - difficulty_weight) + evidence_target * difficulty_weight),
+            ),
+            2,
+        )
 
     @staticmethod
     def _resolve_practice_knowledge_point(
