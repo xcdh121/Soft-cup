@@ -14,6 +14,7 @@ class TaskType(str, Enum):
     DOCUMENT_PROCESSING = "document_processing"
     CHAT_TITLE_GENERATION = "chat_title_generation"
     LEARNER_PROFILE_EXTRACTION = "learner_profile_extraction"
+    AGENT_RUN = "agent_run"
 
 
 class FlashcardGenerationData(TypedDict):
@@ -89,6 +90,13 @@ class LearnerProfileExtractionData(TypedDict):
     message_text: str
 
 
+class AgentRunData(TypedDict):
+    """Identity-only payload; all execution state remains in the database."""
+
+    run_id: str
+    user_id: str
+
+
 TaskData = Union[
     FlashcardGenerationData,
     QuizGenerationData,
@@ -97,6 +105,7 @@ TaskData = Union[
     DocumentProcessingData,
     ChatTitleGenerationData,
     LearnerProfileExtractionData,
+    AgentRunData,
 ]
 
 

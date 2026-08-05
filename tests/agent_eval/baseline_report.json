@@ -1,0 +1,9 @@
+{
+  "report_version": "1.0",
+  "orchestration_version": "orchestration-v1",
+  "fixture_count": 120,
+  "agent_harness_passed": 30,
+  "agent_harness_failed": 0,
+  "captured_metrics": ["route_accuracy", "schema_validity", "evidence_coverage", "latency_ms", "input_tokens", "output_tokens", "estimated_cost_micros"],
+  "note": "Re-run the evaluator to compare orchestration-v2 against this immutable baseline."
+}

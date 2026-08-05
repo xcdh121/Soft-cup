@@ -19,11 +19,17 @@ from edu_core.model_providers import (
 )
 from edu_core.schemas.documents import DocumentStatus
 from edu_core.services.learner_profiles import LearnerProfileService
+from edu_core.services.agent_orchestration import AgentOrchestrationService
+from edu_core.services.flashcard_groups import FlashcardGroupService
+from edu_core.services.mind_maps import MindMapService
+from edu_core.services.notes import NoteService
+from edu_core.services.quizzes import QuizService
 from edu_core.services.resource_packages import ResourcePackageService
 from edu_core.storage import LocalStorageService
 from edu_db.models import Chat, Document, DocumentSegment
 from edu_db.session import get_session_factory
 from edu_queue.schemas import QueueTaskMessage, TaskType
+from edu_queue.service import QueueService
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_text_splitters import (
     MarkdownHeaderTextSplitter,
@@ -118,8 +124,32 @@ class TaskRunnerService:
             await self._generate_chat_title(payload)
         elif task_type == TaskType.LEARNER_PROFILE_EXTRACTION:
             await self._extract_learner_profile(payload)
+        elif task_type == TaskType.AGENT_RUN:
+            await self._run_agent_orchestration(payload)
         else:
             raise ValueError(f"Unsupported task type: {task_type}")
+
+    async def _run_agent_orchestration(self, payload: dict[str, Any]) -> None:
+        """Resume a durable run from its database identity.
+
+        Child generation requests are dispatched by the same worker process;
+        their own database idempotency keys protect redelivery.
+        """
+
+        local_queue = QueueService(
+            queue_name="agent-worker-local",
+            task_handler=self.dispatch,
+        )
+        service = AgentOrchestrationService(
+            llm_config=self.llm_config,
+            flashcard_group_service=FlashcardGroupService(queue_service=local_queue),
+            quiz_service=QuizService(queue_service=local_queue),
+            note_service=NoteService(queue_service=local_queue),
+            mind_map_service=MindMapService(queue_service=local_queue),
+        )
+        await service.execute_agent_run(
+            str(payload["user_id"]), str(payload["run_id"])
+        )
 
     async def _generate_chat_title(self, payload: dict[str, Any]) -> None:
         """Generate and persist a title for an unnamed chat's first exchange."""

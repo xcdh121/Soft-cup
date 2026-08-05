@@ -33,3 +33,8 @@ class LearnerProfileRevisionDto(BaseModel):
     source_type: str
     source_id: str | None = None
     created_at: datetime
+
+
+class LearnerProfileFieldConfirmation(BaseModel):
+    field_key: str = Field(min_length=1, max_length=100)
+    value: object

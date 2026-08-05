@@ -5,7 +5,7 @@ import sys
 from arq.connections import RedisSettings
 from arq.worker import func
 from config import get_settings
-from edu_core.services import SearchService
+from edu_core.services import AgentOrchestrationService, SearchService
 from edu_db.session import init_db
 from edu_queue.schemas import QueueTaskMessage
 
@@ -62,6 +62,23 @@ async def run_task(ctx, message: QueueTaskMessage) -> None:
     await runner._dispatch_async(message)
 
 
+async def recover_agent_runs(ctx) -> None:
+    """Requeue durable runs left behind by a terminated worker."""
+
+    settings = get_settings()
+    init_db(settings.database_url)
+    service = AgentOrchestrationService()
+    for run in service.list_recoverable_runs(stale_after_seconds=30):
+        await ctx["redis"].enqueue_job(
+            "run_task",
+            {
+                "type": "agent_run",
+                "data": {"run_id": run["run_id"], "user_id": run["user_id"]},
+            },
+            _queue_name=settings.task_queue_name,
+        )
+
+
 settings = get_settings()
 
 
@@ -79,3 +96,4 @@ class WorkerSettings:
     # Document parsing and embedding can be memory intensive. Keep production
     # concurrency explicit instead of inheriting arq's default of 10 jobs.
     max_jobs = settings.worker_max_jobs
+    on_startup = recover_agent_runs

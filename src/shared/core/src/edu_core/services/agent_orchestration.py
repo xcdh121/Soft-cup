@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from contextlib import contextmanager
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 from uuid import uuid4
 
 from edu_ai.agents.orchestration import SupervisorAgent
+from edu_ai.agents.orchestration.executor import OrchestrationExecutor
 from edu_ai.agents.orchestration.resource_agent import ResourceAgent
 from edu_core.exceptions import NotFoundError
 from edu_core.model_providers import LlmProviderConfig
@@ -13,6 +17,9 @@ from edu_core.schemas.agent_orchestration import (
     AgentContextData,
     AgentEvent,
     AgentRunDetail,
+    AgentRunFeedbackRequest,
+    AgentRunContext,
+    AgentRunStepDetail,
     AgentTrigger,
     DiagnosisResponse,
     LearningPathResponse,
@@ -20,12 +27,18 @@ from edu_core.schemas.agent_orchestration import (
     RecommendationsResponse,
     RunStatus,
     SupervisorRunResult,
+    ExecutionPlan,
+    AgentEventType,
+    NodeStatus,
 )
 from edu_db.models import (
     AgentArtifact as AgentArtifactModel,
     AgentEvent as AgentEventModel,
     AgentRun,
+    AgentRunFeedback,
+    AgentRunStep,
     AgentToolCall,
+    CollectiveInsight,
     Diagnosis,
     Document,
     GeneratedResource,
@@ -33,6 +46,7 @@ from edu_db.models import (
     KnowledgePointRelation,
     LearnerProfile,
     LearningPath,
+    LearningEvidenceEvent,
     PracticeRecord,
     Project,
     Recommendation,
@@ -50,6 +64,10 @@ ARTIFACT_AGENT_NAMES = {
     "diagnosis": "DiagnosisAgent",
     "recommendations": "ResourceAgent",
     "learning_path": "PlannerAgent",
+    "content_resources": "ContentAgent",
+    "assessment_resources": "AssessmentAgent",
+    "media_resources": "MediaAgent",
+    "evaluation": "Evaluator",
 }
 
 
@@ -104,6 +122,379 @@ ORCHESTRATION_STORE = InMemoryOrchestrationStore()
 
 
 class DatabaseOrchestrationStore:
+    def create_run(
+        self,
+        request: OrchestrationRunRequest,
+        plan: ExecutionPlan,
+    ) -> str:
+        run_id = str(request.meta.get("run_id") or f"run_{uuid4().hex}")
+        trace_id = str(request.meta.get("trace_id") or f"trace_{uuid4().hex}")
+        snapshot_id = str(
+            request.meta.get("context_snapshot_id") or f"snapshot_{uuid4().hex}"
+        )
+        with self._get_db_session() as db:
+            if request.idempotency_key:
+                existing = (
+                    db.query(AgentRun)
+                    .filter(
+                        AgentRun.user_id == request.student_id,
+                        AgentRun.project_id == request.project_id,
+                        AgentRun.idempotency_key == request.idempotency_key,
+                    )
+                    .first()
+                )
+                if existing:
+                    return existing.id
+            run = AgentRun(
+                id=run_id,
+                project_id=request.project_id,
+                user_id=request.student_id,
+                goal=request.goal,
+                status=RunStatus.QUEUED.value,
+                trigger=self._to_json(request.trigger),
+                context_snapshot=self._to_json(request.context),
+                request_meta=self._to_json(request.meta),
+                context_snapshot_id=snapshot_id,
+                final_result={},
+                orchestration_version=plan.orchestration_version,
+                budget=self._to_json(plan.budget),
+                usage={},
+                versions={
+                    "orchestration": plan.orchestration_version,
+                    "routing": "policy-router-v2",
+                    "prompt": "prompt-catalog-v1",
+                    "model": str(request.meta.get("model_version") or "configured-default"),
+                    "skill_catalog": "skill-catalog-v1",
+                    "tool_catalog": "tool-catalog-v1",
+                    "artifact_schema": "2.0",
+                },
+                last_event_sequence=0,
+                idempotency_key=request.idempotency_key,
+                trace_id=trace_id,
+                heartbeat_at=self._now(),
+            )
+            db.add(run)
+            for position, node in enumerate(plan.nodes):
+                db.add(
+                    AgentRunStep(
+                        id=str(uuid4()),
+                        run_id=run_id,
+                        node_id=node.node_id,
+                        agent_name=node.agent_name.value,
+                        position=position,
+                        status=NodeStatus.QUEUED.value,
+                        depends_on=node.depends_on,
+                        optional=node.optional,
+                        max_attempts=node.retry_policy.max_attempts,
+                        timeout_seconds=node.timeout_seconds,
+                    )
+                )
+            for artifact_key, artifact in request.artifacts.items():
+                normalized_artifact = self._to_json(artifact)
+                db.add(
+                    AgentArtifactModel(
+                        id=str(uuid4()),
+                        run_id=run_id,
+                        agent_name=ARTIFACT_AGENT_NAMES.get(
+                            artifact_key, "ExternalInput"
+                        ),
+                        artifact_key=artifact_key,
+                        artifact=normalized_artifact,
+                        schema_version="2.0",
+                        artifact_version=1,
+                        content_hash=self._artifact_hash(normalized_artifact),
+                        source_snapshot_id=snapshot_id,
+                        validation_status="valid",
+                    )
+                )
+            db.commit()
+        return run_id
+
+    def append_event(self, event: AgentEvent) -> AgentEvent:
+        """Persist an event before projecting it to SSE consumers."""
+
+        with self._get_db_session() as db:
+            run = (
+                db.query(AgentRun)
+                .filter(AgentRun.id == event.run_id)
+                .with_for_update()
+                .first()
+            )
+            if not run:
+                raise NotFoundError(f"Agent run {event.run_id} not found")
+            sequence = int(run.last_event_sequence or 0) + 1
+            event.sequence = sequence
+            run.last_event_sequence = sequence
+            run.heartbeat_at = event.timestamp
+            if event.agent_name and event.agent_name.value != "SupervisorAgent":
+                run.current_agent_name = event.agent_name.value
+            if event.event_type == AgentEventType.RUN_STARTED:
+                run.status = RunStatus.RUNNING.value
+                run.started_at = run.started_at or event.timestamp
+            elif event.event_type == AgentEventType.RUN_COMPLETED:
+                run.status = RunStatus.COMPLETED.value
+            elif event.event_type == AgentEventType.RUN_PARTIALLY_COMPLETED:
+                run.status = RunStatus.PARTIALLY_COMPLETED.value
+            elif event.event_type == AgentEventType.RUN_FAILED:
+                run.status = RunStatus.FAILED.value
+            elif event.event_type == AgentEventType.RUN_CANCELLED:
+                run.status = RunStatus.CANCELLED.value
+
+            db.add(
+                AgentEventModel(
+                    id=str(uuid4()),
+                    run_id=event.run_id,
+                    sequence=sequence,
+                    event_type=event.event_type.value,
+                    agent_name=event.agent_name.value if event.agent_name else None,
+                    status=event.status.value,
+                    summary=event.summary,
+                    payload=self._to_json(event.payload),
+                    created_at=event.timestamp,
+                )
+            )
+            self._project_step_event(db, event)
+            db.commit()
+        return event
+
+    def _project_step_event(self, db, event: AgentEvent) -> None:
+        if not event.agent_name or event.agent_name.value == "SupervisorAgent":
+            return
+        step = (
+            db.query(AgentRunStep)
+            .filter(
+                AgentRunStep.run_id == event.run_id,
+                AgentRunStep.agent_name == event.agent_name.value,
+            )
+            .first()
+        )
+        if not step:
+            return
+        phase = str(event.payload.get("phase") or "")
+        if event.event_type in {AgentEventType.STEP_STARTED} or (
+            event.event_type == AgentEventType.AGENT_STEP
+            and phase in {"running", "started"}
+        ):
+            step.status = NodeStatus.RUNNING.value
+            step.attempt_count = max(1, step.attempt_count + 1)
+            step.started_at = step.started_at or event.timestamp
+            step.heartbeat_at = event.timestamp
+        elif event.event_type in {AgentEventType.STEP_COMPLETED} or (
+            event.event_type == AgentEventType.AGENT_STEP and phase == "completed"
+        ):
+            step.status = NodeStatus.COMPLETED.value
+            step.completed_at = event.timestamp
+            step.heartbeat_at = event.timestamp
+            if step.started_at:
+                step.duration_ms = max(
+                    0, int((event.timestamp - step.started_at).total_seconds() * 1000)
+                )
+        elif event.event_type in {AgentEventType.STEP_FAILED}:
+            step.status = NodeStatus.FAILED.value
+            step.error_code = str(event.payload.get("error_code") or "agent_failed")
+            step.error_summary = str(event.payload.get("error_summary") or event.summary)[:2000]
+            step.completed_at = event.timestamp
+
+    def cancellation_requested(self, run_id: str) -> bool:
+        with self._get_db_session() as db:
+            run = db.query(AgentRun).filter(AgentRun.id == run_id).first()
+            return bool(run and run.cancellation_requested_at)
+
+    def complete_run(self, result: SupervisorRunResult) -> None:
+        """Persist terminal output while retaining already written events."""
+
+        with self._get_db_session() as db:
+            run = db.query(AgentRun).filter(AgentRun.id == result.run_id).first()
+            if not run:
+                raise NotFoundError(f"Agent run {result.run_id} not found")
+            completed_at = self._now()
+            run.status = result.status.value
+            run.final_result = self._to_json(result.final_result)
+            run.error_message = result.final_result.get("error")
+            run.failure_code = (
+                str(result.final_result.get("failure_code") or "orchestration_failed")
+                if result.status == RunStatus.FAILED
+                else None
+            )
+            run.completed_at = completed_at
+            run.heartbeat_at = completed_at
+            run.current_agent_name = None
+            if run.started_at:
+                run.duration_ms = max(
+                    0, int((completed_at - run.started_at).total_seconds() * 1000)
+                )
+            for artifact_key, artifact in result.context.artifacts.items():
+                normalized_artifact = self._to_json(artifact)
+                content_hash = self._artifact_hash(normalized_artifact)
+                latest = (
+                    db.query(AgentArtifactModel)
+                    .filter(
+                        AgentArtifactModel.run_id == result.run_id,
+                        AgentArtifactModel.artifact_key == artifact_key,
+                    )
+                    .order_by(AgentArtifactModel.artifact_version.desc())
+                    .first()
+                )
+                if latest and latest.content_hash == content_hash:
+                    continue
+                db.add(
+                    AgentArtifactModel(
+                        id=str(uuid4()),
+                        run_id=result.run_id,
+                        agent_name=ARTIFACT_AGENT_NAMES.get(artifact_key, "UnknownAgent"),
+                        artifact_key=artifact_key,
+                        artifact=normalized_artifact,
+                        schema_version="2.0",
+                        artifact_version=(latest.artifact_version + 1) if latest else 1,
+                        content_hash=content_hash,
+                        source_snapshot_id=run.context_snapshot_id,
+                        validation_status="valid",
+                    )
+                )
+            for agent_result in result.agent_results:
+                for skill in agent_result.skill_executions:
+                    completed_at = self._now()
+                    started_at = completed_at
+                    if skill.duration_ms:
+                        started_at = completed_at - timedelta(
+                            milliseconds=skill.duration_ms
+                        )
+                    if not db.query(SkillExecution).filter(
+                        SkillExecution.id == skill.id
+                    ).first():
+                        db.add(
+                            SkillExecution(
+                                id=skill.id,
+                                run_id=result.run_id,
+                                agent_name=skill.agent_name.value,
+                                skill_id=skill.skill_id,
+                                skill_version=skill.version,
+                                status=skill.status,
+                                input_summary=self._to_json(skill.input_summary),
+                                output_summary=self._to_json(skill.output_summary),
+                                output_artifact_key=skill.output_artifact_key,
+                                confidence=skill.confidence,
+                                fallback_used=skill.fallback_used,
+                                fallback_reason=skill.fallback_reason,
+                                error_code=skill.error_code,
+                                error_message=skill.error_message,
+                                started_at=started_at,
+                                completed_at=completed_at,
+                                duration_ms=skill.duration_ms,
+                            )
+                        )
+                for audit in agent_result.tool_call_audits:
+                    if db.query(AgentToolCall).filter(
+                        AgentToolCall.id == audit.id
+                    ).first():
+                        continue
+                    db.add(
+                        AgentToolCall(
+                            id=audit.id,
+                            run_id=result.run_id,
+                            skill_execution_id=next(
+                                (
+                                    skill.id
+                                    for skill in agent_result.skill_executions
+                                    if skill.skill_id == audit.skill_id
+                                ),
+                                None,
+                            ),
+                            agent_name=audit.agent_name.value,
+                            skill_id=audit.skill_id,
+                            tool_name=audit.tool_name,
+                            tool_version=audit.tool_version,
+                            status=audit.status,
+                            risk_level=audit.risk_level,
+                            approval_status=audit.approval_status,
+                            arguments=self._to_json(audit.arguments),
+                            result_summary=self._to_json(audit.result_summary),
+                            evidence_refs=self._to_json(audit.evidence_refs),
+                            idempotency_key=audit.idempotency_key,
+                            error_code=audit.error_code,
+                            error_message=audit.error_message,
+                            started_at=audit.started_at,
+                            completed_at=audit.completed_at,
+                            duration_ms=audit.duration_ms,
+                        )
+                    )
+            db.commit()
+
+    def persist_artifact(
+        self,
+        run_id: str,
+        artifact_key: str,
+        artifact: dict,
+        agent_name: str,
+    ) -> None:
+        """Durably checkpoint a validated node output before downstream work."""
+
+        normalized_artifact = self._to_json(artifact)
+        content_hash = self._artifact_hash(normalized_artifact)
+        with self._get_db_session() as db:
+            run = db.query(AgentRun).filter(AgentRun.id == run_id).first()
+            if not run:
+                raise NotFoundError(f"Agent run {run_id} not found")
+            latest = (
+                db.query(AgentArtifactModel)
+                .filter(
+                    AgentArtifactModel.run_id == run_id,
+                    AgentArtifactModel.artifact_key == artifact_key,
+                )
+                .order_by(AgentArtifactModel.artifact_version.desc())
+                .first()
+            )
+            if latest and latest.content_hash == content_hash:
+                return
+            db.add(
+                AgentArtifactModel(
+                    id=str(uuid4()),
+                    run_id=run_id,
+                    agent_name=agent_name,
+                    artifact_key=artifact_key,
+                    artifact=normalized_artifact,
+                    schema_version="2.0",
+                    artifact_version=(latest.artifact_version + 1) if latest else 1,
+                    content_hash=content_hash,
+                    source_snapshot_id=run.context_snapshot_id,
+                    validation_status="valid",
+                )
+            )
+            db.commit()
+
+    @staticmethod
+    def _artifact_hash(artifact: dict) -> str:
+        encoded = json.dumps(
+            artifact, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+        return sha256(encoded).hexdigest()
+
+    def mark_cancelled(self, run_id: str) -> None:
+        with self._get_db_session() as db:
+            run = db.query(AgentRun).filter(AgentRun.id == run_id).first()
+            if not run:
+                return
+            now = self._now()
+            run.status = RunStatus.CANCELLED.value
+            run.completed_at = now
+            run.heartbeat_at = now
+            run.current_agent_name = None
+            if run.started_at:
+                run.duration_ms = max(
+                    0, int((now - run.started_at).total_seconds() * 1000)
+                )
+            db.query(AgentRunStep).filter(
+                AgentRunStep.run_id == run_id,
+                AgentRunStep.status.in_(["queued", "running", "waiting_external"]),
+            ).update(
+                {
+                    AgentRunStep.status: NodeStatus.CANCELLED.value,
+                    AgentRunStep.completed_at: now,
+                },
+                synchronize_session=False,
+            )
+            db.commit()
+
     def save_run_events(self, result: SupervisorRunResult) -> None:
         with self._get_db_session() as db:
             existing = db.query(AgentRun).filter(AgentRun.id == result.run_id).first()
@@ -128,11 +519,14 @@ class DatabaseOrchestrationStore:
                     )
                 )
 
+            next_sequence = int(existing.last_event_sequence or 0) if existing else 0
             for event in result.events:
+                next_sequence += 1
                 db.add(
                     AgentEventModel(
                         id=str(uuid4()),
                         run_id=event.run_id,
+                        sequence=event.sequence or next_sequence,
                         event_type=event.event_type.value,
                         agent_name=event.agent_name.value if event.agent_name else None,
                         status=event.status.value,
@@ -141,6 +535,8 @@ class DatabaseOrchestrationStore:
                         created_at=event.timestamp,
                     )
                 )
+            if existing:
+                existing.last_event_sequence = next_sequence
 
             for artifact_key, artifact in result.context.artifacts.items():
                 db.add(
@@ -591,6 +987,406 @@ class AgentOrchestrationService:
             raise NotFoundError(f"Diagnosis {diagnosis_id} not found")
         return events
 
+    def create_agent_run(
+        self,
+        user_id: str,
+        project_id: str,
+        request: OrchestrationRunRequest,
+    ) -> AgentRunDetail:
+        """Create a queryable run and its validated steps before execution."""
+
+        self._ensure_project_access(user_id, project_id)
+        if request.student_id != user_id or request.project_id != project_id:
+            request = request.model_copy(
+                update={"student_id": user_id, "project_id": project_id}
+            )
+        context = self._load_context(user_id, project_id)
+        run_id = str(request.meta.get("run_id") or f"run_{uuid4().hex}")
+        hydrated = request.model_copy(
+            update={
+                "context": context,
+                "meta": {
+                    **request.meta,
+                    "run_id": run_id,
+                    "agent_runtime_v2": True,
+                },
+            }
+        )
+        plan = self.supervisor.build_execution_plan(hydrated)
+        if not isinstance(self.store, DatabaseOrchestrationStore):
+            raise RuntimeError("persistent agent runs require the database store")
+        persisted_id = self.store.create_run(hydrated, plan)
+        return self.get_agent_run(user_id, persisted_id)
+
+    async def execute_agent_run(self, user_id: str, run_id: str) -> None:
+        """Execute a previously created run with incremental event persistence."""
+
+        if not isinstance(self.store, DatabaseOrchestrationStore):
+            raise RuntimeError("persistent agent runs require the database store")
+        with self._get_db_session() as db:
+            run = (
+                db.query(AgentRun)
+                .filter(AgentRun.id == run_id, AgentRun.user_id == user_id)
+                .with_for_update()
+                .first()
+            )
+            if not run:
+                raise NotFoundError(f"Agent run {run_id} not found")
+            now = self._now()
+            stale_cutoff = now - timedelta(seconds=120)
+            if run.status == RunStatus.RUNNING.value and (
+                run.heartbeat_at and run.heartbeat_at >= stale_cutoff
+            ):
+                return
+            if run.status not in {
+                RunStatus.QUEUED.value,
+                RunStatus.PENDING.value,
+                RunStatus.RUNNING.value,
+            }:
+                return
+            recovering = run.status == RunStatus.RUNNING.value
+            run.status = RunStatus.RUNNING.value
+            run.started_at = run.started_at or now
+            run.heartbeat_at = now
+            validated_artifacts = self._validated_artifacts(db, run.id)
+            completed_agents = [
+                step.agent_name
+                for step in db.query(AgentRunStep)
+                .filter(
+                    AgentRunStep.run_id == run.id,
+                    AgentRunStep.status == NodeStatus.COMPLETED.value,
+                )
+                .all()
+            ]
+            request = OrchestrationRunRequest(
+                project_id=run.project_id,
+                student_id=run.user_id,
+                goal=run.goal,
+                trigger=run.trigger or {},
+                context=run.context_snapshot or {},
+                artifacts=validated_artifacts,
+                meta={
+                    **(run.request_meta or {}),
+                    "run_id": run.id,
+                    "trace_id": run.trace_id,
+                    "context_snapshot_id": run.context_snapshot_id,
+                    "agent_runtime_v2": True,
+                    "recovered": recovering,
+                    "resume_skip_agents": completed_agents if recovering else [],
+                },
+                budget=run.budget or {},
+            )
+            db.commit()
+
+        async def persist_event(event: AgentEvent) -> None:
+            self.store.append_event(event)
+
+        async def persist_artifact(artifact_key: str, result) -> None:
+            self.store.persist_artifact(
+                run_id,
+                artifact_key,
+                result.result,
+                result.agent_name.value,
+            )
+
+        try:
+            context = AgentRunContext(
+                run_id=run_id,
+                project_id=request.project_id,
+                student_id=request.student_id,
+                goal=request.goal,
+                trigger=request.trigger,
+                context=request.context,
+                artifacts=dict(request.artifacts),
+                meta=request.meta,
+            )
+            plan = self.supervisor.build_execution_plan(request)
+            await persist_event(
+                AgentEvent(
+                    event_type=AgentEventType.RUN_STARTED,
+                    run_id=run_id,
+                    agent_name=None,
+                    status=RunStatus.RUNNING,
+                    summary="Agent orchestration started.",
+                    timestamp=self._now(),
+                    payload={
+                        "goal": request.goal,
+                        "orchestration_version": plan.orchestration_version,
+                    },
+                )
+            )
+            await persist_event(
+                AgentEvent(
+                    event_type=AgentEventType.ROUTE_DECIDED,
+                    run_id=run_id,
+                    agent_name=None,
+                    status=RunStatus.COMPLETED,
+                    summary="Validated execution DAG accepted.",
+                    timestamp=self._now(),
+                    payload={
+                        "route_plan": [node.agent_name.value for node in plan.nodes],
+                        "node_ids": [node.node_id for node in plan.nodes],
+                    },
+                )
+            )
+            agents = {agent.agent_name: agent for agent in self.supervisor.agents}
+            outcome = await OrchestrationExecutor().execute(
+                plan,
+                context,
+                agents,
+                event_sink=persist_event,
+                cancellation_check=lambda: self.store.cancellation_requested(run_id),
+                artifact_sink=persist_artifact,
+            )
+            terminal_event = {
+                RunStatus.COMPLETED: AgentEventType.RUN_COMPLETED,
+                RunStatus.PARTIALLY_COMPLETED: AgentEventType.RUN_PARTIALLY_COMPLETED,
+                RunStatus.CANCELLED: AgentEventType.RUN_CANCELLED,
+                RunStatus.FAILED: AgentEventType.RUN_FAILED,
+            }[outcome.status]
+            await persist_event(
+                AgentEvent(
+                    event_type=terminal_event,
+                    run_id=run_id,
+                    agent_name=None,
+                    status=outcome.status,
+                    summary={
+                        RunStatus.COMPLETED: "Agent orchestration completed.",
+                        RunStatus.PARTIALLY_COMPLETED: "Agent orchestration partially completed.",
+                        RunStatus.CANCELLED: "Agent orchestration cancelled at a safe boundary.",
+                        RunStatus.FAILED: "Agent orchestration failed.",
+                    }[outcome.status],
+                    timestamp=self._now(),
+                    payload={
+                        "artifact_keys": list(context.artifacts),
+                        "failed_nodes": list(outcome.errors),
+                    },
+                )
+            )
+            result = SupervisorRunResult(
+                run_id=run_id,
+                status=outcome.status,
+                context=context,
+                agent_results=list(outcome.results.values()),
+                final_result=self.supervisor._build_final_result(context),
+            )
+            self.store.complete_run(result)
+        except asyncio.CancelledError:
+            cancelled_event = AgentEvent(
+                event_type=AgentEventType.RUN_CANCELLED,
+                run_id=run_id,
+                agent_name=None,
+                status=RunStatus.CANCELLED,
+                summary="Agent run cancelled at a safe collaboration boundary.",
+                timestamp=self._now(),
+                payload={"reason_code": "user_requested"},
+            )
+            self.store.append_event(cancelled_event)
+            self.store.mark_cancelled(run_id)
+        except Exception as exc:
+            failed_event = AgentEvent(
+                event_type=AgentEventType.RUN_FAILED,
+                run_id=run_id,
+                agent_name=None,
+                status=RunStatus.FAILED,
+                summary="Agent run failed.",
+                timestamp=self._now(),
+                payload={"failure_code": "executor_error", "error_summary": str(exc)[:500]},
+            )
+            self.store.append_event(failed_event)
+            with self._get_db_session() as db:
+                failed_run = db.query(AgentRun).filter(AgentRun.id == run_id).first()
+                if failed_run:
+                    failed_run.status = RunStatus.FAILED.value
+                    failed_run.failure_code = "executor_error"
+                    failed_run.error_message = str(exc)[:2000]
+                    failed_run.completed_at = self._now()
+                    db.commit()
+
+    def cancel_agent_run(self, user_id: str, run_id: str) -> AgentRunDetail:
+        detail = self.get_agent_run(user_id, run_id)
+        if detail.status in {
+            RunStatus.COMPLETED.value,
+            RunStatus.FAILED.value,
+            RunStatus.CANCELLED.value,
+            RunStatus.PARTIALLY_COMPLETED.value,
+        }:
+            return detail
+        with self._get_db_session() as db:
+            run = (
+                db.query(AgentRun)
+                .filter(AgentRun.id == run_id, AgentRun.user_id == user_id)
+                .first()
+            )
+            if run and run.cancellation_requested_at is None:
+                run.cancellation_requested_at = self._now()
+                db.commit()
+        if isinstance(self.store, DatabaseOrchestrationStore):
+            self.store.append_event(
+                AgentEvent(
+                    event_type=AgentEventType.RUN_CANCEL_REQUESTED,
+                    run_id=run_id,
+                    status=RunStatus.RUNNING,
+                    summary="Cancellation requested; waiting for a safe boundary.",
+                    timestamp=self._now(),
+                    payload={"reason_code": "user_requested"},
+                )
+            )
+        return self.get_agent_run(user_id, run_id)
+
+    def retry_agent_run(
+        self,
+        user_id: str,
+        run_id: str,
+        *,
+        mode: str = "resume_failed",
+    ) -> AgentRunDetail:
+        original = self.get_agent_run(user_id, run_id)
+        if original.status not in {
+            RunStatus.FAILED.value,
+            RunStatus.CANCELLED.value,
+            RunStatus.PARTIALLY_COMPLETED.value,
+        }:
+            raise ValueError("only failed, cancelled, or partial runs can be retried")
+        with self._get_db_session() as db:
+            old = db.query(AgentRun).filter(AgentRun.id == run_id).first()
+            completed_agents = [
+                row.agent_name
+                for row in db.query(AgentRunStep)
+                .filter(
+                    AgentRunStep.run_id == old.id,
+                    AgentRunStep.status == NodeStatus.COMPLETED.value,
+                )
+                .all()
+            ]
+            request = OrchestrationRunRequest(
+                project_id=old.project_id,
+                student_id=old.user_id,
+                goal=old.goal,
+                trigger={"type": "retry", "id": old.id},
+                artifacts={} if mode == "restart" else self._validated_artifacts(db, old.id),
+                meta={
+                    "retry_mode": mode,
+                    "resume_skip_agents": completed_agents
+                    if mode == "resume_failed"
+                    else [],
+                },
+                budget=old.budget or {},
+            )
+        created = self.create_agent_run(user_id, original.project_id, request)
+        with self._get_db_session() as db:
+            retried = db.query(AgentRun).filter(AgentRun.id == created.run_id).first()
+            retried.retry_of_run_id = run_id
+            db.commit()
+        return self.get_agent_run(user_id, created.run_id)
+
+    def list_agent_run_steps(
+        self, user_id: str, run_id: str
+    ) -> list[AgentRunStepDetail]:
+        self.get_agent_run(user_id, run_id)
+        with self._get_db_session() as db:
+            rows = (
+                db.query(AgentRunStep)
+                .filter(AgentRunStep.run_id == run_id)
+                .order_by(AgentRunStep.position)
+                .all()
+            )
+            return [
+                AgentRunStepDetail(
+                    step_id=row.id,
+                    run_id=row.run_id,
+                    node_id=row.node_id,
+                    agent_name=row.agent_name,
+                    status=row.status,
+                    depends_on=row.depends_on or [],
+                    attempt_count=row.attempt_count,
+                    max_attempts=row.max_attempts,
+                    optional=row.optional,
+                    input_artifact_versions=row.input_artifact_versions or {},
+                    output_artifact_versions=row.output_artifact_versions or {},
+                    error_code=row.error_code,
+                    error_summary=row.error_summary,
+                    started_at=row.started_at,
+                    completed_at=row.completed_at,
+                    heartbeat_at=row.heartbeat_at,
+                    duration_ms=row.duration_ms,
+                )
+                for row in rows
+            ]
+
+    def add_agent_run_feedback(
+        self,
+        user_id: str,
+        run_id: str,
+        feedback: AgentRunFeedbackRequest,
+    ) -> dict:
+        run_detail = self.get_agent_run(user_id, run_id)
+        with self._get_db_session() as db:
+            row = AgentRunFeedback(
+                id=str(uuid4()),
+                run_id=run_id,
+                user_id=user_id,
+                rating=feedback.rating,
+                action=feedback.action,
+                comment=feedback.comment,
+            )
+            db.add(row)
+            db.add(
+                LearningEvidenceEvent(
+                    id=str(uuid4()),
+                    project_id=run_detail.project_id,
+                    user_id=user_id,
+                    knowledge_point_id=None,
+                    event_type="agent_run_feedback",
+                    source_type="agent_run",
+                    source_id=run_id,
+                    idempotency_key=f"agent_run_feedback:{row.id}",
+                    occurred_at=datetime.now(timezone.utc),
+                    payload={
+                        "rating": feedback.rating,
+                        "action": feedback.action,
+                    },
+                )
+            )
+            db.commit()
+            return {"id": row.id, "run_id": run_id, "accepted": True}
+
+    def list_recoverable_runs(self, stale_after_seconds: int = 120) -> list[dict]:
+        """Read-only startup audit; a worker may explicitly claim these runs."""
+
+        cutoff = self._now() - timedelta(seconds=max(30, stale_after_seconds))
+        with self._get_db_session() as db:
+            rows = (
+                db.query(AgentRun)
+                .filter(
+                    AgentRun.status.in_([RunStatus.QUEUED.value, RunStatus.RUNNING.value]),
+                    (AgentRun.heartbeat_at.is_(None)) | (AgentRun.heartbeat_at < cutoff),
+                )
+                .all()
+            )
+            return [
+                {
+                    "run_id": run.id,
+                    "user_id": run.user_id,
+                    "status": run.status,
+                    "heartbeat_at": run.heartbeat_at,
+                }
+                for run in rows
+            ]
+
+    @staticmethod
+    def _validated_artifacts(db, run_id: str) -> dict:
+        rows = (
+            db.query(AgentArtifactModel)
+            .filter(
+                AgentArtifactModel.run_id == run_id,
+                AgentArtifactModel.validation_status == "valid",
+            )
+            .order_by(AgentArtifactModel.artifact_version)
+            .all()
+        )
+        return {row.artifact_key: row.artifact for row in rows}
+
     def get_agent_run(self, user_id: str, run_id: str) -> AgentRunDetail:
         with self._get_db_session() as db:
             run = db.query(AgentRun).filter(
@@ -604,22 +1400,38 @@ class AgentOrchestrationService:
                 goal=run.goal,
                 status=run.status,
                 final_result=run.final_result or {},
+                current_agent_name=run.current_agent_name,
+                heartbeat_at=run.heartbeat_at,
+                duration_ms=run.duration_ms,
+                model_name=run.model_name,
+                input_tokens=run.input_tokens or 0,
+                output_tokens=run.output_tokens or 0,
+                estimated_cost_micros=run.estimated_cost_micros or 0,
+                trace_id=run.trace_id,
+                retry_of_run_id=run.retry_of_run_id,
+                orchestration_version=run.orchestration_version,
+                versions=run.versions or {},
+                failure_code=run.failure_code,
+                last_event_sequence=run.last_event_sequence or 0,
                 started_at=run.started_at,
                 completed_at=run.completed_at,
                 created_at=run.created_at,
             )
 
-    def get_agent_run_events(self, user_id: str, run_id: str) -> list[AgentEvent]:
+    def get_agent_run_events(
+        self, user_id: str, run_id: str, after_sequence: int = 0
+    ) -> list[AgentEvent]:
         self.get_agent_run(user_id, run_id)
         with self._get_db_session() as db:
             rows = db.query(AgentEventModel).filter(
-                AgentEventModel.run_id == run_id
-            ).order_by(AgentEventModel.created_at).all()
+                AgentEventModel.run_id == run_id,
+                AgentEventModel.sequence > max(0, after_sequence),
+            ).order_by(AgentEventModel.sequence).all()
             return [AgentEvent(
                 event_type=row.event_type, run_id=row.run_id,
                 agent_name=row.agent_name, status=row.status,
                 summary=row.summary, timestamp=row.created_at,
-                payload=row.payload or {},
+                payload=row.payload or {}, sequence=row.sequence,
             ) for row in rows]
 
     def get_skill_executions(self, user_id: str, run_id: str) -> list[dict]:
@@ -863,6 +1675,7 @@ class AgentOrchestrationService:
             )
             knowledge_points = []
             knowledge_states = []
+            collective_insights = []
             if project.course_id:
                 points = (
                     db.query(KnowledgePoint)
@@ -918,6 +1731,32 @@ class AgentOrchestrationService:
                             "last_practiced_at": state.last_practiced_at.isoformat()
                             if state and state.last_practiced_at
                             else None,
+                        }
+                    )
+                current_insights = (
+                    db.query(CollectiveInsight)
+                    .filter(
+                        CollectiveInsight.course_id == project.course_id,
+                        CollectiveInsight.sample_size >= 10,
+                        CollectiveInsight.expires_at > datetime.now(timezone.utc),
+                    )
+                    .order_by(CollectiveInsight.created_at.desc())
+                    .all()
+                )
+                seen_insights: set[tuple[str, str]] = set()
+                for insight in current_insights:
+                    key = (insight.knowledge_point_id, insight.pattern_type)
+                    if key in seen_insights:
+                        continue
+                    seen_insights.add(key)
+                    collective_insights.append(
+                        {
+                            "id": insight.id,
+                            "knowledge_point_id": insight.knowledge_point_id,
+                            "pattern_type": insight.pattern_type,
+                            "sample_size": insight.sample_size,
+                            "aggregate": insight.aggregate or {},
+                            "version": insight.version,
                         }
                     )
 
@@ -989,6 +1828,7 @@ class AgentOrchestrationService:
                     }
                     for resource in generated_resources
                 ],
+                collective_insights=collective_insights,
                 recent_feedback_summary=self._build_recent_feedback_summary(
                     practice_records=practice_records,
                     recommendation_feedback=recommendation_feedback,

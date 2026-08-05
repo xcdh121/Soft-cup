@@ -5,6 +5,7 @@ from dependencies import get_learner_profile_service
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.learner_profiles import (
     LearnerProfileDto,
+    LearnerProfileFieldConfirmation,
     LearnerProfileRevisionDto,
 )
 from edu_core.services import LearnerProfileService
@@ -17,6 +18,31 @@ router = APIRouter(
     prefix="/api/v1/projects/{project_id}/learner-profile",
     tags=["learner-profiles"],
 )
+
+
+@router.post("/confirm", response_model=LearnerProfileDto)
+async def confirm_learner_profile_field(
+    project_id: str,
+    payload: LearnerProfileFieldConfirmation,
+    current_user=Depends(get_current_user),
+    service: LearnerProfileService = Depends(get_learner_profile_service),
+):
+    return service.confirm_field(
+        project_id, current_user.id, payload.field_key, payload.value
+    )
+
+
+@router.post("/revisions/{revision_id}/revert", response_model=LearnerProfileDto)
+async def revert_learner_profile_revision(
+    project_id: str,
+    revision_id: str,
+    current_user=Depends(get_current_user),
+    service: LearnerProfileService = Depends(get_learner_profile_service),
+):
+    try:
+        return service.revert_revision(project_id, current_user.id, revision_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get(
