@@ -3,19 +3,23 @@ import { Link } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import {
   BookOpenIcon,
+  ChevronDownIcon,
   ExternalLinkIcon,
   FileTextIcon,
   LibraryBigIcon,
+  ListChecksIcon,
   Loader2Icon,
 } from 'lucide-react'
 import type {
   Course,
   CourseChapter,
+  CourseQuestionLink,
   KnowledgePoint,
 } from '@/data-acess/course-library'
 import {
   courseChaptersAtom,
   courseKnowledgePointsAtom,
+  courseQuestionsAtom,
   courseResourcesAtom,
   coursesAtom,
   knowledgePointResourcesAtom,
@@ -181,6 +185,95 @@ const ResourceList = ({ knowledgePointId }: { knowledgePointId: string }) => {
     .render()
 }
 
+const RelatedQuestionLink = ({ item }: { item: CourseQuestionLink }) => {
+  const content = (
+    <>
+      去做题
+      <ExternalLinkIcon className="ml-2 size-3" />
+    </>
+  )
+
+  if (item.type === 'quiz') {
+    return (
+      <Button variant="outline" size="sm" asChild>
+        <Link
+          to="/dashboard/p/$projectId/q/$quizId"
+          params={{ projectId: item.projectId, quizId: item.resourceId }}
+        >
+          {content}
+        </Link>
+      </Button>
+    )
+  }
+
+  return (
+    <Button variant="outline" size="sm" asChild>
+      <Link
+        to="/dashboard/p/$projectId/programming/$resourceId"
+        params={{ projectId: item.projectId, resourceId: item.resourceId }}
+      >
+        {content}
+      </Link>
+    </Button>
+  )
+}
+
+const RelatedQuestionList = ({
+  courseId,
+  knowledgePointId,
+}: {
+  courseId: string
+  knowledgePointId: string
+}) => {
+  const questionsResult = useAtomValue(courseQuestionsAtom(courseId))
+
+  return Result.builder(questionsResult)
+    .onSuccess((courseQuestions) => {
+      const questions = courseQuestions.filter((question) =>
+        question.knowledgePointIds.includes(knowledgePointId),
+      )
+
+      return questions.length === 0 ? (
+        <div className="rounded-2xl bg-muted/40 p-4 text-sm text-muted-foreground">
+          当前知识点还没有关联题目。
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {questions.map((item) => (
+            <div
+              key={`${item.projectId}-${item.type}-${item.resourceId}-${item.id}`}
+              className="flex flex-col gap-3 rounded-2xl border bg-background p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary">
+                    {item.type === 'quiz' ? '选择题' : '编程题'}
+                  </Badge>
+                  <span className="font-medium">{item.title}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  来自项目：{item.projectName} · 题目组：{item.resourceName}
+                </p>
+              </div>
+              <div className="shrink-0">
+                <RelatedQuestionLink item={item} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    })
+    .onInitialOrWaiting(() => <LoadingCard text="正在加载相关题目..." />)
+    .onFailure(() => (
+      <Card>
+        <CardContent className="p-6 text-sm text-destructive">
+          相关题目加载失败，请稍后重试。
+        </CardContent>
+      </Card>
+    ))
+    .render()
+}
+
 const ChapterPdfList = ({
   courseId,
   chapterId,
@@ -337,7 +430,7 @@ const CourseBrowser = ({
               选择课程
             </div>
             <Select value={course.id} onValueChange={onSelectCourse}>
-              <SelectTrigger className="w-full bg-background">
+              <SelectTrigger className="mx-auto w-full max-w-60 bg-background">
                 <SelectValue placeholder="请选择课程" />
               </SelectTrigger>
               <SelectContent align="start">
@@ -350,47 +443,39 @@ const CourseBrowser = ({
               </SelectContent>
             </Select>
           </div>
-          <Separator />
           <CardTitle className="flex items-center gap-2">
             <BookOpenIcon className="size-5" />
             章节与知识点
           </CardTitle>
-          <CardDescription>
-            按章节浏览知识点，点击后查看正文和资源链接。
-          </CardDescription>
         </CardHeader>
-        <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+        <CardContent className="min-h-0 flex-1 space-y-5 overflow-y-auto">
           {chapters.map((chapter: CourseChapter) => {
             const chapterPoints = pointsByChapter[chapter.id] ?? []
 
             return (
-              <div key={chapter.id} className="rounded-2xl border p-4">
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-medium">
+              <section key={chapter.id}>
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="flex items-center gap-1.5 font-medium">
+                      <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
                       第 {chapter.position} 章：{chapter.title}
                     </h3>
-                    {chapter.description ? (
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {chapter.description}
-                      </p>
-                    ) : null}
                   </div>
-                  <Badge variant="outline">
+                  <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
                     {chapterPoints.length} 个知识点
-                  </Badge>
+                  </span>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-0.5 pl-5">
                   {chapterPoints.map((point) => (
                     <button
                       key={point.id}
                       type="button"
                       onClick={() => onSelectPoint(point.id)}
-                      className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                      className={`w-full px-2 py-2 text-left text-sm transition-colors ${
                         selectedPoint?.id === point.id
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted/40 hover:bg-muted'
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -403,7 +488,7 @@ const CourseBrowser = ({
                     </button>
                   ))}
                 </div>
-              </div>
+              </section>
             )
           })}
         </CardContent>
@@ -470,8 +555,19 @@ const CourseBrowser = ({
               </section>
 
               <section className="space-y-3">
-                <div className="text-sm font-medium">相关资料/题目</div>
+                <div className="text-sm font-medium">相关资料</div>
                 <ResourceList knowledgePointId={selectedPoint.id} />
+              </section>
+
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <ListChecksIcon className="size-4" />
+                  相关题目
+                </div>
+                <RelatedQuestionList
+                  courseId={course.id}
+                  knowledgePointId={selectedPoint.id}
+                />
               </section>
             </section>
           ) : null}
@@ -555,7 +651,7 @@ export const CourseLibraryPage = ({
                 </CardContent>
               </Card>
             ) : (
-              <div className="sticky top-0 grid h-[calc(100svh-10rem)] min-h-[560px] grid-cols-1 grid-rows-[minmax(220px,1fr)_minmax(320px,2fr)] gap-4 overflow-hidden lg:grid-cols-[minmax(280px,1fr)_minmax(0,2fr)] lg:grid-rows-1">
+              <div className="sticky top-0 grid h-[calc(100svh-10rem)] min-h-[560px] grid-cols-1 grid-rows-[minmax(220px,1fr)_minmax(320px,2fr)] gap-4 overflow-hidden lg:grid-cols-[minmax(240px,4fr)_minmax(0,9fr)] lg:grid-rows-1">
                 {selectedCourse ? (
                   <CourseBrowser
                     courses={courses}

@@ -2,6 +2,7 @@ import { Atom } from '@effect-atom/atom-react'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Effect, Layer } from 'effect'
 import type { ProjectDto } from '@/integrations/api/client'
+import type { ResourcePackage } from '@/data-acess/resource-package'
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
 
@@ -69,6 +70,17 @@ export type CourseResource = {
   knowledge_point_ids: Array<string>
   created_at: string
   updated_at: string
+}
+
+export type CourseQuestionLink = {
+  id: string
+  projectId: string
+  projectName: string
+  resourceId: string
+  resourceName: string
+  type: 'quiz' | 'programming_questions'
+  title: string
+  knowledgePointIds: Array<string>
 }
 
 export type ProjectCourseOutline = {
@@ -157,6 +169,99 @@ export const courseResourcesAtom = Atom.family((courseId: string) =>
   runtime
     .atom(
       getJson<Array<CourseResource>>(`/api/v1/courses/${courseId}/resources`),
+    )
+    .pipe(Atom.keepAlive),
+)
+
+export const courseQuestionsAtom = Atom.family((courseId: string) =>
+  runtime
+    .atom(
+      Effect.gen(function* () {
+        const { apiClient } = yield* ApiClientService
+        const projects =
+          (yield* apiClient.listProjectsApiV1ProjectsGet()).filter(
+            (project) => project.course_id === courseId,
+          )
+
+        const questionsByProject = yield* Effect.all(
+          projects.map((project) =>
+            Effect.gen(function* () {
+              const [quizzes, resourcePackages] = yield* Effect.all([
+                apiClient.listQuizzesApiV1ProjectsProjectIdQuizzesGet(
+                  project.id,
+                ),
+                getJson<Array<ResourcePackage>>(
+                  `/api/v1/projects/${project.id}/resource-packages`,
+                ),
+              ])
+              const quizQuestions = yield* Effect.all(
+                quizzes.map((quiz) =>
+                  Effect.map(
+                    apiClient.listQuizQuestionsApiV1ProjectsProjectIdQuizzesQuizIdQuestionsGet(
+                      project.id,
+                      quiz.id,
+                    ),
+                    (questions) =>
+                      questions.map(
+                        (question): CourseQuestionLink => ({
+                          id: question.id,
+                          projectId: project.id,
+                          projectName: project.name,
+                          resourceId: quiz.id,
+                          resourceName: quiz.name,
+                          type: 'quiz',
+                          title: question.question_text,
+                          knowledgePointIds: question.knowledge_point_id
+                            ? [question.knowledge_point_id]
+                            : [],
+                        }),
+                      ),
+                  ),
+                ),
+                { concurrency: 'unbounded' },
+              )
+              const programmingQuestions = resourcePackages.flatMap(
+                (resourcePackage) =>
+                  resourcePackage.resources.flatMap((resource) => {
+                    if (
+                      resource.resource_type !== 'programming_questions' ||
+                      resource.status !== 'completed' ||
+                      !Array.isArray(resource.content_json?.questions)
+                    ) {
+                      return []
+                    }
+
+                    return resource.content_json.questions.flatMap(
+                      (question, index): Array<CourseQuestionLink> => {
+                        if (!question || typeof question !== 'object') return []
+                        const candidate = question as Record<string, unknown>
+                        if (typeof candidate.title !== 'string') return []
+
+                        return [
+                          {
+                            id: String(candidate.id ?? `q${index + 1}`),
+                            projectId: project.id,
+                            projectName: project.name,
+                            resourceId: resource.id,
+                            resourceName: resource.title,
+                            type: 'programming_questions',
+                            title: candidate.title,
+                            knowledgePointIds: resource.knowledge_point_ids,
+                          },
+                        ]
+                      },
+                    )
+                  }),
+              )
+
+              return [...quizQuestions.flat(), ...programmingQuestions]
+            }),
+          ),
+          { concurrency: 'unbounded' },
+        )
+
+        return questionsByProject.flat()
+      }),
     )
     .pipe(Atom.keepAlive),
 )

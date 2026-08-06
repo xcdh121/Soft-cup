@@ -12,12 +12,21 @@ import {
   Star,
   Trophy,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { EvaluationResource } from '@/data-acess/learning-evaluation'
+import type { CourseChapter, KnowledgePoint } from '@/data-acess/course-library'
+import { projectCourseOutlineAtom } from '@/data-acess/course-library'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -851,18 +860,52 @@ const RankingCard = ({
 const ExerciseResources = ({
   projectId,
   resources: sectionResources,
+  chapters,
+  knowledgePoints,
 }: {
   projectId: string
   resources: Array<EvaluationResource>
+  chapters: Array<CourseChapter>
+  knowledgePoints: Array<KnowledgePoint>
 }) => {
   const [view, setView] = useState<View>('generated')
-  const incomplete = sectionResources.filter(
+  const [chapterId, setChapterId] = useState('all')
+  const chapterByPointId = useMemo(
+    () =>
+      new Map(
+        knowledgePoints.map((point) => [
+          point.id,
+          point.chapter_id ?? 'uncategorized',
+        ]),
+      ),
+    [knowledgePoints],
+  )
+  const resourceChapterIds = (resource: EvaluationResource) =>
+    new Set(
+      resource.questions.flatMap((question) =>
+        question.knowledgePointIds.flatMap((pointId) => {
+          const matchedChapterId = chapterByPointId.get(pointId)
+          return matchedChapterId ? [matchedChapterId] : []
+        }),
+      ),
+    )
+  const hasUncategorizedResources = sectionResources.some(
+    (resource) => resourceChapterIds(resource).size === 0,
+  )
+  const chapterFilteredResources = sectionResources.filter((resource) => {
+    if (chapterId === 'all') return true
+    const resourceChapters = resourceChapterIds(resource)
+    return chapterId === 'uncategorized'
+      ? resourceChapters.size === 0 || resourceChapters.has('uncategorized')
+      : resourceChapters.has(chapterId)
+  })
+  const incomplete = chapterFilteredResources.filter(
     (resource) => !getResourceStats(projectId, resource).completed,
   )
-  const completed = sectionResources.filter(
+  const completed = chapterFilteredResources.filter(
     (resource) => getResourceStats(projectId, resource).completed,
   )
-  const wrong = sectionResources.filter((resource) => {
+  const wrong = chapterFilteredResources.filter((resource) => {
     const stats = getResourceStats(projectId, resource)
     return (
       resource.wrongCount > 0 ||
@@ -872,7 +915,7 @@ const ExerciseResources = ({
     )
   })
   const counts: Record<View, number> = {
-    generated: sectionResources.length,
+    generated: chapterFilteredResources.length,
     incomplete: incomplete.length,
     completed: completed.length,
     wrong: wrong.length,
@@ -884,10 +927,35 @@ const ExerciseResources = ({
         ? completed
         : view === 'wrong'
           ? wrong
-          : sectionResources
+          : chapterFilteredResources
 
   return (
     <div className="space-y-6">
+      <section className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="font-semibold">按章节筛选</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            切换章节后，仅显示归属于该章节知识点的题目组。
+          </p>
+        </div>
+        <Select value={chapterId} onValueChange={setChapterId}>
+          <SelectTrigger className="w-full bg-background sm:w-72">
+            <SelectValue placeholder="选择章节" />
+          </SelectTrigger>
+          <SelectContent align="end">
+            <SelectItem value="all">全部章节</SelectItem>
+            {chapters.map((chapter) => (
+              <SelectItem key={chapter.id} value={chapter.id}>
+                第 {chapter.position} 章 · {chapter.title}
+              </SelectItem>
+            ))}
+            {hasUncategorizedResources ? (
+              <SelectItem value="uncategorized">未归属章节</SelectItem>
+            ) : null}
+          </SelectContent>
+        </Select>
+      </section>
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {(
           [
@@ -993,6 +1061,10 @@ export const LearningEvaluationPage = ({
   section?: LearningEvaluationSection
 }) => {
   const result = useAtomValue(learningEvaluationAtom(projectId))
+  const outlineResult = useAtomValue(projectCourseOutlineAtom(projectId))
+  const outline = Result.isSuccess(outlineResult)
+    ? outlineResult.value
+    : { courseId: null, chapters: [], knowledgePoints: [] }
   const meta = sectionMeta[section]
   const content = Result.builder(result)
     .onInitialOrWaiting(() => (
@@ -1015,6 +1087,8 @@ export const LearningEvaluationPage = ({
       ) : (
         <ExerciseResources
           projectId={projectId}
+          chapters={outline.chapters}
+          knowledgePoints={outline.knowledgePoints}
           resources={evaluation.resources.filter(
             (resource) =>
               resource.type === 'quiz' ||

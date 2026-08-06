@@ -1317,6 +1317,10 @@ export class UserDto extends S.Class<UserDto>('UserDto')({
    */
   email: S.optionalWith(S.String, { nullable: true }),
   /**
+   * URL of the user's avatar
+   */
+  avatar_url: S.optionalWith(S.String, { nullable: true }),
+  /**
    * Date and time the user was created
    */
   created_at: S.String,

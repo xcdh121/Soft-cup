@@ -1,4 +1,4 @@
-import { Result, useAtomValue } from '@effect-atom/atom-react'
+import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import {
   ActivityIcon,
   BrainCircuitIcon,
@@ -7,20 +7,19 @@ import {
   GaugeIcon,
   Loader2Icon,
   MessageSquareIcon,
-  MoonIcon,
-  PaletteIcon,
   ShieldAlertIcon,
   SparklesIcon,
-  SunIcon,
   Trash2Icon,
+  UploadIcon,
   UserRoundIcon,
   WrenchIcon,
   XCircleIcon,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { useConfirmationDialog } from '@/components/confirmation-dialog'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import {
   Breadcrumb,
@@ -37,13 +36,8 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import {
@@ -54,9 +48,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { currentUserAtom } from '@/data-acess/auth'
+import {
+  currentUserAtom,
+  updateCurrentUserNameAtom,
+  uploadCurrentUserAvatarAtom,
+} from '@/data-acess/auth'
 import { usageAtom } from '@/data-acess/usage'
-import { useTheme } from '@/providers/theme-provider'
+import { resolveAvatarUrl } from '@/lib/auth-client'
 
 const toolDisplayNames: Record<string, string> = {
   search_project_documents: '检索项目资料',
@@ -110,42 +108,189 @@ const formatTime = (value: string | null) => {
   }).format(new Date(value))
 }
 
+type EditableUser = {
+  username: string
+  name: string
+  initials: string
+  avatar_url?: string | null
+}
+
+const EditableUserCard = ({ user }: { user: EditableUser }) => {
+  const [name, setName] = useState(user.name)
+  const [isSavingName, setIsSavingName] = useState(false)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const updateName = useAtomSet(updateCurrentUserNameAtom, { mode: 'promise' })
+  const uploadAvatar = useAtomSet(uploadCurrentUserAvatarAtom, {
+    mode: 'promise',
+  })
+
+  useEffect(() => setName(user.name), [user.name])
+
+  const handleSaveName = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      toast.error('昵称不能为空')
+      return
+    }
+    if (trimmedName === user.name) return
+
+    setIsSavingName(true)
+    try {
+      await updateName(trimmedName)
+      toast.success('昵称已更新')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '昵称更新失败')
+    } finally {
+      setIsSavingName(false)
+    }
+  }
+
+  const handleAvatarChange = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('请选择 JPG、PNG 或 WebP 图片')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('头像文件不能超过 5MB')
+      return
+    }
+
+    setIsUploadingAvatar(true)
+    try {
+      await uploadAvatar(file)
+      toast.success('头像已更新')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '头像上传失败')
+    } finally {
+      setIsUploadingAvatar(false)
+    }
+  }
+
+  return (
+    <Card className="gap-0 overflow-hidden py-0 shadow-none">
+      <CardHeader className="gap-1 border-b px-5 py-5 sm:px-6">
+        <div className="flex items-center gap-2">
+          <UserRoundIcon className="size-4 text-muted-foreground" />
+          <CardTitle className="text-base">账户信息</CardTitle>
+        </div>
+        <CardDescription>设置头像和对外显示的昵称</CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="grid md:grid-cols-[12rem_minmax(0,1fr)]">
+          <div className="flex flex-col items-center border-b px-5 py-6 md:border-r md:border-b-0 sm:px-6 sm:py-8">
+            <Avatar className="size-24 rounded-2xl border sm:size-28">
+              <AvatarImage
+                src={resolveAvatarUrl(user.avatar_url)}
+                alt={`${user.name}的头像`}
+                className="object-cover"
+              />
+              <AvatarFallback className="rounded-2xl bg-primary/10 text-xl font-semibold text-primary">
+                {user.initials}
+              </AvatarFallback>
+            </Avatar>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              onChange={handleAvatarChange}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              disabled={isUploadingAvatar}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {isUploadingAvatar ? (
+                <Loader2Icon className="animate-spin" />
+              ) : (
+                <UploadIcon />
+              )}
+              {isUploadingAvatar ? '上传中...' : '上传头像'}
+            </Button>
+            <p className="mt-2 text-center text-xs leading-5 text-muted-foreground">
+              JPG、PNG 或 WebP
+              <br />
+              最大 5MB
+            </p>
+          </div>
+
+          <div className="min-w-0 px-5 py-6 sm:px-6 sm:py-8">
+            <div className="flex flex-col gap-3 border-b pb-6 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-muted-foreground">
+                  当前账户
+                </p>
+                <p className="mt-1 truncate text-base font-semibold">
+                  {user.name}
+                </p>
+                <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                  @{user.username}
+                </p>
+              </div>
+              <Badge
+                variant="outline"
+                className="w-fit bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+              >
+                正常
+              </Badge>
+            </div>
+
+            <form className="mt-6 max-w-lg space-y-2" onSubmit={handleSaveName}>
+              <Label htmlFor="profile-name">昵称</Label>
+              <p className="text-xs leading-5 text-muted-foreground">
+                此名称将展示在个人资料及平台互动中。
+              </p>
+              <div className="flex max-w-md flex-col gap-2 pt-1 sm:flex-row">
+                <Input
+                  id="profile-name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  maxLength={100}
+                  autoComplete="name"
+                  disabled={isSavingName}
+                  aria-describedby="profile-name-help"
+                  className="sm:max-w-xs"
+                />
+                <Button
+                  type="submit"
+                  className="w-fit"
+                  disabled={
+                    isSavingName || !name.trim() || name.trim() === user.name
+                  }
+                >
+                  {isSavingName && <Loader2Icon className="animate-spin" />}
+                  保存
+                </Button>
+              </div>
+              <p
+                id="profile-name-help"
+                className="text-xs text-muted-foreground"
+              >
+                账户名 @{user.username} 不可修改。
+              </p>
+            </form>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 const UserSection = () => {
   const currentUserResult = useAtomValue(currentUserAtom)
 
   return Result.builder(currentUserResult)
-    .onSuccess((user) => (
-      <Card className="gap-5 py-5 shadow-none">
-        <CardHeader className="gap-1 px-5">
-          <div className="flex items-center gap-2">
-            <UserRoundIcon className="size-4 text-muted-foreground" />
-            <CardTitle className="text-sm">账户信息</CardTitle>
-          </div>
-          <CardDescription>当前登录账户</CardDescription>
-        </CardHeader>
-        <CardContent className="px-5">
-          <div className="flex items-center gap-3">
-            <Avatar className="size-11 rounded-lg">
-              <AvatarFallback className="rounded-lg bg-primary/10 font-semibold text-primary">
-                {user.initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{user.name}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                @{user.username}
-              </p>
-            </div>
-            <Badge
-              variant="outline"
-              className="ml-auto bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
-            >
-              正常
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
-    ))
+    .onSuccess((user) => <EditableUserCard user={user} />)
     .onInitialOrWaiting(() => (
       <Card className="gap-5 py-5 shadow-none">
         <CardHeader className="gap-1 px-5">
@@ -172,7 +317,6 @@ const UserSection = () => {
 }
 
 export function SettingsPage() {
-  const { theme, setTheme } = useTheme()
   const confirmationDialog = useConfirmationDialog()
   const usageResult = useAtomValue(usageAtom)
   const [isDeletingAllChats, setIsDeletingAllChats] = useState(false)
@@ -231,55 +375,12 @@ export function SettingsPage() {
           <div className="flex flex-col gap-1">
             <h1 className="text-2xl font-semibold tracking-tight">系统设置</h1>
             <p className="text-sm text-muted-foreground">
-              管理账户偏好，并查看今日平台额度与全部工具调用情况。
+              管理账户信息，并查看今日平台额度与全部工具调用情况。
             </p>
           </div>
 
-          <section className="grid gap-4 md:grid-cols-2" aria-label="基础设置">
+          <section aria-label="账户设置">
             <UserSection />
-
-            <Card className="gap-5 py-5 shadow-none">
-              <CardHeader className="gap-1 px-5">
-                <div className="flex items-center gap-2">
-                  <PaletteIcon className="size-4 text-muted-foreground" />
-                  <CardTitle className="text-sm">外观偏好</CardTitle>
-                </div>
-                <CardDescription>选择适合当前环境的显示主题</CardDescription>
-              </CardHeader>
-              <CardContent className="px-5">
-                <Select
-                  value={theme}
-                  onValueChange={(value) => setTheme(value as typeof theme)}
-                >
-                  <SelectTrigger
-                    className="w-full sm:w-56"
-                    aria-label="显示主题"
-                  >
-                    <SelectValue placeholder="选择主题" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="light">
-                      <span className="flex items-center gap-2">
-                        <SunIcon className="size-4" />
-                        浅色
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="dark">
-                      <span className="flex items-center gap-2">
-                        <MoonIcon className="size-4" />
-                        深色
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="system">
-                      <span className="flex items-center gap-2">
-                        <ActivityIcon className="size-4" />
-                        跟随系统
-                      </span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </CardContent>
-            </Card>
           </section>
 
           <Card className="gap-0 py-0 shadow-none">

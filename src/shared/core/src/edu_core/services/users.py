@@ -102,6 +102,28 @@ class UserService:
                 db.rollback()
                 raise
 
+    def update_profile(
+        self,
+        user_id: str,
+        *,
+        name: str | None = None,
+        avatar_url: str | None = None,
+    ) -> UserDto:
+        """Update the editable profile fields for a user."""
+        with self._get_db_session() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                raise NotFoundError(f"User {user_id} not found")
+
+            if name is not None:
+                user.name = name
+            if avatar_url is not None:
+                user.avatar_url = avatar_url
+
+            db.commit()
+            db.refresh(user)
+            return self._model_to_dto(user)
+
     def delete_user(self, user_id: str) -> None:
         """Delete a user.
 
@@ -188,6 +210,7 @@ class UserService:
             username=user.username,
             name=user.name,
             email=user.email,
+            avatar_url=user.avatar_url,
             is_active=user.is_active,
             is_admin=user.is_admin,
             created_at=user.created_at,

@@ -15,7 +15,6 @@ import {
   RefreshCw,
   Shield,
   Timer,
-  TrendingUp,
   UserCheck,
   Users,
 } from 'lucide-react'
@@ -156,14 +155,16 @@ export function AdminPage() {
   return (
     <div className="min-h-svh bg-[#f5f7fb] dark:bg-background">
       <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-3">
+        <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-6">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-primary p-2 text-primary-foreground">
+            <div className="rounded-md bg-primary p-2 text-primary-foreground shadow-sm">
               <Shield className="size-5" />
             </div>
             <div>
-              <p className="font-semibold">万径管理后台</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm font-semibold tracking-wide">
+                万径管理后台
+              </p>
+              <p className="mt-0.5 text-[11px] tracking-wide text-muted-foreground">
                 运营、计费与运行观测
               </p>
             </div>
@@ -174,36 +175,58 @@ export function AdminPage() {
           </Button>
         </div>
       </header>
-      <div className="mx-auto grid max-w-[1500px] gap-6 px-5 py-6 lg:grid-cols-[220px_1fr]">
-        <aside>
-          <nav className="sticky top-24 space-y-1 rounded-xl border bg-card p-2 shadow-sm">
-            {tabs.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setTab(item.id)
-                  setSearch('')
-                  setNotice(null)
-                }}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${tab === item.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-              >
-                <item.icon className="size-4" />
-                {item.label}
-              </button>
-            ))}
+      <div className="mx-auto grid min-h-[calc(100svh-4rem)] max-w-[1600px] lg:grid-cols-[236px_minmax(0,1fr)]">
+        <aside className="border-b bg-background/60 px-4 py-4 lg:border-r lg:border-b-0 lg:py-6">
+          <nav className="lg:sticky lg:top-24">
+            <p className="mb-3 hidden px-3 text-[11px] font-semibold tracking-[0.16em] text-muted-foreground lg:block">
+              运营管理
+            </p>
+            <div className="flex gap-1 overflow-x-auto lg:block lg:space-y-1">
+              {tabs.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-current={tab === item.id ? 'page' : undefined}
+                  onClick={() => {
+                    setTab(item.id)
+                    setSearch('')
+                    setNotice(null)
+                  }}
+                  className={`flex w-auto shrink-0 items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm font-medium transition-colors lg:w-full ${tab === item.id ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                >
+                  <item.icon className="size-4" />
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </nav>
         </aside>
-        <main className="min-w-0 space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <main className="min-w-0 space-y-6 px-5 py-6 sm:px-7 lg:px-8 [&_[data-slot=card]]:rounded-lg [&_[data-slot=card]]:shadow-none">
+          <div className="flex flex-wrap items-end justify-between gap-4 border-b pb-5">
             <div>
-              <h1 className="text-2xl font-semibold">
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                运营管理&nbsp;&nbsp;/&nbsp;&nbsp;
+                {tabs.find((item) => item.id === tab)?.label}
+              </p>
+              <h1 className="text-2xl font-semibold tracking-tight">
                 {tabs.find((item) => item.id === tab)?.label}
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 数据源为服务端聚合，敏感写操作均需原因并审计。
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {overview && (
+                <div className="mr-1 text-right text-xs text-muted-foreground">
+                  <p className="flex items-center justify-end gap-1.5 font-medium text-foreground">
+                    <span className="size-1.5 rounded-full bg-emerald-500" />
+                    平台运行中
+                  </p>
+                  <p className="mt-0.5">
+                    数据更新于 {date(overview.generated_at)}
+                  </p>
+                </div>
+              )}
               {tab === 'courses' && (
                 <Button onClick={() => setCourseDialogOpen(true)}>
                   新建平台课程
@@ -234,7 +257,7 @@ export function AdminPage() {
 
           {overview && <Overview data={overview} />}
           {(tab === 'users' || tab === 'orders') && (
-            <div className="flex gap-2">
+            <div className="flex gap-2 rounded-lg border bg-card p-3">
               <Input
                 className="max-w-sm"
                 value={search}
@@ -357,26 +380,6 @@ function Overview({ data }: { data: Row }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-gradient-to-r from-slate-950 to-slate-800 px-5 py-4 text-white shadow-sm">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
-            <TrendingUp className="size-4" />
-            平台运营驾驶舱
-          </div>
-          <p className="mt-1 text-xs text-slate-400">
-            用户、交易、智能体与内容资产的实时汇总
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <Badge className="border-emerald-400/30 bg-emerald-400/15 text-emerald-100">
-            平台运行中
-          </Badge>
-          <span className="text-slate-400">
-            更新于 {date(data.generated_at)}
-          </span>
-        </div>
-      </div>
-
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {metrics.map((metric) => (
           <MetricCard key={metric.label} {...metric} />
@@ -579,13 +582,15 @@ function MetricCard({
     <Card className="overflow-hidden">
       <CardContent className="flex items-start justify-between gap-4 p-5">
         <div className="min-w-0">
-          <p className="text-sm text-muted-foreground">{label}</p>
+          <p className="text-xs font-medium tracking-wide text-muted-foreground">
+            {label}
+          </p>
           <p className="mt-1 truncate text-2xl font-semibold tracking-tight">
             {value}
           </p>
           <p className="mt-2 text-xs text-muted-foreground">{hint}</p>
         </div>
-        <div className={`shrink-0 rounded-xl p-2.5 ${metricTone[tone]}`}>
+        <div className={`shrink-0 rounded-md p-2.5 ${metricTone[tone]}`}>
           <Icon className="size-5" />
         </div>
       </CardContent>
@@ -935,8 +940,10 @@ function KeyValue({
 
 function DataCard({ children }: { children: React.ReactNode }) {
   return (
-    <Card>
-      <CardContent className="pt-4">{children}</CardContent>
+    <Card className="gap-0 overflow-hidden py-0">
+      <CardContent className="p-0 [&_[data-slot=table-cell]]:px-4 [&_[data-slot=table-cell]]:py-3 [&_[data-slot=table-head]]:h-11 [&_[data-slot=table-head]]:bg-muted/40 [&_[data-slot=table-head]]:px-4 [&_[data-slot=table-head]]:text-xs [&_[data-slot=table-head]]:font-semibold">
+        {children}
+      </CardContent>
     </Card>
   )
 }

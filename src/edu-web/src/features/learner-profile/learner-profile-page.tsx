@@ -14,10 +14,11 @@ import {
 import type { ReactNode } from 'react'
 import type { LearnerProfileField } from '@/data-acess/learner-profile'
 import type { KnowledgeGraphNode } from '@/data-acess/knowledge-graph'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import { currentUserAtom } from '@/data-acess/auth'
 import { knowledgeGraphAtom } from '@/data-acess/knowledge-graph'
 import {
   learnerProfileAtom,
@@ -26,6 +27,7 @@ import {
 } from '@/data-acess/learner-profile'
 import { practiceRecordsAtom } from '@/data-acess/practice'
 import { ProjectHeader } from '@/features/project/components/project-header'
+import { resolveAvatarUrl } from '@/lib/auth-client'
 
 type ProfileFieldView = {
   key: string
@@ -459,6 +461,7 @@ const ProfileFieldRow = ({ field }: { field: ProfileFieldView }) => {
 }
 
 export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
+  const currentUserResult = useAtomValue(currentUserAtom)
   const profileResult = useAtomValue(learnerProfileAtom(projectId))
   const revisionsResult = useAtomValue(learnerProfileRevisionsAtom(projectId))
   const graphResult = useAtomValue(knowledgeGraphAtom(projectId))
@@ -467,6 +470,9 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
     mode: 'promise',
   })
 
+  const currentUser = Result.isSuccess(currentUserResult)
+    ? currentUserResult.value
+    : null
   const profile = Result.isSuccess(profileResult) ? profileResult.value : null
   const revisions = Result.isSuccess(revisionsResult)
     ? revisionsResult.value
@@ -638,8 +644,13 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
             <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-4">
                 <Avatar className="size-20 border-4 border-white shadow-md">
+                  <AvatarImage
+                    src={resolveAvatarUrl(currentUser?.avatar_url)}
+                    alt={currentUser ? `${currentUser.name}的头像` : '学生头像'}
+                    className="object-cover"
+                  />
                   <AvatarFallback className="bg-[#052659] text-xl font-semibold text-white">
-                    学生
+                    {currentUser?.initials ?? '学生'}
                   </AvatarFallback>
                 </Avatar>
                 <div className="space-y-2">
