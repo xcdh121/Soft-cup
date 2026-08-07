@@ -2,6 +2,7 @@ import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Option } from 'effect'
 import {
   CheckCircle,
+  ChevronDown,
   LoaderCircle,
   Send,
   Sparkles,
@@ -44,6 +45,7 @@ export const QuizQuestionCard = ({
   const [aiError, setAiError] = useState<string | null>(null)
   const [streamStatus, setStreamStatus] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
+  const [explanationOpen, setExplanationOpen] = useState(false)
   const requestInFlight = useRef(false)
   const stateResult = useAtomValue(quizDetailStateAtom(quizId))
   const currentQuestionResult = useAtomValue(
@@ -67,6 +69,7 @@ export const QuizQuestionCard = ({
     setAiError(null)
     setStreamStatus('')
     setAiOpen(false)
+    setExplanationOpen(false)
   }, [currentQuestion?.id])
 
   if (!state || !currentQuestion) return null
@@ -90,14 +93,31 @@ export const QuizQuestionCard = ({
   const answerClasses = (option: 'A' | 'B' | 'C' | 'D') => {
     if (!showResults) {
       return selected === option
-        ? 'bg-primary/10 border-primary'
-        : 'bg-card border-border'
+        ? 'border-primary/20 bg-primary/[0.06]'
+        : 'border-transparent bg-transparent hover:border-primary/15 hover:bg-primary/[0.035]'
     }
     if (correctOption === option) {
-      return 'bg-green-50 border-green-500 text-green-900'
+      return 'border-primary/15 bg-primary/[0.045]'
     }
-    if (selected === option) return 'bg-red-50 border-red-500 text-red-900'
-    return 'bg-muted/50 border-border'
+    if (selected === option) {
+      return 'border-destructive/20 bg-destructive/[0.05]'
+    }
+    return 'border-transparent bg-transparent text-muted-foreground'
+  }
+
+  const optionBadgeClasses = (option: 'A' | 'B' | 'C' | 'D') => {
+    if (!showResults) {
+      return selected === option
+        ? 'border-primary bg-primary text-primary-foreground'
+        : 'border-input bg-card text-muted-foreground'
+    }
+    if (correctOption === option) {
+      return 'border-primary bg-primary text-primary-foreground'
+    }
+    if (selected === option) {
+      return 'border-destructive bg-destructive text-destructive-foreground'
+    }
+    return 'border-input bg-card text-muted-foreground'
   }
 
   const runAi = async (userQuestion?: string) => {
@@ -161,87 +181,126 @@ export const QuizQuestionCard = ({
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center">
-      <div className="flex w-full max-w-4xl items-start gap-3">
-        <div className="min-w-0 flex-1 rounded-xl border bg-card p-12 shadow-lg">
-          <div className="space-y-10">
-            <div>
-              <h3 className="mb-6 text-lg font-medium leading-relaxed">
-                {currentQuestion.question_text}
-              </h3>
-              {showResults && (
-                <div className="mb-4 flex items-center gap-2">
-                  {selected === correctOption ? (
-                    <>
-                      <CheckCircle className="size-5 shrink-0 text-green-600" />
-                      <span className="text-sm font-medium text-green-600">
-                        正确
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="size-5 shrink-0 text-red-600" />
-                      <span className="text-sm font-medium text-red-600">
-                        错误
-                      </span>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+    <div className="mx-auto w-full max-w-4xl px-5 py-7 sm:px-8 md:px-12 md:py-10">
+      <div className="flex items-center gap-3 border-l-4 border-primary pl-4">
+        <h2 className="text-xl font-semibold tracking-tight">
+          {state.currentQuestionIndex + 1}. 单选题
+        </h2>
+      </div>
 
-            <div className="grid gap-3">
-              {options.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => handleSelect(option.key)}
-                  disabled={showResults}
+      <h3 className="mt-9 text-lg font-medium leading-8 md:text-xl">
+        {currentQuestion.question_text}
+      </h3>
+
+      <div className="mt-7 grid gap-2">
+        {options.map((option) => {
+          const isCorrectOption = showResults && correctOption === option.key
+          const isWrongSelection =
+            showResults &&
+            selected === option.key &&
+            correctOption !== option.key
+
+          return (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => handleSelect(option.key)}
+              disabled={showResults}
+              className={cn(
+                'group flex w-full items-center gap-4 rounded-xl border px-3 py-3 text-left transition-colors sm:px-4',
+                showResults ? 'cursor-default' : 'cursor-pointer',
+                answerClasses(option.key),
+              )}
+            >
+              <span className="relative shrink-0">
+                <span
                   className={cn(
-                    'rounded-lg border p-4 text-left transition-all',
-                    showResults ? 'cursor-default' : 'hover:shadow-md',
-                    answerClasses(option.key),
+                    'flex size-10 items-center justify-center rounded-full border-2 text-lg font-medium transition-colors',
+                    optionBadgeClasses(option.key),
                   )}
                 >
-                  <div className="flex gap-3">
-                    <span className="shrink-0 font-semibold">
-                      {option.key}.
-                    </span>
-                    <span className="leading-relaxed">{option.label}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {showResults && (
-              <div className="space-y-2 border-t pt-4 text-sm">
-                <span className="text-muted-foreground">正确答案：</span>
-                <span className="font-semibold text-green-700">
-                  {correctOption ?? currentQuestion.correct_option}.{' '}
-                  {options.find((item) => item.key === correctOption)?.label}
+                  {option.key}
                 </span>
-                {currentQuestion.explanation && (
-                  <div className="leading-relaxed text-muted-foreground">
-                    <span className="font-medium">解析：</span>
-                    {currentQuestion.explanation}
-                  </div>
+                {isCorrectOption ? (
+                  <CheckCircle className="absolute -top-1.5 -right-1.5 size-5 fill-[#18a66a] text-white" />
+                ) : isWrongSelection ? (
+                  <XCircle className="absolute -top-1.5 -right-1.5 size-5 fill-destructive text-white" />
+                ) : null}
+              </span>
+              <span className="min-w-0 text-base leading-7 md:text-lg">
+                {option.label}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {showResults ? (
+        <section className="mt-8 rounded-xl border border-border/70 bg-muted/55 p-5 md:p-6">
+          <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                {selected === correctOption ? (
+                  <>
+                    <CheckCircle className="size-5 text-[#15945f]" />
+                    <span className="text-[#137e53]">回答正确</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="size-5 text-destructive" />
+                    <span className="text-destructive">回答错误</span>
+                  </>
                 )}
               </div>
-            )}
-          </div>
-        </div>
+              <p className="text-sm md:text-base">
+                <span className="text-muted-foreground">正确答案：</span>
+                <span className="font-semibold text-primary">
+                  {correctOption ?? currentQuestion.correct_option}
+                </span>
+              </p>
+            </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          className="h-auto shrink-0 flex-col gap-1.5 px-3 py-3 text-xs"
-          onClick={openAi}
-          disabled={isGenerating}
-        >
-          <Sparkles className="size-5 text-[#5483B3]" />
-          AI 解析
-        </Button>
-      </div>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 shrink-0 self-start rounded-full border border-primary/15 bg-primary/10 px-4 text-primary hover:bg-primary/15 hover:text-primary"
+              onClick={openAi}
+              disabled={isGenerating}
+            >
+              {isGenerating ? (
+                <LoaderCircle className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              AI 解析
+            </Button>
+          </div>
+
+          {currentQuestion.explanation ? (
+            <div className="mt-4 border-t border-border/70 pt-3">
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80"
+                aria-expanded={explanationOpen}
+                onClick={() => setExplanationOpen((open) => !open)}
+              >
+                查看解析
+                <ChevronDown
+                  className={cn(
+                    'size-4 transition-transform',
+                    explanationOpen && 'rotate-180',
+                  )}
+                />
+              </button>
+              {explanationOpen ? (
+                <p className="mt-3 text-sm leading-7 text-muted-foreground">
+                  {currentQuestion.explanation}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <Sheet open={aiOpen} onOpenChange={setAiOpen}>
         <SheetContent className="flex w-full flex-col p-0 sm:max-w-xl">

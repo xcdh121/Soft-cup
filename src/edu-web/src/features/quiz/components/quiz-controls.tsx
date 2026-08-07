@@ -69,13 +69,13 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
   if (showResults) return null
 
   return (
-    <div className="sticky bottom-0 z-10 flex items-center justify-center border-t bg-background/95 px-4 py-4 shadow-[0_-8px_24px_-20px_rgba(0,0,0,0.5)] backdrop-blur">
-      <div className="flex flex-wrap justify-center gap-4">
+    <div className="sticky bottom-0 z-10 border-t border-border/80 bg-card/95 px-4 py-3 backdrop-blur sm:px-8">
+      <div className="grid grid-cols-3 items-center gap-3">
         <Button
           onClick={handlePrevious}
           disabled={currentIndex === 0}
-          variant="outline"
-          className="flex items-center gap-2"
+          variant="ghost"
+          className="justify-self-start px-2 text-muted-foreground hover:text-primary sm:px-4"
         >
           <ChevronLeft className="h-4 w-4" />
           上一题
@@ -85,17 +85,22 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
           <Button
             onClick={handleSubmitQuestion}
             disabled={!state.selectedByQuestionId[currentQuestion.id]}
-            size="lg"
-            className="px-8"
+            className="min-w-24 justify-self-center px-5 sm:min-w-32"
           >
             提交本题
           </Button>
-        ) : currentIndex === totalQuestions - 1 ? (
+        ) : (
+          <span className="min-w-24 justify-self-center rounded-lg bg-muted px-5 py-2 text-center text-sm text-muted-foreground sm:min-w-32">
+            已提交
+          </span>
+        )}
+
+        {currentIndex === totalQuestions - 1 ? (
           <Button
             onClick={handleShowResults}
             disabled={!canSubmit}
-            size="lg"
-            className="px-8"
+            variant="ghost"
+            className="justify-self-end px-2 hover:text-primary sm:px-4"
           >
             查看结果
           </Button>
@@ -103,8 +108,8 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
           <Button
             onClick={handleNext}
             disabled={!isCurrentSubmitted}
-            variant="default"
-            className="flex items-center gap-2"
+            variant="ghost"
+            className="justify-self-end px-2 hover:text-primary sm:px-4"
           >
             下一题
             <ChevronRight className="h-4 w-4" />
