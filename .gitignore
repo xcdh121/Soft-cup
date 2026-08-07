@@ -20,3 +20,8 @@ backups/
 
 .DS_Store
 .localdata/
+.codex-doc-work/
+EduAgent项目技术文档-已完成.docx
+outputs/
+tools/
+docs/

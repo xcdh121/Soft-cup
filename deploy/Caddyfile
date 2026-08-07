@@ -1,4 +1,11 @@
+{
+  servers {
+    protocols h1 h2
+  }
+}
+
 wanjing.xyz {
+  header Alt-Svc "clear"
   encode zstd gzip
   reverse_proxy web:80
 }

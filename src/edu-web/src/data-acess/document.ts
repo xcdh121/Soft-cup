@@ -237,10 +237,10 @@ export const bindCourseBookAtom = runtime.fn(
   }),
 )
 
-export const documentAtom = Atom.family((input: string) => {
+const documentRemoteAtom = Atom.family((input: string) => {
   const [projectId, documentId] = input.split(':')
 
-  return Atom.make(
+  return runtime.atom(
     Effect.fn(function* () {
       const { apiClient } = yield* ApiClientService
 
@@ -255,9 +255,18 @@ export const documentAtom = Atom.family((input: string) => {
         parsed.projectId,
         parsed.documentId,
       )
-    })().pipe(Effect.provide(ApiClientService.Default)),
+    })(),
   )
 })
+
+export const documentAtom = Atom.family((input: string) =>
+  Atom.writable(
+    (get: Atom.Context) => get(documentRemoteAtom(input)),
+    (ctx, document: DocumentDto) => {
+      ctx.setSelf(Result.success(document))
+    },
+  ).pipe(Atom.keepAlive),
+)
 
 export const documentFileBufferAtom = Atom.family((input: string) => {
   const [projectId, documentId] = input.split(':')
@@ -364,7 +373,13 @@ export const refreshDocumentAtom = runtime.fn(
         parsed.documentId,
       )
 
-    registry.refresh(documentAtom(`${parsed.projectId}:${parsed.documentId}`))
+    // Use the response we already fetched as the authoritative value. Refreshing
+    // the atom here starts another asynchronous request and can leave the detail
+    // page showing its previous processing state while the list is already ready.
+    registry.set(
+      documentAtom(`${parsed.projectId}:${parsed.documentId}`),
+      document,
+    )
 
     // Update the document in the documents list atom
     registry.set(
@@ -373,6 +388,8 @@ export const refreshDocumentAtom = runtime.fn(
         document: Result.success(document),
       }),
     )
+
+    return document
   }),
 )
 
@@ -398,7 +415,9 @@ export const reprocessDocumentAtom = runtime.fn(
       )
     }
 
-    registry.refresh(documentAtom(`${parsed.projectId}:${parsed.documentId}`))
+    registry.refresh(
+      documentRemoteAtom(`${parsed.projectId}:${parsed.documentId}`),
+    )
     registry.refresh(documentsRemoteAtom(parsed.projectId))
   }),
 )
