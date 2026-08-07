@@ -174,7 +174,7 @@ export const QuizDetail = ({
           {snapshotQuestions.map((question, index) => (
             <div
               key={question.id}
-              className="rounded-xl border bg-background p-4"
+              className="rounded-xl border bg-card p-4 text-card-foreground"
             >
               <div className="font-medium">
                 {index + 1}. {question.question_text}

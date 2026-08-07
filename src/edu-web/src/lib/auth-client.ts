@@ -5,6 +5,7 @@ export type AuthUser = {
   id: string
   username: string
   name: string | null
+  avatar_url: string | null
   is_active: boolean
   is_admin: boolean
 }
@@ -96,6 +97,51 @@ const post = async (path: string, body: object): Promise<AuthResponse> => {
     throw new Error(getErrorMessage(payload, response.status))
   }
   return payload as AuthResponse
+}
+
+const authorizedRequest = async <T>(
+  path: string,
+  init: RequestInit,
+): Promise<T> => {
+  const session = readSession()
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers: {
+      ...(init.body && !(init.body instanceof FormData)
+        ? { 'Content-Type': 'application/json' }
+        : {}),
+      ...(session
+        ? { Authorization: `Bearer ${session.access_token}` }
+        : {}),
+      ...init.headers,
+    },
+  })
+  const payload = (await response.json().catch(() => null)) as unknown
+  if (!response.ok) {
+    throw new Error(getErrorMessage(payload, response.status))
+  }
+  return payload as T
+}
+
+export const profileClient = {
+  updateName: (name: string) =>
+    authorizedRequest<AuthUser>('/api/v1/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+  uploadAvatar: (file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return authorizedRequest<AuthUser>('/api/v1/auth/me/avatar', {
+      method: 'POST',
+      body,
+    })
+  },
+}
+
+export const resolveAvatarUrl = (url: string | null | undefined) => {
+  if (!url) return undefined
+  return new URL(url, `${baseUrl}/`).toString()
 }
 
 export const authClient = {

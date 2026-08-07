@@ -42,17 +42,17 @@ export const SignInPage = () => {
   }
 
   return (
-    <main className="relative min-h-svh overflow-hidden bg-[#d9eef2]">
+    <main className="relative min-h-svh overflow-hidden bg-[#e4eef9]">
       <img
         src={loginBackground}
         alt=""
         aria-hidden="true"
         className="absolute inset-0 h-full w-full object-cover object-center"
       />
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(235,249,244,0.05)_0%,rgba(223,242,247,0.04)_48%,rgba(246,250,252,0.5)_64%,rgba(246,250,252,0.82)_100%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(232,242,253,0.08)_0%,rgba(224,237,251,0.1)_48%,rgba(246,249,253,0.58)_64%,rgba(246,249,253,0.88)_100%)]" />
 
       <section className="relative ml-auto flex min-h-svh w-full items-center justify-center px-5 py-8 sm:px-10 lg:w-1/2 lg:px-12">
-        <div className="w-full max-w-[470px] rounded-[32px] border border-white/80 bg-white/96 px-8 py-10 shadow-[0_28px_80px_rgba(30,64,78,0.14)] backdrop-blur-md sm:min-h-[620px] sm:px-12 sm:py-11">
+        <div className="w-full max-w-[470px] rounded-[28px] border border-white/90 bg-white/96 px-8 py-10 shadow-[0_28px_80px_rgba(28,76,128,0.16)] backdrop-blur-md sm:min-h-[620px] sm:px-12 sm:py-11">
           <div className="flex items-start justify-between gap-5">
             <div>
               <div className="h-[68px] w-40 overflow-hidden" aria-label="万径">
@@ -63,7 +63,7 @@ export const SignInPage = () => {
                 />
               </div>
               <p className="mt-1 text-sm font-medium text-slate-700">
-                欢迎来到 <span className="text-[#168c91]">万径</span>
+                欢迎来到 <span className="text-primary">万径</span>
               </p>
             </div>
             <p className="pt-2 text-right text-xs leading-5 text-slate-400">
@@ -74,7 +74,7 @@ export const SignInPage = () => {
                 search={
                   search?.redirect ? { redirect: search.redirect } : undefined
                 }
-                className="font-medium text-[#168c91] transition-colors hover:text-[#0f6f75] hover:underline"
+                className="font-medium text-primary transition-colors hover:text-primary/80 hover:underline"
               >
                 立即注册
               </Link>
@@ -105,7 +105,7 @@ export const SignInPage = () => {
                 autoComplete="username"
                 placeholder="请输入账户名"
                 disabled={signInResult.waiting}
-                className="h-13 rounded-xl border-slate-200 bg-white px-4 shadow-none placeholder:text-slate-400 focus-visible:border-[#168c91] focus-visible:ring-[#168c91]/15"
+                className="h-13 rounded-xl border-input bg-white px-4 shadow-none placeholder:text-slate-400 focus-visible:border-primary focus-visible:ring-primary/15"
               />
             </div>
             <div className="space-y-2.5">
@@ -124,7 +124,7 @@ export const SignInPage = () => {
                 autoComplete="current-password"
                 placeholder="请输入密码"
                 disabled={signInResult.waiting}
-                className="h-13 rounded-xl border-slate-200 bg-white px-4 shadow-none placeholder:text-slate-400 focus-visible:border-[#168c91] focus-visible:ring-[#168c91]/15"
+                className="h-13 rounded-xl border-input bg-white px-4 shadow-none placeholder:text-slate-400 focus-visible:border-primary focus-visible:ring-primary/15"
               />
             </div>
             {signInResult._tag === 'Failure' && (
@@ -139,7 +139,7 @@ export const SignInPage = () => {
             )}
             <Button
               type="submit"
-              className="mt-3 h-13 w-full rounded-xl bg-[#153f68] font-medium shadow-[0_8px_22px_rgba(21,63,104,0.2)] transition-all hover:-translate-y-0.5 hover:bg-[#0f3459] hover:shadow-[0_12px_26px_rgba(21,63,104,0.24)]"
+              className="mt-3 h-13 w-full rounded-xl font-medium shadow-[0_8px_22px_rgba(23,104,201,0.2)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_26px_rgba(23,104,201,0.25)]"
               disabled={signInResult.waiting || !username || !password}
             >
               {signInResult.waiting ? '正在登录...' : '登录'}

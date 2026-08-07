@@ -43,7 +43,7 @@ function GraphContent({ graph }: { graph: KnowledgeGraph }) {
   }, [graph, onlyWeak, query])
 
   return (
-    <section className="flex min-h-[720px] flex-col overflow-hidden rounded-2xl border bg-background shadow-sm">
+    <section className="flex min-h-[720px] flex-col overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm">
       <div className="flex flex-col gap-4 border-b px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="font-semibold">知识网络</h2>
@@ -101,12 +101,12 @@ export const KnowledgeGraphPage = ({ projectId }: { projectId: string }) => {
           {Result.builder(graphResult)
             .onSuccess((graph) => <GraphContent graph={graph} />)
             .onInitialOrWaiting(() => (
-              <section className="rounded-2xl border bg-background p-8 text-sm text-muted-foreground shadow-sm">
+              <section className="rounded-2xl border bg-card p-8 text-sm text-muted-foreground shadow-sm">
                 正在计算知识图谱布局...
               </section>
             ))
             .onFailure(() => (
-              <section className="rounded-2xl border bg-background p-8 text-sm text-destructive shadow-sm">
+              <section className="rounded-2xl border bg-card p-8 text-sm text-destructive shadow-sm">
                 知识图谱加载失败。请确认项目已绑定课程，且知识图谱接口可用。
               </section>
             ))

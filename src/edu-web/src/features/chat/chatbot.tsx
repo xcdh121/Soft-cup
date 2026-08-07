@@ -96,6 +96,16 @@ const getTutorStatusLabel = (status: string | null) => {
   return '正在读取你的学习画像并检索相关信息…'
 }
 
+const TutorStatus = ({ status }: { status: string | null }) => (
+  <div
+    aria-live="polite"
+    className="flex items-center gap-2 pb-2 text-sm text-muted-foreground"
+  >
+    <Loader2Icon className="size-4 animate-spin" />
+    <span>{getTutorStatusLabel(status)}</span>
+  </div>
+)
+
 const OCR_STATUS_PROGRESS: Partial<
   Record<
     PdfOcrStatus,
@@ -282,7 +292,7 @@ const ResourcePackageLink = ({
       : undefined
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 p-3">
+    <div className="flex w-[95%] flex-wrap items-center gap-3 rounded-lg border bg-card p-3 text-card-foreground shadow-sm">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-sm font-medium">
           <span
@@ -382,6 +392,11 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
     : []
   const isStreaming = streamStatus !== null
   const isBusy = isStreaming || isPreparingAttachments
+  const latestMessage = messages[messages.length - 1]
+  const streamingAssistantMessageId =
+    isStreaming && latestMessage?.role === 'assistant'
+      ? latestMessage.id
+      : null
   const blobToDataUrl = useCallback(
     async (blobUrl: string): Promise<string> => {
       const response = await fetch(blobUrl)
@@ -747,7 +762,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                             isHiddenAttachmentContext(part.text_content)
                           ),
                       )
-                      .map((part, index: number) => {
+                      .map((part, index: number, visibleParts) => {
                         switch (part.type) {
                           case 'text':
                             return (
@@ -761,7 +776,23 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                                 }
                               >
                                 <MessageContent>
-                                  <Response>{part.text_content}</Response>
+                                  {message.id === streamingAssistantMessageId &&
+                                    index ===
+                                      visibleParts.findIndex(
+                                        (visiblePart) =>
+                                          visiblePart.type === 'text',
+                                      ) && (
+                                      <TutorStatus status={streamStatus} />
+                                    )}
+                                  <Response
+                                    className={
+                                      message.role === 'user'
+                                        ? 'prose-invert [&_a]:text-primary-foreground [&_blockquote]:border-primary-foreground/60 [&_code]:bg-white/15 [&_pre]:bg-white/10'
+                                        : undefined
+                                    }
+                                  >
+                                    {part.text_content}
+                                  </Response>
                                 </MessageContent>
                                 {message.role === 'assistant' &&
                                   index ===
@@ -799,8 +830,11 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                               <Tool
                                 key={`${message.id}-part-${index}`}
                                 defaultOpen={
-                                  toolCall.tool_state === 'output-error' ||
-                                  toolResourcePackageResult !== null
+                                  toolCall.tool_name ===
+                                  'resource_package_generate'
+                                    ? false
+                                    : toolCall.tool_state === 'output-error' ||
+                                      toolResourcePackageResult !== null
                                 }
                               >
                                 <ToolHeader
@@ -834,14 +868,12 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                   <StudyPlanLink message={message} projectId={projectId} />
                 </div>
               ))}
-              {isStreaming && (
-                <div
-                  aria-live="polite"
-                  className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
-                >
-                  <Loader2Icon className="size-4 animate-spin" />
-                  <span>{getTutorStatusLabel(streamStatus)}</span>
-                </div>
+              {isStreaming && !streamingAssistantMessageId && (
+                <Message from="assistant">
+                  <MessageContent>
+                    <TutorStatus status={streamStatus} />
+                  </MessageContent>
+                </Message>
               )}
             </ConversationContent>
             <ConversationScrollButton />

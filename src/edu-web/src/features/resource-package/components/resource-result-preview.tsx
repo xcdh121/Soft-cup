@@ -167,7 +167,7 @@ const ProgrammingQuestionsPreview = ({
       {questions.slice(0, 5).map((question, index) => (
         <div
           key={question.id}
-          className="rounded-lg border bg-background p-3 text-sm"
+          className="rounded-lg border bg-card p-3 text-sm text-card-foreground"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="font-medium">
@@ -257,7 +257,7 @@ const VideoRecommendationsPreview = ({
           href={video.url}
           target="_blank"
           rel="noreferrer"
-          className="group overflow-hidden rounded-xl border bg-background transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-sm"
+          className="group overflow-hidden rounded-xl border bg-card text-card-foreground transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-sm"
         >
           <div className="relative aspect-video overflow-hidden bg-muted">
             {video.thumbnail_url ? (
@@ -352,7 +352,7 @@ const IncrementalQuizPreview = ({
         return [
           <div
             key={`${String(question.question_text)}-${index}`}
-            className="rounded-lg border bg-background p-3 text-sm"
+            className="rounded-lg border bg-card p-3 text-sm text-card-foreground"
           >
             <div className="font-medium">
               {index + 1}. {question.question_text}
@@ -391,7 +391,7 @@ const IncrementalFlashcardsPreview = ({
           return [
             <div
               key={`${String(card.question)}-${index}`}
-              className="rounded-lg border bg-background p-3 text-sm"
+              className="rounded-lg border bg-card p-3 text-sm text-card-foreground"
             >
               <div className="font-medium">{card.question}</div>
               <div className="mt-2 text-muted-foreground">
@@ -423,7 +423,7 @@ const QuizPreview = ({
       {result.value.slice(0, 5).map((question, index) => (
         <div
           key={question.id}
-          className="rounded-lg border bg-background p-3 text-sm"
+          className="rounded-lg border bg-card p-3 text-sm text-card-foreground"
         >
           <div className="font-medium">
             {index + 1}. {question.question_text}
@@ -461,7 +461,7 @@ const FlashcardsPreview = ({
       {result.value.slice(0, 6).map((card) => (
         <div
           key={card.id}
-          className="rounded-lg border bg-background p-3 text-sm"
+          className="rounded-lg border bg-card p-3 text-sm text-card-foreground"
         >
           <div className="font-medium">{card.question}</div>
           <div className="mt-2 text-muted-foreground">{card.answer}</div>

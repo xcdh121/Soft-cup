@@ -1,7 +1,6 @@
 'use client'
 
 import {
-  CornerDownLeftIcon,
   ImageIcon,
   Loader2Icon,
   MicIcon,
@@ -801,7 +800,9 @@ export const PromptInput = ({
         ref={formRef}
         {...props}
       >
-        <InputGroup className="overflow-hidden">{children}</InputGroup>
+        <InputGroup className="overflow-hidden bg-card text-card-foreground">
+          {children}
+        </InputGroup>
       </form>
     </>
   )
@@ -1035,19 +1036,19 @@ export type PromptInputSubmitProps = ComponentProps<typeof InputGroupButton> & {
 export const PromptInputSubmit = ({
   className,
   variant = 'default',
-  size = 'icon-sm',
+  size = 'sm',
   status,
   children,
   ...props
 }: PromptInputSubmitProps) => {
-  let Icon = <CornerDownLeftIcon className="size-4" />
+  let content = <span>发送</span>
 
   if (status === 'submitted') {
-    Icon = <Loader2Icon className="size-4 animate-spin" />
+    content = <Loader2Icon className="size-4 animate-spin" />
   } else if (status === 'streaming') {
-    Icon = <SquareIcon className="size-4" />
+    content = <SquareIcon className="size-4" />
   } else if (status === 'error') {
-    Icon = <XIcon className="size-4" />
+    content = <XIcon className="size-4" />
   }
 
   return (
@@ -1059,7 +1060,7 @@ export const PromptInputSubmit = ({
       variant={variant}
       {...props}
     >
-      {children ?? Icon}
+      {children ?? content}
     </InputGroupButton>
   )
 }

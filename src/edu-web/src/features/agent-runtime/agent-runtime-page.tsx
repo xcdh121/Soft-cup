@@ -212,56 +212,258 @@ export function AgentRuntimePage() {
                 ].map(([Icon, label, value]) => {
                   const MetricIcon = Icon as typeof Clock3Icon
                   return (
-                    <div key={String(label)} className="rounded-xl bg-muted/40 p-3">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground"><MetricIcon className="size-4" />{String(label)}</div>
-                      <div className="mt-1 font-semibold">{String(value)}</div>
-                    </div>
+                    <article
+                      key={skill.name}
+                      className="flex h-full flex-col rounded-2xl border bg-card p-4 text-card-foreground md:p-5"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={cn(
+                            'flex size-10 shrink-0 items-center justify-center rounded-xl ring-4',
+                            style.icon,
+                          )}
+                        >
+                          <SkillIcon className="size-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-semibold">{skill.name}</h3>
+                            <Badge variant="outline">{skill.mode}</Badge>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {skill.owners}
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                        {skill.description}
+                      </p>
+
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                        <div>
+                          <div className="text-xs font-medium text-foreground">
+                            参考信息
+                          </div>
+                          <ul className="mt-2 space-y-1.5">
+                            {skill.evidence.map((item) => (
+                              <li
+                                key={item}
+                                className="flex gap-2 text-xs leading-5 text-muted-foreground"
+                              >
+                                <DatabaseIcon className="mt-1 size-3 shrink-0" />
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-foreground">
+                            能力产出
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {skill.outputs.map((item) => (
+                              <span
+                                key={item}
+                                className={cn(
+                                  'rounded-md px-2 py-1 text-[11px]',
+                                  style.soft,
+                                )}
+                              >
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex gap-2 border-t pt-3 text-xs leading-5">
+                        <ShieldCheckIcon className="mt-0.5 size-3.5 shrink-0 text-emerald-600" />
+                        <span>
+                          <span className="font-medium">质量要求：</span>
+                          <span className="text-muted-foreground">
+                            {skill.gate}
+                          </span>
+                        </span>
+                      </div>
+                    </article>
                   )
                 })}
               </div>
-            </section>
 
-            <section className="space-y-3" data-testid="run-steps">
-              {steps.map((step, index) => (
-                <article key={step.step_id} className="rounded-xl border bg-card p-4 shadow-sm">
-                  <div className="flex items-start gap-3">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{index + 1}</div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-medium">{step.agent_name}</h3>
-                        <Badge variant="outline">{labels[step.status]}</Badge>
-                        {step.optional && <Badge variant="secondary">非关键节点</Badge>}
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        尝试 {step.attempt_count}/{step.max_attempts} · {step.duration_ms ?? 0} ms
-                      </p>
-                      {step.error_summary && (
-                        <p className="mt-2 text-sm text-destructive">{step.error_code}：{step.error_summary}</p>
-                      )}
-                    </div>
-                    {step.status === 'completed' && <CheckCircle2Icon className="size-5 text-emerald-600" />}
+              <div className="mt-4 rounded-xl border border-dashed bg-card/80 p-4 text-card-foreground">
+                <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                  <ShieldCheckIcon className="size-4 text-emerald-600" />
+                  Harness 运行保障
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                  {[
+                    '权限与上下文由服务端注入',
+                    '最多 6 次工具操作',
+                    '60 秒能力超时',
+                    '输出结构校验',
+                    '失败自动回退',
+                    '全过程审计',
+                  ].map((item) => (
+                    <span
+                      key={item}
+                      className="rounded-md border bg-card px-2.5 py-1.5"
+                    >
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          </section>
+
+        <section className="space-y-3" data-testid="run-steps">
+          {steps.map((step, index) => (
+            <article key={step.step_id} className="rounded-xl border bg-card p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{index + 1}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-medium">{step.agent_name}</h3>
+                    <Badge variant="outline">{labels[step.status]}</Badge>
+                    {step.optional && <Badge variant="secondary">非关键节点</Badge>}
                   </div>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {agent.summary}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock3Icon className="size-3.5" />
+                      {formatDuration(agent.duration)}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <FileCheck2Icon className="size-3.5" />
+                      {agent.evidence} 条证据
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <ActivityIcon className="size-3.5" />
+                      置信度 {agent.confidence}%
+                    </span>
+                  </div>
+                </div>
+                <ChevronDownIcon
+                  className={cn(
+                    'mt-1 size-4 shrink-0 text-muted-foreground transition-transform',
+                    expanded && 'rotate-180',
+                  )}
+                />
+              </button>
+
+              {expanded && (
+                <div className="border-t bg-muted/15 px-4 py-5 md:px-5">
+                  {agent.warning && (
+                    <div className="mb-4 flex gap-2 rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                      <CircleAlertIcon className="mt-0.5 size-4 shrink-0" />
+                      <span>
+                        {agent.warning}，不会将不确定判断包装成确定结论。
+                      </span>
+                    </div>
+                  )}
+                  <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_240px]">
+                    <div>
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          工具行动记录
+                        </div>
+                        <Badge variant="outline">{agent.mode}</Badge>
+                      </div>
+                      <div className="relative space-y-1 before:absolute before:bottom-5 before:left-[17px] before:top-5 before:border-l before:border-dashed before:border-border">
+                        {agent.tools.map((tool) => {
+                          const ToolIcon = tool.icon
+                          return (
+                            <div
+                              key={tool.name}
+                              className="relative flex gap-3 rounded-xl p-2.5 transition-colors hover:bg-background"
+                            >
+                              <div className="z-10 flex size-9 shrink-0 items-center justify-center rounded-full border bg-background text-primary">
+                                <ToolIcon className="size-4" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-medium">
+                                    {tool.name}
+                                  </span>
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      'h-5 px-1.5 font-normal',
+                                      tool.risk === 'generate' &&
+                                      'border-violet-200 bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-200',
+                                    )}
+                                  >
+                                    {riskLabels[tool.risk]}
+                                  </Badge>
+                                  <CheckCircle2Icon className="size-3.5 text-emerald-600" />
+                                </div>
+                                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                  {tool.summary}
+                                </p>
+                                <div className="mt-1.5 flex gap-3 text-[11px] text-muted-foreground">
+                                  <span>{tool.evidence} 条证据</span>
+                                  <span>{tool.duration} ms</span>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border bg-card p-4 text-card-foreground">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <ShieldCheckIcon className="size-4 text-emerald-600" />
+                        质量门
+                      </div>
+                      <div className="mt-3 space-y-2.5">
+                        {agent.gates.map((gate) => (
+                          <div
+                            key={gate}
+                            className="flex gap-2 text-xs leading-5"
+                          >
+                            <CheckCircle2Icon className="mt-0.5 size-3.5 shrink-0 text-emerald-600" />
+                            <span>{gate}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <Separator className="my-3" />
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">
+                          回退策略
+                        </span>
+                        <span className="font-medium">未触发</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                    {step.status === 'completed' && <CheckCircle2Icon className="size-5 text-emerald-600" />}
+            </div>
                 </article>
               ))}
-            </section>
+      </section>
 
-            <section className="rounded-2xl border bg-card p-5 shadow-sm">
-              <h2 className="font-semibold">可解释事件摘要</h2>
-              <div className="mt-3 space-y-3">
-                {events.slice(-8).map((event) => (
-                  <div key={event.sequence} className="grid grid-cols-[56px_1fr] gap-3 text-sm">
-                    <span className="font-mono text-xs text-muted-foreground">#{event.sequence}</span>
-                    <div>
-                      <div className="font-medium">{event.agent_name ?? '运行时'} · {event.event_type}</div>
-                      <p className="mt-0.5 text-muted-foreground">{event.summary}</p>
-                    </div>
-                  </div>
-                ))}
+      <section className="rounded-2xl border bg-card p-5 shadow-sm">
+        <h2 className="font-semibold">可解释事件摘要</h2>
+        <div className="mt-3 space-y-3">
+          {events.slice(-8).map((event) => (
+            <div key={event.sequence} className="grid grid-cols-[56px_1fr] gap-3 text-sm">
+              <span className="font-mono text-xs text-muted-foreground">#{event.sequence}</span>
+              <div>
+                <div className="font-medium">{event.agent_name ?? '运行时'} · {event.event_type}</div>
+                <p className="mt-0.5 text-muted-foreground">{event.summary}</p>
               </div>
-            </section>
-          </>
-        )}
-      </main>
-    </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
+  )
+}
+      </main >
+    </div >
   )
 }

@@ -24,7 +24,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar
       collapsible="icon"
-      className="border-sidebar-border shadow-[1px_0_12px_rgba(15,23,42,0.04)]"
+      className="border-sidebar-border shadow-[2px_0_18px_rgba(31,86,145,0.07)]"
       {...props}
     >
       <SidebarHeader className="border-sidebar-border/80 border-b px-3 py-3">
@@ -32,7 +32,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground hover:bg-sidebar-accent/70"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground hover:bg-sidebar-accent/80"
               asChild
             >
               <Link to="/dashboard">

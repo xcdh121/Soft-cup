@@ -1,8 +1,8 @@
-import { Atom } from '@effect-atom/atom-react'
+import { Atom, Registry } from '@effect-atom/atom-react'
 import { Effect } from 'effect'
 import type { AuthSession, AuthUser } from '@/lib/auth-client'
 import { ApiClientService } from '@/integrations/api/http'
-import { authClient } from '@/lib/auth-client'
+import { authClient, profileClient } from '@/lib/auth-client'
 
 export const currentUserAtom = Atom.make(
   Effect.gen(function* () {
@@ -69,5 +69,23 @@ export const signOutAtom = Atom.fn(
     yield* Effect.promise(async () => {
       await authClient.auth.signOut()
     })
+  }),
+)
+
+export const updateCurrentUserNameAtom = Atom.fn(
+  Effect.fn(function* (name: string) {
+    const registry = yield* Registry.AtomRegistry
+    const user = yield* Effect.tryPromise(() => profileClient.updateName(name))
+    registry.refresh(currentUserAtom)
+    return user
+  }),
+)
+
+export const uploadCurrentUserAvatarAtom = Atom.fn(
+  Effect.fn(function* (file: File) {
+    const registry = yield* Registry.AtomRegistry
+    const user = yield* Effect.tryPromise(() => profileClient.uploadAvatar(file))
+    registry.refresh(currentUserAtom)
+    return user
   }),
 )

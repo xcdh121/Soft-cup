@@ -30,6 +30,7 @@ export type EvaluationQuestion = {
   title: string
   difficulty?: string
   knowledgePoints: Array<string>
+  knowledgePointIds: Array<string>
   attemptCount: number
   correctCount: number
   wrongCount: number
@@ -126,6 +127,9 @@ export const learningEvaluationAtom = Atom.family((projectId: string) =>
                   title: question.question_text,
                   difficulty: question.difficulty_level,
                   knowledgePoints: [quiz.name],
+                  knowledgePointIds: question.knowledge_point_id
+                    ? [question.knowledge_point_id]
+                    : [],
                   attemptCount: questionAttempts.length,
                   correctCount,
                   wrongCount: questionAttempts.length - correctCount,
@@ -187,6 +191,7 @@ export const learningEvaluationAtom = Atom.family((projectId: string) =>
                   title: flashcard.question,
                   difficulty: flashcard.difficulty_level,
                   knowledgePoints: [group.name],
+                  knowledgePointIds: [],
                   attemptCount: cardAttempts.length,
                   correctCount,
                   wrongCount: cardAttempts.length - correctCount,
@@ -255,6 +260,7 @@ export const learningEvaluationAtom = Atom.family((projectId: string) =>
                       : resource.knowledge_point_ids.length
                         ? resource.knowledge_point_ids
                         : [resourcePackage.target_topic],
+                    knowledgePointIds: resource.knowledge_point_ids,
                     attemptCount: 0,
                     correctCount: 0,
                     wrongCount: 0,

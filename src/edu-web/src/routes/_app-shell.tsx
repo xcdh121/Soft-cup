@@ -103,7 +103,7 @@ const DashboardShell = ({
       className={isDocumentDetailRoute ? 'h-svh overflow-hidden' : undefined}
     >
       <AppSidebar />
-      <SidebarInset className="h-svh min-w-0 overflow-hidden bg-[#fbfcfe] dark:bg-background">
+      <SidebarInset className="h-svh min-w-0 overflow-hidden bg-background">
         <div
           className={
             isDocumentDetailRoute

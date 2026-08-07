@@ -44,9 +44,9 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      'is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm',
-      'group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground dark:group-[.is-user]:bg-primary dark:group-[.is-user]:text-white',
-      'group-[.is-assistant]:text-foreground dark:group-[.is-assistant]:text-white',
+      'flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm',
+      'group-[.is-user]:ml-auto group-[.is-user]:rounded-2xl group-[.is-user]:rounded-tr-md group-[.is-user]:bg-primary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-primary-foreground group-[.is-user]:shadow-sm',
+      'group-[.is-assistant]:w-full group-[.is-assistant]:rounded-2xl group-[.is-assistant]:rounded-tl-md group-[.is-assistant]:border group-[.is-assistant]:border-border/90 group-[.is-assistant]:bg-white group-[.is-assistant]:px-4 group-[.is-assistant]:py-3 group-[.is-assistant]:text-slate-900 group-[.is-assistant]:shadow-sm dark:group-[.is-assistant]:bg-card dark:group-[.is-assistant]:text-card-foreground',
       className,
     )}
     {...props}

@@ -76,7 +76,7 @@ export const ChatImageAttachment = ({ file }: { file: FilePartDto }) => {
   }, [file.file_url, inlineUrl])
 
   return (
-    <figure className="max-w-md overflow-hidden rounded-lg border bg-background/60">
+    <figure className="max-w-md overflow-hidden rounded-lg border bg-card/90 text-card-foreground">
       {imageUrl ? (
         <a href={imageUrl} target="_blank" rel="noopener noreferrer">
           <img

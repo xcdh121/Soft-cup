@@ -45,7 +45,7 @@ export function AgentCollaborationPanel({
   const agents = Array.from(new Set(steps.map((step) => step.agentName)))
   return (
     <details
-      className="group rounded-2xl border bg-background"
+      className="group rounded-2xl border bg-card text-card-foreground"
       open={demoMode || undefined}
     >
       <summary className="flex cursor-pointer list-none items-center gap-3 p-5">

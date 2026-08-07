@@ -510,7 +510,7 @@ const AiQuizAnalysis = ({
           </span>
         ) : null}
       </div>
-      <div className="min-h-28 rounded-xl bg-background/80 p-4">
+      <div className="min-h-28 rounded-xl bg-card p-4 text-card-foreground">
         <Response className="text-sm leading-7">{analysisText}</Response>
         {isLoading ? (
           <span
