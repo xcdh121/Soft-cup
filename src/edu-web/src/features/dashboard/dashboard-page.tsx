@@ -593,7 +593,7 @@ const CommunitySection = () => {
                   ) : null}
 
                   {replyingTo === comment.id ? (
-                    <div className="mt-3 ml-12 rounded-xl border bg-background p-3">
+                    <div className="mt-3 ml-12 rounded-xl border bg-card p-3 text-card-foreground">
                       <Textarea
                         autoFocus
                         value={replyContent}
@@ -838,7 +838,7 @@ export const DashboardPage = () => {
             </div>
           </div>
 
-          <Card className="rounded-none border-primary/15 bg-gradient-to-br from-primary/8 via-background to-background shadow-sm">
+          <Card className="rounded-none border-primary/15 bg-card shadow-sm">
             <CardHeader className="gap-2 px-4">
               <CardTitle className="text-xl">今日学习概览</CardTitle>
               <CardDescription>汇总今天的学习投入与计划进度。</CardDescription>

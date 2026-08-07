@@ -97,8 +97,7 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
         <div className="container mx-auto max-w-7xl space-y-8 px-4 py-8">
           <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-                <BrainCircuit className="h-8 w-8 text-primary" />
+              <h1 className="text-3xl font-bold tracking-tight">
                 个性化学习计划
               </h1>
               <p className="text-muted-foreground mt-1">

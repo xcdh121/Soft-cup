@@ -168,7 +168,7 @@ export const FlashcardDetail = ({ flashcardGroupId, ...props }: Props) => {
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {flashcards.map((card, index) => (
-            <div key={card.id} className="rounded-xl border bg-background p-4">
+            <div key={card.id} className="rounded-xl border bg-card p-4 text-card-foreground">
               <div className="text-xs text-muted-foreground">
                 闪卡 {index + 1}
               </div>

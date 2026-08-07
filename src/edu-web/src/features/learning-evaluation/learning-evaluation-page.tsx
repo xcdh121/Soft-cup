@@ -672,7 +672,7 @@ const HistoryAnalysis = ({
 
   return (
     <div className="space-y-6">
-      <Card className="border-primary/20 bg-primary/5">
+      <Card className="border-primary/20 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <BrainCircuit className="size-5 text-primary" />
@@ -697,7 +697,7 @@ const HistoryAnalysis = ({
             {aiRecommendations.map((recommendation, index) => (
               <div
                 key={recommendation}
-                className="rounded-xl border bg-background/75 p-4"
+                className="rounded-xl border bg-card p-4 text-card-foreground"
               >
                 <div className="mb-2 text-sm font-semibold text-primary">
                   建议 {index + 1}

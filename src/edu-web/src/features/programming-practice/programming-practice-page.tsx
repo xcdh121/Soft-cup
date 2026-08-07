@@ -132,7 +132,7 @@ const GradeList = ({
   items: Array<string>
   tone: 'success' | 'danger' | 'primary'
 }) => (
-  <div className="rounded-xl bg-background/80 p-4">
+  <div className="rounded-xl bg-card p-4 text-card-foreground">
     <div
       className={cn(
         'mb-2 text-sm font-semibold',
@@ -687,7 +687,7 @@ export const ProgrammingPracticePage = ({
                   </div>
 
                   {grade.complexity_analysis ? (
-                    <div className="rounded-xl bg-background/80 p-4 text-sm">
+                    <div className="rounded-xl bg-card p-4 text-sm text-card-foreground">
                       <div className="mb-1 font-semibold">复杂度分析</div>
                       <p className="leading-6 text-muted-foreground">
                         {grade.complexity_analysis}

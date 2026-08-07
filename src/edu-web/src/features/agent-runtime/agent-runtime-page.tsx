@@ -596,7 +596,7 @@ export function AgentRuntimePage() {
                   return (
                     <article
                       key={skill.name}
-                      className="flex h-full flex-col rounded-2xl border bg-background p-4 md:p-5"
+                      className="flex h-full flex-col rounded-2xl border bg-card p-4 text-card-foreground md:p-5"
                     >
                       <div className="flex items-start gap-3">
                         <div
@@ -673,7 +673,7 @@ export function AgentRuntimePage() {
                 })}
               </div>
 
-              <div className="mt-4 rounded-xl border border-dashed bg-background/70 p-4">
+              <div className="mt-4 rounded-xl border border-dashed bg-card/80 p-4 text-card-foreground">
                 <div className="flex items-center gap-2 text-xs font-medium text-foreground">
                   <ShieldCheckIcon className="size-4 text-emerald-600" />
                   Harness 运行保障
@@ -854,7 +854,7 @@ export function AgentRuntimePage() {
                             })}
                           </div>
                         </div>
-                        <div className="rounded-xl border bg-background p-4">
+                        <div className="rounded-xl border bg-card p-4 text-card-foreground">
                           <div className="flex items-center gap-2 text-sm font-medium">
                             <ShieldCheckIcon className="size-4 text-emerald-600" />
                             质量门

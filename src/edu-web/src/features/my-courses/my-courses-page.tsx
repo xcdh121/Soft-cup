@@ -118,7 +118,7 @@ export const MyCoursesPage = () => {
   const coursesResult = useAtomValue(coursesAtom)
 
   return (
-    <div className="min-h-full bg-slate-50/70 dark:bg-background">
+    <div className="min-h-full bg-background">
       <header className="sticky top-0 z-10 flex h-14 items-center border-b bg-background/95 px-5 backdrop-blur sm:px-8">
         <SidebarTrigger />
         <Separator

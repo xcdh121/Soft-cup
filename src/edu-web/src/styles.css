@@ -27,40 +27,40 @@ code {
 }
 
 :root {
-  --background: #fbfcfe;
-  --foreground: #021024;
+  --background: #f3f6fa;
+  --foreground: #172033;
   --card: #ffffff;
-  --card-foreground: #021024;
+  --card-foreground: #172033;
   --popover: #ffffff;
-  --popover-foreground: #021024;
-  --primary: #052659;
+  --popover-foreground: #172033;
+  --primary: #1f5f99;
   --primary-foreground: #ffffff;
-  --secondary: #edf3f8;
-  --secondary-foreground: #052659;
-  --muted: #f2f5f8;
-  --muted-foreground: #64748b;
-  --accent: #eaf1f7;
-  --accent-foreground: #173a5e;
-  --destructive: #b42318;
+  --secondary: #e8eef6;
+  --secondary-foreground: #244766;
+  --muted: #edf1f6;
+  --muted-foreground: #66758a;
+  --accent: #e4eef9;
+  --accent-foreground: #1f4f78;
+  --destructive: #c9362b;
   --destructive-foreground: #ffffff;
-  --border: #dce5ee;
-  --input: #b7c7d6;
-  --ring: #5483b3;
-  --chart-1: #021024;
-  --chart-2: #052659;
-  --chart-3: #5483b3;
-  --chart-4: #7da0ca;
-  --chart-5: #c1e8ff;
-  --sidebar: #f4f7fb;
-  --sidebar-foreground: #334155;
-  --sidebar-primary: #1f4b73;
+  --border: #d9e1eb;
+  --input: #c3cedb;
+  --ring: #4d82b3;
+  --chart-1: #1f5f99;
+  --chart-2: #3d7fb4;
+  --chart-3: #67a4c8;
+  --chart-4: #85b8ad;
+  --chart-5: #d6a05f;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #34445a;
+  --sidebar-primary: #6d98bd;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e7eef6;
-  --sidebar-accent-foreground: #213b57;
-  --sidebar-active: #d8e6f3;
-  --sidebar-active-foreground: #173a5e;
-  --sidebar-border: #d5dee9;
-  --sidebar-ring: #6f93b5;
+  --sidebar-accent: #edf3f8;
+  --sidebar-accent-foreground: #49667f;
+  --sidebar-active: #e2edf6;
+  --sidebar-active-foreground: #3f607c;
+  --sidebar-border: #cfdae6;
+  --sidebar-ring: #5e88af;
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif,
@@ -93,40 +93,40 @@ code {
 }
 
 .dark {
-  --background: #021024;
-  --foreground: #c1e8ff;
-  --card: #052659;
-  --card-foreground: #ffffff;
-  --popover: #052659;
-  --popover-foreground: #ffffff;
-  --primary: #7da0ca;
-  --primary-foreground: #021024;
-  --secondary: #052659;
-  --secondary-foreground: #c1e8ff;
-  --muted: #052659;
-  --muted-foreground: #7da0ca;
-  --accent: #5483b3;
-  --accent-foreground: #ffffff;
-  --destructive: #f04438;
+  --background: #101722;
+  --foreground: #e6edf5;
+  --card: #182231;
+  --card-foreground: #f7f9fc;
+  --popover: #182231;
+  --popover-foreground: #f7f9fc;
+  --primary: #82b8e3;
+  --primary-foreground: #102235;
+  --secondary: #202d3d;
+  --secondary-foreground: #e2ebf5;
+  --muted: #202b39;
+  --muted-foreground: #9aaabd;
+  --accent: #29445e;
+  --accent-foreground: #f3f8fc;
+  --destructive: #f16d62;
   --destructive-foreground: #ffffff;
-  --border: #5483b3;
-  --input: #5483b3;
-  --ring: #7da0ca;
-  --chart-1: #c1e8ff;
-  --chart-2: #7da0ca;
-  --chart-3: #5483b3;
-  --chart-4: #052659;
-  --chart-5: #ffffff;
-  --sidebar: #111b2b;
-  --sidebar-foreground: #d7e0eb;
-  --sidebar-primary: #8fb2d4;
-  --sidebar-primary-foreground: #0b1524;
-  --sidebar-accent: #1b2b40;
+  --border: #334356;
+  --input: #405369;
+  --ring: #82b8e3;
+  --chart-1: #8fc7ec;
+  --chart-2: #6ca9d6;
+  --chart-3: #7fc0b0;
+  --chart-4: #d7ad70;
+  --chart-5: #ba91d1;
+  --sidebar: #131d2a;
+  --sidebar-foreground: #dce5ef;
+  --sidebar-primary: #8fc1e5;
+  --sidebar-primary-foreground: #102235;
+  --sidebar-accent: #203247;
   --sidebar-accent-foreground: #edf4fb;
-  --sidebar-active: #263d5a;
+  --sidebar-active: #29445f;
   --sidebar-active-foreground: #f3f7fb;
-  --sidebar-border: #2b3d54;
-  --sidebar-ring: #7699bd;
+  --sidebar-border: #2b3b4e;
+  --sidebar-ring: #7ba9cf;
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif,
@@ -218,22 +218,21 @@ code {
   body {
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);
-    background-image: linear-gradient(
-      135deg,
-      #ffffff 0%,
-      #f7fbff 55%,
-      #eaf6ff 100%
-    );
+    background-image:
+      radial-gradient(circle at 10% 0%, rgb(255 255 255 / 80%), transparent 34rem),
+      linear-gradient(145deg, #f5f7fb 0%, #eef3f8 58%, #e8f0f7 100%);
     background-attachment: fixed;
   }
 
   .dark body {
-    background-image: linear-gradient(135deg, #021024 0%, #052659 100%);
+    background-image:
+      radial-gradient(circle at 10% 0%, rgb(65 102 137 / 20%), transparent 34rem),
+      linear-gradient(145deg, #101722 0%, #121d2a 100%);
   }
 
   ::selection {
-    color: #021024;
-    background: #c1e8ff;
+    color: #102235;
+    background: #b8dcf5;
   }
 
   ::-webkit-scrollbar {

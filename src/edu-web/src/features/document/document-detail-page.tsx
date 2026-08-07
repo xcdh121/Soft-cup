@@ -280,7 +280,7 @@ const CoursePdfSidebar = ({
         <span className="text-sm font-medium">章节 PDF</span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
-        <div className="mb-3 rounded-md border bg-background p-3">
+        <div className="mb-3 rounded-md border bg-card p-3 text-card-foreground">
           <div className="mb-2 text-xs font-medium text-muted-foreground">
             绑定当前 PDF
           </div>
@@ -668,7 +668,7 @@ const AiSidebar = ({
           <span className="sr-only">显示 AI 侧栏</span>
         </Button>
       ) : (
-        <div className="flex h-full min-h-0 w-full flex-col rounded-md border bg-background shadow-sm">
+        <div className="flex h-full min-h-0 w-full flex-col rounded-md border bg-card text-card-foreground shadow-sm">
           <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
             <div className="flex items-center gap-2">
               <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -697,7 +697,7 @@ const AiSidebar = ({
 
           {activeSelection ? (
             <div className="shrink-0 border-b bg-muted/30 p-3">
-              <div className="rounded-md border bg-background p-3 text-sm leading-6">
+              <div className="rounded-md border bg-card p-3 text-sm leading-6 text-card-foreground">
                 <div className="mb-1 text-xs text-muted-foreground">
                   选中文本
                 </div>
@@ -765,7 +765,7 @@ const AiSidebar = ({
             )}
 
             {sending ? (
-              <div className="rounded-md border bg-background p-3 text-sm leading-6">
+              <div className="rounded-md border bg-card p-3 text-sm leading-6 text-card-foreground">
                 <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
                   <BotIcon className="size-3.5" />
                   AI 助手
@@ -1403,7 +1403,7 @@ const PdfReader = ({
                     key={pageNumber}
                     ref={setPageRef(pageNumber)}
                     data-pdf-page-number={pageNumber}
-                    className="overflow-hidden rounded-md border bg-background shadow-sm"
+                    className="overflow-hidden rounded-md border bg-card text-card-foreground shadow-sm"
                     style={{
                       width: pageWidth,
                       minHeight: pageHeight,
@@ -1553,7 +1553,7 @@ const DocumentNotReadyState = ({
 
   return (
     <div className="flex flex-1 items-center justify-center bg-muted/30 p-6">
-      <div className="w-full max-w-md rounded-md border bg-background p-6 text-center shadow-sm">
+      <div className="w-full max-w-md rounded-md border bg-card p-6 text-center text-card-foreground shadow-sm">
         <div className="mx-auto mb-4 flex size-10 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <Icon className={cn('size-5', !failed && 'animate-pulse')} />
         </div>

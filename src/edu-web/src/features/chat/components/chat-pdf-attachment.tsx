@@ -36,7 +36,7 @@ export const ChatPdfAttachment = ({ file }: { file: FilePartDto }) => {
   }
 
   return (
-    <div className="flex min-w-64 items-center gap-3 rounded-lg border bg-background/60 px-3 py-2">
+    <div className="flex min-w-64 items-center gap-3 rounded-lg border bg-card/90 px-3 py-2 text-card-foreground">
       <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300">
         <FileTextIcon className="size-5" />
       </div>

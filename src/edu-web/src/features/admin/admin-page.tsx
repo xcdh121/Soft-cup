@@ -153,7 +153,7 @@ export function AdminPage() {
     tab === 'overview' && data && !Array.isArray(data) ? data : null
 
   return (
-    <div className="min-h-svh bg-[#f5f7fb] dark:bg-background">
+    <div className="min-h-svh bg-background">
       <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-6">
           <div className="flex items-center gap-3">

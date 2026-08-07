@@ -221,7 +221,7 @@ const MetricCard = ({
   icon: ReactNode
   tone: string
 }) => (
-  <div className="relative overflow-hidden rounded-2xl border bg-background p-5 shadow-sm">
+  <div className="relative overflow-hidden rounded-2xl border bg-card p-5 text-card-foreground shadow-sm">
     <div
       className={`absolute right-0 top-0 h-20 w-20 rounded-bl-[56px] ${tone}`}
     />
@@ -233,7 +233,7 @@ const MetricCard = ({
         </div>
         <div className="mt-2 text-xs text-muted-foreground">{hint}</div>
       </div>
-      <div className="rounded-xl border bg-background/80 p-2.5 shadow-sm">
+      <div className="rounded-xl border bg-card p-2.5 text-card-foreground shadow-sm">
         {icon}
       </div>
     </div>
@@ -731,7 +731,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
 
           {!Result.isSuccess(profileResult) &&
           !Result.isFailure(profileResult) ? (
-            <section className="rounded-[24px] border bg-background p-8 text-center shadow-sm">
+            <section className="rounded-[24px] border bg-card p-8 text-center text-card-foreground shadow-sm">
               <Loader2Icon className="mx-auto size-8 animate-spin text-muted-foreground" />
               <div className="mt-3 text-sm text-muted-foreground">
                 正在加载学生画像...
@@ -739,7 +739,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
             </section>
           ) : profile ? (
             <>
-              <section className="rounded-[24px] border bg-background p-6 shadow-sm">
+              <section className="rounded-[24px] border bg-card p-6 text-card-foreground shadow-sm">
                 <div className="mb-6">
                   <h2 className="text-lg font-semibold">十二维学生画像</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -772,7 +772,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
               </section>
 
               <section className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
-                <div className="rounded-[24px] border bg-background p-6 shadow-sm">
+                <div className="rounded-[24px] border bg-card p-6 text-card-foreground shadow-sm">
                   <div className="mb-5 flex items-start justify-between gap-4">
                     <div>
                       <h2 className="text-lg font-semibold">近 7 天练习趋势</h2>
@@ -785,7 +785,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                   <PracticeTrendChart data={dailyPractice} />
                 </div>
 
-                <div className="rounded-[24px] border bg-background p-6 shadow-sm">
+                <div className="rounded-[24px] border bg-card p-6 text-card-foreground shadow-sm">
                   <div>
                     <h2 className="text-lg font-semibold">知识掌握分布</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
@@ -824,7 +824,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
               </section>
 
               <section className="grid gap-6 lg:grid-cols-2">
-                <div className="rounded-[24px] border bg-background p-6 shadow-sm">
+                <div className="rounded-[24px] border bg-card p-6 text-card-foreground shadow-sm">
                   <div className="mb-5 flex items-start justify-between gap-4">
                     <div>
                       <h2 className="text-lg font-semibold">优先巩固知识点</h2>
@@ -837,7 +837,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                   <MasteryBars nodes={nodes} />
                 </div>
 
-                <div className="rounded-[24px] border bg-background p-6 shadow-sm">
+                <div className="rounded-[24px] border bg-card p-6 text-card-foreground shadow-sm">
                   <div className="mb-5">
                     <h2 className="text-lg font-semibold">高频错误主题</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
@@ -883,7 +883,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
               </section>
 
               <section className="grid gap-6 lg:grid-cols-2">
-                <div className="rounded-[24px] border bg-background p-6 shadow-sm">
+                <div className="rounded-[24px] border bg-card p-6 text-card-foreground shadow-sm">
                   <h2 className="text-lg font-semibold">画像状态</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
                     区分已确认信息、系统推断和待补充字段。
@@ -916,7 +916,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                   </div>
                 </div>
 
-                <div className="rounded-[24px] border bg-background p-6 shadow-sm">
+                <div className="rounded-[24px] border bg-card p-6 text-card-foreground shadow-sm">
                   <h2 className="text-lg font-semibold">画像证据来源</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
                     展示当前画像判断主要建立在哪些数据上。
@@ -950,7 +950,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                 </div>
               </section>
 
-              <section className="rounded-[24px] border bg-background p-6 shadow-sm">
+              <section className="rounded-[24px] border bg-card p-6 text-card-foreground shadow-sm">
                 <div className="mb-5">
                   <h2 className="text-lg font-semibold">画像变化时间轴</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -997,7 +997,7 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
               </section>
             </>
           ) : Result.isSuccess(profileResult) ? (
-            <section className="rounded-[24px] border bg-background p-8 text-center shadow-sm">
+            <section className="rounded-[24px] border bg-card p-8 text-center text-card-foreground shadow-sm">
               <SparklesIcon className="mx-auto size-9 text-[#5483B3]" />
               <h2 className="mt-4 text-lg font-semibold">还没有学生画像</h2>
               <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">

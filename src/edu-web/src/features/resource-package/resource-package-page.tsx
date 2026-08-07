@@ -4,7 +4,6 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import {
   ExternalLinkIcon,
   Loader2Icon,
-  SparklesIcon,
   TagsIcon,
 } from 'lucide-react'
 import type {
@@ -634,10 +633,7 @@ export const ResourcePackagePage = ({
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="flex w-full max-w-none flex-1 flex-col gap-6 px-4 py-6">
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <SparklesIcon className="size-5 text-primary" />
-              <h1 className="text-2xl font-semibold">资源包生成</h1>
-            </div>
+            <h1 className="text-2xl font-semibold">资源包生成</h1>
             <p className="text-sm text-muted-foreground">{helperText}</p>
           </div>
 
@@ -666,7 +662,7 @@ export const ResourcePackagePage = ({
           ) : null}
 
           <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-2 xl:items-start">
-            <div className="rounded-2xl border bg-background">
+            <div className="rounded-2xl border bg-card text-card-foreground">
               <div className="border-b px-5 py-4">
                 <div className="text-base font-medium">生成资源包</div>
                 <div className="mt-1 text-sm text-muted-foreground">
@@ -876,7 +872,7 @@ export const ResourcePackagePage = ({
             </div>
 
             <div className="flex min-h-0 flex-col gap-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)]">
-              <div className="rounded-xl border bg-background p-4">
+              <div className="rounded-xl border bg-card p-4 text-card-foreground">
                 <div className="flex flex-col gap-4">
                   <div>
                     <div className="text-base font-medium">资源包列表</div>
@@ -904,7 +900,7 @@ export const ResourcePackagePage = ({
                 </div>
               </div>
 
-              <div className="min-h-0 overflow-y-auto rounded-xl border bg-background p-4">
+              <div className="min-h-0 overflow-y-auto rounded-xl border bg-card p-4 text-card-foreground">
                 <div className="mb-4">
                   <div className="text-base font-medium">生成结果</div>
                   <div className="text-sm text-muted-foreground">

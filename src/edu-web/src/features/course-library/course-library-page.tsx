@@ -133,7 +133,7 @@ const ResourceList = ({ knowledgePointId }: { knowledgePointId: string }) => {
           resources.map((resource) => (
             <div
               key={resource.id}
-              className="rounded-2xl border bg-background p-4 shadow-sm"
+              className="rounded-2xl border bg-card p-4 text-card-foreground shadow-sm"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
@@ -242,7 +242,7 @@ const RelatedQuestionList = ({
           {questions.map((item) => (
             <div
               key={`${item.projectId}-${item.type}-${item.resourceId}-${item.id}`}
-              className="flex flex-col gap-3 rounded-2xl border bg-background p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 rounded-2xl border bg-card p-4 text-card-foreground shadow-sm sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -309,7 +309,7 @@ const ChapterPdfList = ({
           {pdfResources.map((resource) => (
             <div
               key={resource.id}
-              className="rounded-2xl border bg-background p-3 shadow-sm"
+              className="rounded-2xl border bg-card p-3 text-card-foreground shadow-sm"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 space-y-1">
