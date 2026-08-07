@@ -46,7 +46,7 @@ const ProjectNavSection = ({
   children: ReactNode
 }) => (
   <section aria-label={title} className="space-y-1">
-    <h3 className="mx-1 flex h-8 items-center justify-center rounded-lg border border-[#d0deea] bg-[#e8f0f7] px-2 text-center text-[11px] font-semibold tracking-[0.08em] text-[#4b6881] shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-[#3c5d7c] dark:bg-[#294663] dark:text-[#e5eef7]">
+    <h3 className="mx-1 flex h-8 items-center justify-center rounded-lg border border-primary/15 bg-primary/[0.07] px-2 text-center text-[11px] font-semibold tracking-[0.08em] text-primary shadow-[0_1px_2px_rgba(23,104,201,0.06)] dark:border-primary/25 dark:bg-primary/10 dark:text-primary">
       {title}
     </h3>
     <SidebarMenu>{children}</SidebarMenu>

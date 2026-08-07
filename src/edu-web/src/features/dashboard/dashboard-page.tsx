@@ -94,28 +94,28 @@ const todayStudyStats = [
     value: '2.5 小时',
     icon: Clock3Icon,
     className:
-      'border-sky-300/70 bg-gradient-to-br from-sky-500 to-cyan-400 text-white shadow-sky-200/60',
+      'border-primary/20 bg-gradient-to-br from-[#e7f1fd] to-[#d3e5fa] text-[#155ba8] shadow-[#8db8e4]/15 dark:border-primary/30 dark:from-[#173353] dark:to-[#244b76] dark:text-[#b9d9fb]',
   },
   {
     label: '练习题目',
     value: '18 道',
     icon: SquarePenIcon,
     className:
-      'border-violet-300/70 bg-gradient-to-br from-violet-500 to-fuchsia-400 text-white shadow-violet-200/60',
+      'border-[#d4635d]/20 bg-gradient-to-br from-[#fbeceb] to-[#f5d9d6] text-[#ad4843] shadow-[#d98b85]/15 dark:border-[#dc7a74]/30 dark:from-[#442725] dark:to-[#59302d] dark:text-[#f0b0ab]',
   },
   {
     label: '工具调用',
     value: '12 次',
     icon: WrenchIcon,
     className:
-      'border-amber-300/70 bg-gradient-to-br from-amber-500 to-orange-400 text-white shadow-amber-200/60',
+      'border-warning/25 bg-gradient-to-br from-[#fbf3df] to-[#f4e3b4] text-[#825912] shadow-[#d9ad55]/15 dark:border-warning/30 dark:from-[#3a2d18] dark:to-[#4b391b] dark:text-[#e6c27a]',
   },
   {
     label: '今日计划',
     value: '已完成',
     icon: CheckCircle2Icon,
     className:
-      'border-emerald-300/70 bg-gradient-to-br from-emerald-500 to-green-400 text-white shadow-emerald-200/60',
+      'border-[#6d98c2]/25 bg-gradient-to-br from-[#edf3fa] to-[#d9e6f3] text-[#315f8e] shadow-[#8cabc8]/15 dark:border-[#78afe8]/25 dark:from-[#203044] dark:to-[#2d435b] dark:text-[#b7cfe5]',
   },
 ]
 
@@ -133,10 +133,10 @@ const TodayStudyStats = () => (
           className={`min-w-0 rounded-xl border p-2.5 shadow-md ${stat.className}`}
         >
           <div className="flex min-w-0 items-center gap-1.5">
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-white/20 ring-1 ring-white/25">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-white/70 ring-1 ring-current/10">
               <Icon className="size-3.5" aria-hidden="true" />
             </span>
-            <p className="truncate text-[11px] font-medium text-white/80">
+            <p className="truncate text-[11px] font-medium opacity-75">
               {stat.label}
             </p>
           </div>
@@ -258,7 +258,8 @@ const getInitials = (name: string) =>
 
 const heatStyle = (count: number, maxCount: number) => {
   const intensity = maxCount === 0 ? 0 : count / maxCount
-  const palette = ['#eaf6ff', '#c1e8ff', '#7da0ca', '#5483b3', '#052659']
+  const palette = ['#eef5fd', '#d8e8fa', '#f7edcf', '#e5b858', '#c95d57']
+  const borderPalette = ['#d6e5f5', '#bdd5ee', '#ead9a8', '#d1a044', '#b94f4a']
   const paletteIndex = Math.min(
     palette.length - 1,
     Math.floor(intensity * palette.length),
@@ -266,8 +267,8 @@ const heatStyle = (count: number, maxCount: number) => {
 
   return {
     backgroundColor: palette[paletteIndex],
-    borderColor: intensity > 0.5 ? '#5483b3' : '#c1e8ff',
-    color: intensity > 0.62 ? '#ffffff' : '#021024',
+    borderColor: borderPalette[paletteIndex],
+    color: intensity > 0.8 ? '#ffffff' : '#20324b',
   }
 }
 
