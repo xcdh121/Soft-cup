@@ -121,23 +121,20 @@ const ResourceAction = ({ item }: { item: ResourceItem }) => {
   const { resource } = item
 
   if (resource.resource_type === 'mind_map') {
-    const targetId = resource.content_json?.target_id
-    if (typeof targetId === 'string' && targetId) {
-      return (
-        <Button variant="ghost" size="sm" asChild>
-          <Link
-            to="/dashboard/p/$projectId/m/$mindMapId"
-            params={{
-              projectId: resource.project_id,
-              mindMapId: targetId,
-            }}
-          >
-            查看
-            <ArrowUpRightIcon />
-          </Link>
-        </Button>
-      )
-    }
+    return (
+      <Button variant="ghost" size="sm" asChild>
+        <Link
+          to="/dashboard/p/$projectId/r/$resourceId"
+          params={{
+            projectId: resource.project_id,
+            resourceId: resource.id,
+          }}
+        >
+          查看
+          <ArrowUpRightIcon />
+        </Link>
+      </Button>
+    )
   }
 
   if (resource.resource_type === 'pptx' && resource.file_url) {

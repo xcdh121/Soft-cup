@@ -8,6 +8,7 @@ import {
   mindMapProgressAtom,
   refreshMindMapAtom,
 } from '@/data-acess/mind-map'
+import { useGeneratedResourceSnapshot } from '@/hooks/use-generated-resource-snapshot'
 
 type MindMapContentProps = {
   mindMapId: string
@@ -23,6 +24,15 @@ export const MindMapContent = ({
   const mindMapResult = useAtomValue(mindMapAtom(`${projectId}:${mindMapId}`))
   const streamProgress = useAtomValue(mindMapProgressAtom)
   const refreshMindMap = useAtomSet(refreshMindMapAtom, { mode: 'promise' })
+  const generatedResourcePath = `/api/v1/projects/${projectId}/generated-resources/by-target/mind_map/${mindMapId}`
+  const generatedSnapshot = useGeneratedResourceSnapshot<{
+    content_json: Record<string, unknown> | null
+  }>({
+    projectId,
+    targetType: 'mind_map',
+    targetId: mindMapId,
+    dataPath: generatedResourcePath,
+  })
 
   useEffect(() => {
     if (!Result.isSuccess(mindMapResult)) return
@@ -44,6 +54,10 @@ export const MindMapContent = ({
 
   return Result.builder(mindMapResult)
     .onSuccess((mindMap) => {
+      const persistedMapData = normalizeMindMapData(mindMap.map_data)
+      const generatedMapData = normalizeMindMapData(
+        generatedSnapshot.data?.content_json,
+      )
       const rawMapData =
         streamProgress?.mindMapId === mindMapId &&
         streamProgress.nodes.length > 0
@@ -63,7 +77,9 @@ export const MindMapContent = ({
                 label: edge.label == null ? null : String(edge.label),
               })),
             }
-          : mindMap.map_data
+          : persistedMapData.nodes.length > 0
+            ? persistedMapData
+            : generatedMapData
       const mapData = normalizeMindMapData(rawMapData)
 
       return (
@@ -76,6 +92,11 @@ export const MindMapContent = ({
           <div className="flex-1 min-h-0 border rounded-lg overflow-hidden">
             {mapData.nodes.length > 0 ? (
               <MindMapView mapData={mapData} />
+            ) : generatedSnapshot.isManaged &&
+              !generatedSnapshot.isGenerating ? (
+              <div className="flex h-full items-center justify-center text-muted-foreground">
+                <span>该思维导图没有可显示的节点，请重新生成。</span>
+              </div>
             ) : (
               <div className="flex h-full items-center justify-center gap-2 text-muted-foreground">
                 <Loader2Icon className="size-4 animate-spin" />
