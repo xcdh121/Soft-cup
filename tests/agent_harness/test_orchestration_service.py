@@ -97,6 +97,65 @@ class LearningPathServiceTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(store.get_latest_learning_path("project_1"), response)
 
+    async def test_generate_learning_path_persists_and_links_recommendations(self):
+        now = datetime.now(UTC)
+        context = AgentRunContext(
+            run_id="run_closed_loop_path",
+            project_id="project_1",
+            student_id="student_1",
+            goal="learning_path",
+            context=AgentContextData(),
+        )
+        recommendation = {
+            "id": "rec_1",
+            "recommendation_type": "quiz",
+            "target_id": "quiz_1",
+            "title": "Targeted practice",
+            "reason_text": ["Weak mastery"],
+        }
+        learning_path = {
+            "title": "Personalized path",
+            "estimated_minutes": 30,
+            "path_steps": [{"title": "Targeted practice", "type": "quiz"}],
+            "based_on_profile_fields": [],
+            "based_on_knowledge_points": ["Greedy algorithm"],
+            "adjust_reasons": [],
+        }
+        result = SupervisorRunResult(
+            run_id=context.run_id,
+            status=RunStatus.COMPLETED,
+            context=context,
+            events=[],
+            final_result={
+                "diagnosis": {
+                    "summary": "Needs practice",
+                    "related_knowledge_points": [
+                        {"id": "kp_1", "name": "Greedy algorithm"}
+                    ],
+                },
+                "recommendations": [recommendation],
+                "learning_path": learning_path,
+            },
+        )
+        store = InMemoryOrchestrationStore()
+        service = StubLearningPathService(result, store)
+
+        response = await service.generate_learning_path(
+            user_id="student_1",
+            project_id="project_1",
+        )
+
+        self.assertEqual(response.based_on_recommendation_ids, ["rec_1"])
+        self.assertEqual(store.list_recommendations("project_1"), [recommendation])
+        self.assertEqual(
+            response.learning_path["path_steps"][0]["recommendation_id"],
+            "rec_1",
+        )
+        self.assertEqual(
+            response.learning_path["path_steps"][0]["knowledge_point_id"],
+            "kp_1",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,20 +1,20 @@
 import { useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Option } from 'effect'
 import { Loader2Icon } from 'lucide-react'
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { QuizContent } from './quiz-content'
 import type { QuizQuestionDto } from '@/integrations/api/client'
 import {
   goToNextQuestionAtom,
   goToPreviousQuestionAtom,
   quizDetailStateAtom,
-  resetQuizAtom,
   setSelectedAnswerAtom,
   submitQuizQuestionAtom,
 } from '@/data-acess/quiz-detail-state'
 import { quizQuestionsAtom, refreshQuizQuestionsAtom } from '@/data-acess/quiz'
 import { cn } from '@/lib/utils'
 import { useGeneratedResourceSnapshot } from '@/hooks/use-generated-resource-snapshot'
+import { readLearningVerification } from '@/lib/learning-verification-context'
 
 type Props = React.ComponentProps<'div'> & {
   quizId: string
@@ -41,13 +41,14 @@ export const QuizDetail = ({
     dataPath: `/api/v1/projects/${projectId}/quizzes/${quizId}/questions`,
   })
 
-  const resetQuiz = useAtomSet(resetQuizAtom)
   const setSelectedAnswer = useAtomSet(setSelectedAnswerAtom, {
     mode: 'promise',
   })
   const goToNext = useAtomSet(goToNextQuestionAtom, { mode: 'promise' })
   const goToPrevious = useAtomSet(goToPreviousQuestionAtom, { mode: 'promise' })
   const submitQuestion = useAtomSet(submitQuizQuestionAtom, { mode: 'promise' })
+  const wasGenerating = useRef(false)
+  const verificationContext = readLearningVerification(projectId)
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -127,11 +128,13 @@ export const QuizDetail = ({
   ])
 
   useEffect(() => {
-    resetQuiz({ quizId })
-  }, [quizId, resetQuiz])
-
-  useEffect(() => {
-    if (snapshot.checking || snapshot.isGenerating) return
+    if (snapshot.checking) return
+    if (snapshot.isGenerating) {
+      wasGenerating.current = true
+      return
+    }
+    if (!wasGenerating.current) return
+    wasGenerating.current = false
     void refreshQuestions({ projectId, quizId })
   }, [
     projectId,
@@ -194,6 +197,18 @@ export const QuizDetail = ({
 
   return (
     <div {...props} className={cn('flex min-h-0 flex-1 flex-col', className)}>
+      {verificationContext && (
+        <div
+          className="mx-4 mt-4 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm"
+          role="status"
+        >
+          <div className="font-medium">当前为干预效果验证</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {verificationContext.objective}
+            。提交第一道与目标知识点匹配的题目后，将记录为验证证据并计算掌握度增益。
+          </div>
+        </div>
+      )}
       <QuizContent quizId={quizId} projectId={projectId} />
     </div>
   )

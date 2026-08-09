@@ -1,6 +1,7 @@
 """CRUD service for managing practice records."""
 
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from edu_db.models import (
@@ -33,6 +34,22 @@ class PracticeService:
         user_answer: str | None,
         correct_answer: str,
         was_correct: bool,
+        session_id: str | None = None,
+        attempt_no: int = 1,
+        score: float | None = None,
+        response_time_ms: int | None = None,
+        hint_count: int = 0,
+        difficulty_snapshot: str | None = None,
+        answer_mode: str | None = None,
+        mapping_method: str | None = None,
+        mapping_confidence: float | None = None,
+        recommendation_id: str | None = None,
+        resource_id: str | None = None,
+        learning_path_id: str | None = None,
+        learning_path_step_id: str | None = None,
+        is_verification: bool = False,
+        occurred_at: datetime | None = None,
+        metadata: dict | None = None,
     ) -> PracticeRecordDto:
         """Create a single practice record.
 
@@ -60,7 +77,11 @@ class PracticeService:
                         f"Study resource {item_id} of type {item_type} not found"
                     )
                 project = self._get_owned_project(db, project_id, user_id)
-                resolved_knowledge_point_id = self._resolve_knowledge_point(
+                (
+                    resolved_knowledge_point_id,
+                    resolved_mapping_method,
+                    resolved_mapping_confidence,
+                ) = self._resolve_knowledge_point(
                     db,
                     project.course_id,
                     knowledge_point_id,
@@ -80,6 +101,29 @@ class PracticeService:
                     user_answer=user_answer,
                     correct_answer=correct_answer,
                     was_correct=was_correct,
+                    session_id=session_id,
+                    attempt_no=attempt_no,
+                    score=float(was_correct) if score is None else score,
+                    response_time_ms=response_time_ms,
+                    hint_count=hint_count,
+                    difficulty_snapshot=difficulty_snapshot,
+                    answer_mode=answer_mode or item_type,
+                    mapping_method=mapping_method or resolved_mapping_method,
+                    mapping_status=(
+                        "resolved" if resolved_knowledge_point_id else "pending"
+                    ),
+                    mapping_confidence=(
+                        mapping_confidence
+                        if mapping_confidence is not None
+                        else resolved_mapping_confidence
+                    ),
+                    recommendation_id=recommendation_id,
+                    resource_id=resource_id,
+                    learning_path_id=learning_path_id,
+                    learning_path_step_id=learning_path_step_id,
+                    is_verification=is_verification,
+                    occurred_at=occurred_at or datetime.now(timezone.utc),
+                    metadata_json=metadata or {},
                 )
 
                 db.add(practice_record)
@@ -121,7 +165,11 @@ class PracticeService:
                     # Validate that the referenced study resource exists
                     if not self._validate_item(db, item_type, item_id):
                         continue
-                    resolved_knowledge_point_id = self._resolve_knowledge_point(
+                    (
+                        resolved_knowledge_point_id,
+                        resolved_mapping_method,
+                        resolved_mapping_confidence,
+                    ) = self._resolve_knowledge_point(
                         db,
                         project.course_id,
                         record_data.get("knowledge_point_id"),
@@ -141,6 +189,39 @@ class PracticeService:
                         user_answer=record_data.get("user_answer"),
                         correct_answer=record_data.get("correct_answer"),
                         was_correct=record_data.get("was_correct"),
+                        session_id=record_data.get("session_id"),
+                        attempt_no=record_data.get("attempt_no", 1),
+                        score=(
+                            float(record_data.get("was_correct"))
+                            if record_data.get("score") is None
+                            else record_data.get("score")
+                        ),
+                        response_time_ms=record_data.get("response_time_ms"),
+                        hint_count=record_data.get("hint_count", 0),
+                        difficulty_snapshot=record_data.get("difficulty_snapshot"),
+                        answer_mode=record_data.get("answer_mode") or item_type,
+                        mapping_method=(
+                            record_data.get("mapping_method")
+                            or resolved_mapping_method
+                        ),
+                        mapping_status=(
+                            "resolved" if resolved_knowledge_point_id else "pending"
+                        ),
+                        mapping_confidence=(
+                            record_data.get("mapping_confidence")
+                            if record_data.get("mapping_confidence") is not None
+                            else resolved_mapping_confidence
+                        ),
+                        recommendation_id=record_data.get("recommendation_id"),
+                        resource_id=record_data.get("resource_id"),
+                        learning_path_id=record_data.get("learning_path_id"),
+                        learning_path_step_id=record_data.get(
+                            "learning_path_step_id"
+                        ),
+                        is_verification=record_data.get("is_verification", False),
+                        occurred_at=record_data.get("occurred_at")
+                        or datetime.now(timezone.utc),
+                        metadata_json=record_data.get("metadata") or {},
                     )
 
                     db.add(practice_record)
@@ -204,6 +285,8 @@ class PracticeService:
                     db.query(QuizQuestion).filter(QuizQuestion.id == item_id).first()
                 )
                 return question is not None
+            elif item_type in {"programming", "subjective", "manual"}:
+                return bool(item_id)
             else:
                 return False
         except Exception:
@@ -228,7 +311,7 @@ class PracticeService:
         topic: str | None,
         item_type: str | None,
         item_id: str | None,
-    ) -> str | None:
+    ) -> tuple[str | None, str | None, float | None]:
         stored_knowledge_point_id = None
         content_texts: list[str | None] = [topic]
         if item_type == "quiz" and item_id:
@@ -242,12 +325,33 @@ class PracticeService:
                 stored_knowledge_point_id = item.knowledge_point_id
                 content_texts.extend([item.question, item.answer])
 
-        return resolve_knowledge_point_id(
+        if knowledge_point_id:
+            resolved = resolve_knowledge_point_id(
+                db,
+                course_id,
+                explicit_id=knowledge_point_id,
+                texts=content_texts,
+            )
+            return resolved, "explicit" if resolved else None, 1.0 if resolved else None
+        if stored_knowledge_point_id:
+            resolved = resolve_knowledge_point_id(
+                db,
+                course_id,
+                explicit_id=stored_knowledge_point_id,
+                texts=content_texts,
+            )
+            return (
+                resolved,
+                "item_binding" if resolved else None,
+                1.0 if resolved else None,
+            )
+        resolved = resolve_knowledge_point_id(
             db,
             course_id,
-            explicit_id=knowledge_point_id or stored_knowledge_point_id,
+            explicit_id=None,
             texts=content_texts,
         )
+        return resolved, "rule_match" if resolved else None, 0.7 if resolved else None
 
     def _model_to_dto(self, record: PracticeRecord) -> PracticeRecordDto:
         """Convert PracticeRecord model to PracticeRecordDto."""
@@ -262,6 +366,23 @@ class PracticeService:
             user_answer=record.user_answer,
             correct_answer=record.correct_answer,
             was_correct=record.was_correct,
+            session_id=record.session_id,
+            attempt_no=record.attempt_no,
+            score=record.score,
+            response_time_ms=record.response_time_ms,
+            hint_count=record.hint_count,
+            difficulty_snapshot=record.difficulty_snapshot,
+            answer_mode=record.answer_mode,
+            mapping_method=record.mapping_method,
+            mapping_status=record.mapping_status,
+            mapping_confidence=record.mapping_confidence,
+            recommendation_id=record.recommendation_id,
+            resource_id=record.resource_id,
+            learning_path_id=record.learning_path_id,
+            learning_path_step_id=record.learning_path_step_id,
+            is_verification=record.is_verification,
+            occurred_at=record.occurred_at,
+            metadata=record.metadata_json or {},
             created_at=record.created_at,
         )
 

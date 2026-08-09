@@ -11,7 +11,7 @@ export type KnowledgeNodeData = KnowledgeGraphNode & {
 
 export type KnowledgeFlowNode = Node<KnowledgeNodeData, 'knowledge'>
 
-const trendIcon = {
+const trendIcon: Record<string, typeof ArrowRight> = {
   up: ArrowUp,
   stable: ArrowRight,
   down: ArrowDown,
@@ -28,8 +28,7 @@ export function KnowledgeNode({
   data,
   selected,
 }: NodeProps<KnowledgeFlowNode>) {
-  const TrendIcon =
-    trendIcon[data.trend as keyof typeof trendIcon] ?? ArrowRight
+  const TrendIcon = trendIcon[data.trend] ?? ArrowRight
 
   return (
     <div
@@ -61,7 +60,7 @@ export function KnowledgeNode({
       </div>
       <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
         <span>{data.difficulty_level}</span>
-        <span>置信度 {Math.round(data.confidence * 100)}%</span>
+        <span>证据 {Math.round(data.evidence_confidence * 100)}%</span>
       </div>
       <Handle type="source" position={Position.Right} className="!bg-primary" />
     </div>

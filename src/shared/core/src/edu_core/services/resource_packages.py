@@ -1894,6 +1894,10 @@ Problem and answer JSON:
         generation_params: dict[str, Any],
     ) -> dict:
         if resource_type == "image":
+            if not project_id or not resource_id or not user_id:
+                raise ValueError(
+                    "project_id, resource_id and user_id are required for image generation"
+                )
             return await self._generate_xfyun_image(
                 project_id=project_id,
                 resource_id=resource_id,

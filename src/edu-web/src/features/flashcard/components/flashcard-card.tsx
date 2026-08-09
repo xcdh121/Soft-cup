@@ -1,5 +1,6 @@
 import { useAtomValue } from '@effect-atom/atom-react'
 import { Option } from 'effect'
+import { Response } from '@/components/ai-elements/response'
 import { Card } from '@/components/ui/card'
 import { flashcardDetailStateAtom } from '@/features/flashcard/state/flashcard-detail-state'
 
@@ -26,7 +27,7 @@ export const FlashcardCard = ({
             <h3 className="text-sm font-medium text-muted-foreground mb-2">
               问题
             </h3>
-            <p className="text-lg leading-relaxed">{question}</p>
+            <Response className="text-lg leading-relaxed">{question}</Response>
           </div>
 
           {showAnswer && (
@@ -34,7 +35,9 @@ export const FlashcardCard = ({
               <h3 className="text-sm font-medium text-muted-foreground mb-2">
                 答案
               </h3>
-              <p className="text-lg leading-relaxed text-primary">{answer}</p>
+              <Response className="text-lg leading-relaxed text-primary">
+                {answer}
+              </Response>
             </div>
           )}
         </div>

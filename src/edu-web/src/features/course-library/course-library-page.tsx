@@ -43,11 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-
-type MarkdownSection = {
-  title: string
-  body: Array<string>
-}
+import { Response } from '@/components/ai-elements/response'
 
 const difficultyLabel: Partial<Record<string, string>> = {
   beginner: '入门',
@@ -62,50 +58,6 @@ const resourceTypeLabel: Partial<Record<string, string>> = {
   code: '代码',
   problem: '题目',
   visualization: '可视化',
-}
-
-const parseMarkdownSections = (markdown?: string | null) => {
-  if (!markdown) return []
-
-  return markdown
-    .split('\n')
-    .reduce<Array<MarkdownSection>>((sections, line) => {
-      if (line.startsWith('## ')) {
-        sections.push({ title: line.replace(/^##\s+/, ''), body: [] })
-        return sections
-      }
-
-      const current = sections.at(-1)
-      if (current && line.trim()) {
-        current.body.push(line.trim())
-      }
-      return sections
-    }, [])
-}
-
-const renderMarkdownLine = (line: string) => {
-  if (line.startsWith('- ')) {
-    return (
-      <li key={line} className="ml-5 list-disc">
-        {line.slice(2)}
-      </li>
-    )
-  }
-
-  const numbered = line.match(/^\d+\.\s+(.*)$/)
-  if (numbered) {
-    return (
-      <li key={line} className="ml-5 list-decimal">
-        {numbered[1]}
-      </li>
-    )
-  }
-
-  return (
-    <p key={line} className="leading-7">
-      {line}
-    </p>
-  )
 }
 
 const LoadingCard = ({ text }: { text: string }) => (
@@ -145,9 +97,9 @@ const ResourceList = ({ knowledgePointId }: { knowledgePointId: string }) => {
                     <span className="font-medium">{resource.title}</span>
                   </div>
                   {resource.description ? (
-                    <p className="text-sm leading-6 text-muted-foreground">
+                    <Response className="text-sm leading-6 text-muted-foreground">
                       {resource.description}
-                    </p>
+                    </Response>
                   ) : null}
                   {resource.estimated_minutes ? (
                     <p className="text-xs text-muted-foreground">
@@ -320,9 +272,9 @@ const ChapterPdfList = ({
                     </span>
                   </div>
                   {resource.description ? (
-                    <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+                    <Response className="line-clamp-2 text-xs leading-5 text-muted-foreground">
                       {resource.description}
-                    </p>
+                    </Response>
                   ) : null}
                 </div>
 
@@ -419,8 +371,6 @@ const CourseBrowser = ({
     )
   }
 
-  const markdownSections = parseMarkdownSections(selectedPoint?.description)
-
   return (
     <>
       <Card className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -460,6 +410,11 @@ const CourseBrowser = ({
                       <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
                       第 {chapter.position} 章：{chapter.title}
                     </h3>
+                    {chapter.description ? (
+                      <Response className="mt-1 text-sm text-muted-foreground">
+                        {chapter.description}
+                      </Response>
+                    ) : null}
                   </div>
                   <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
                     {chapterPoints.length} 个知识点
@@ -515,20 +470,12 @@ const CourseBrowser = ({
           ) : null}
         </CardHeader>
         <CardContent className="min-h-0 flex-1 space-y-8 overflow-y-auto">
-          {markdownSections.length > 0 ? (
-            <div className="space-y-5">
-              {markdownSections.map((section) => (
-                <section
-                  key={section.title}
-                  className="rounded-2xl bg-muted/30 p-4"
-                >
-                  <h3 className="mb-3 font-semibold">{section.title}</h3>
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    {section.body.map(renderMarkdownLine)}
-                  </div>
-                </section>
-              ))}
-            </div>
+          {selectedPoint?.description ? (
+            <section className="rounded-2xl bg-muted/30 p-4">
+              <Response className="text-sm text-muted-foreground">
+                {selectedPoint.description}
+              </Response>
+            </section>
           ) : (
             <div className="rounded-2xl bg-muted/40 p-5 text-sm text-muted-foreground">
               当前知识点还没有正文。初始化脚本会写入包含 5 个区块的 Markdown

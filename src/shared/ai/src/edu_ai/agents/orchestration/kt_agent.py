@@ -88,11 +88,19 @@ class KTAgent(BaseOrchestrationAgent):
         strong_points = []
         scores = []
         for state in states:
-            status = str(state.get("status") or "not_started")
-            if status in {"not_started", "missing", "unobserved"}:
+            raw_status = state.get("status")
+            status = str(raw_status or "unknown")
+            if raw_status is not None and status in {
+                "not_started",
+                "missing",
+                "unobserved",
+            }:
                 # Absence of learning evidence is not negative evidence.
                 continue
-            score = int(state.get("mastery_score", 0))
+            raw_score = float(state.get("mastery_score", 0) or 0)
+            # Accept both the API's 0-100 display score and legacy/probability
+            # snapshots in the 0-1 range.
+            score = round(raw_score * 100 if 0 < raw_score <= 1 else raw_score)
             scores.append(score)
             point = {
                 "knowledge_point_id": state.get("knowledge_point_id"),

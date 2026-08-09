@@ -185,31 +185,19 @@ class PlannerAgent(BaseOrchestrationAgent):
         path_steps = []
         for index, recommendation in enumerate(recommendations, start=1):
             reason_text = recommendation.get("reason_text", [])
-            primary_reason = reason_text[0] if reason_text else "Recommended next step."
+            primary_reason = reason_text[0] if reason_text else "建议按此顺序完成学习资源。"
             path_steps.append(
                 {
                     "step_no": index,
                     "type": recommendation.get("recommendation_type", "resource"),
                     "target_id": recommendation.get("target_id"),
-                    "title": recommendation.get("title") or f"Step {index}",
+                    "title": recommendation.get("title") or f"学习步骤 {index}",
                     "reason": primary_reason,
                 }
             )
 
-        if related_points:
-            first_point_id = related_points[0].get("id")
-            path_steps.append(
-                {
-                    "step_no": len(path_steps) + 1,
-                    "type": "practice",
-                    "target_id": first_point_id,
-                    "title": "Practice to verify improvement",
-                    "reason": "Use targeted practice to confirm the weak point is improving.",
-                }
-            )
-
         return {
-            "title": "Personalized reinforcement path",
+            "title": "个性化巩固学习路径",
             "estimated_minutes": max(30, len(path_steps) * 20),
             "path_steps": path_steps,
             "based_on_profile_fields": [
@@ -223,8 +211,8 @@ class PlannerAgent(BaseOrchestrationAgent):
                 if point.get("name") or point.get("topic") or point.get("id")
             ],
             "adjust_reasons": [
-                "Prioritize the weakest knowledge points first.",
-                "Sequence available recommendations into an actionable plan.",
+                "优先巩固当前掌握度最低的知识点。",
+                "把已生成的推荐资源组织为可执行的学习顺序。",
             ],
         }
 
@@ -272,8 +260,9 @@ class PlannerAgent(BaseOrchestrationAgent):
             topic="Learning Path",
             language_code=course.get("language_code") or "en",
             custom_instructions=(
-                "Start with understanding-oriented steps when helpful, then practice, "
-                "then include a verification step. Reuse recommendation ids and titles when possible."
+                "只安排当前 recommendations 中已有推荐资源的学习执行步骤，"
+                "尽量复用推荐的 id 与中文标题。不要创建 verification/验证步骤；"
+                "验证资源必须等学生完成推荐后，由系统另行单独生成。所有面向学生的文案使用中文。"
             ),
             document_content=document_content,
         ):
@@ -296,6 +285,13 @@ class PlannerAgent(BaseOrchestrationAgent):
                 last_emitted_at = now
 
         final_path = LearningPathContent.model_validate(latest_partial).model_dump()
+        # Verification is event-driven: never persist an LLM-planned verification
+        # before the learner has actually completed a recommendation.
+        final_path["path_steps"] = [
+            step
+            for step in final_path.get("path_steps", [])
+            if str(step.get("type") or "").lower() != "verification"
+        ]
         if partial_sink and final_path != last_emitted:
             await partial_sink(
                 {

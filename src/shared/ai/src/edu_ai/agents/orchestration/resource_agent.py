@@ -138,13 +138,33 @@ class ResourceAgent(BaseOrchestrationAgent):
         related_points = diagnosis.get("related_knowledge_points") or []
         if related_points:
             first_point = related_points[0]
-            if first_point.get("id"):
-                return str(first_point["id"])
+            for key in ("name", "topic", "title", "label"):
+                if first_point.get(key):
+                    return str(first_point[key])
+            point_id = first_point.get("id")
+            if point_id:
+                matched_point = next(
+                    (
+                        point
+                        for point in context.context.knowledge_points
+                        if point.get("id") == point_id
+                    ),
+                    None,
+                )
+                if matched_point:
+                    for key in ("name", "topic", "title", "label"):
+                        if matched_point.get(key):
+                            return str(matched_point[key])
         if diagnosis.get("summary"):
             return str(diagnosis["summary"])
         if context.goal:
-            return context.goal
-        return "general reinforcement"
+            goal_labels = {
+                "diagnosis": "当前学习诊断",
+                "recommendations": "当前薄弱知识点",
+                "learning_path": "当前学习路径",
+            }
+            return goal_labels.get(context.goal, "当前薄弱知识点")
+        return "当前薄弱知识点"
 
     def _queue_resources(
         self,
@@ -170,7 +190,7 @@ class ResourceAgent(BaseOrchestrationAgent):
             note = self.note_service.create_note(
                 project_id=context.project_id,
                 title=self._build_title("note", topic),
-                description="ResourceAgent queued note generation",
+                description="根据本次学习诊断新生成的巩固笔记",
                 content="",
             )
             stream_in_package = (
@@ -197,7 +217,7 @@ class ResourceAgent(BaseOrchestrationAgent):
             quiz = self.quiz_service.create_quiz(
                 project_id=context.project_id,
                 name=self._build_title("quiz", topic),
-                description="ResourceAgent queued quiz generation",
+                description="根据本次学习诊断新生成的巩固选择题",
             )
             quiz_count = context.meta.get("quiz_count")
             custom_instructions = self._build_custom_instructions(context)
@@ -230,7 +250,7 @@ class ResourceAgent(BaseOrchestrationAgent):
             group = self.flashcard_group_service.create_flashcard_group(
                 project_id=context.project_id,
                 name=self._build_title("flashcards", topic),
-                description="ResourceAgent queued flashcard generation",
+                description="根据本次学习诊断新生成的巩固闪卡",
             )
             flashcard_count = context.meta.get("flashcard_count")
             difficulty = context.meta.get("difficulty")
@@ -270,7 +290,7 @@ class ResourceAgent(BaseOrchestrationAgent):
                 user_id=context.student_id,
                 project_id=context.project_id,
                 title=self._build_title("mind_map", topic),
-                description="ResourceAgent queued mind map generation",
+                description="根据本次学习诊断新生成的巩固知识导图",
             )
             self.mind_map_service.queue_generation(
                 user_id=context.student_id,
@@ -304,22 +324,22 @@ class ResourceAgent(BaseOrchestrationAgent):
         for index, resource in enumerate(queued_resources, start=1):
             reason_codes = ["generation_queued"]
             reason_text = [
-                "A new resource was queued through the project generation services."
+                "系统已根据本次诊断单独创建并生成该学习资源。"
             ]
             if weak_points:
                 reason_codes.append("weak_mastery")
                 reason_text.append(
-                    "The resource targets an evidence-backed weak knowledge point."
+                    "该资源针对有学习证据支持的薄弱知识点。"
                 )
             if resource["resource_type"] in preferred_types:
                 reason_codes.append("profile_preference_match")
                 reason_text.append(
-                    "The resource type matches the learner's saved resource preference."
+                    "资源类型符合学习者已保存的偏好。"
                 )
             if learning_goal:
                 reason_codes.append("learning_goal_alignment")
                 reason_text.append(
-                    f"The recommendation supports the saved learning goal: {learning_goal}."
+                    f"该推荐服务于当前学习目标：{learning_goal}。"
                 )
             recommendations.append(
                 {
@@ -354,14 +374,14 @@ class ResourceAgent(BaseOrchestrationAgent):
                     "id": f"{context.run_id}_rec_{index:03d}",
                     "recommendation_type": resource.get("resource_type", "resource"),
                     "target_id": resource.get("id"),
-                    "title": resource.get("title", "Learning resource"),
+                    "title": resource.get("title", "学习资源"),
                     "reason_codes": [
                         "weak_mastery",
                         "available_resource",
                     ],
                     "reason_text": [
-                        "The related knowledge point has low mastery.",
-                        "An existing project resource is available.",
+                        "相关知识点当前掌握度较低。",
+                        "生成服务暂不可用，已匹配项目中的已有资源作为兜底。",
                     ],
                     "score": round(0.75 - (index - 1) * 0.05, 2),
                     "recommended_by": self.agent_name.value,
@@ -376,11 +396,11 @@ class ResourceAgent(BaseOrchestrationAgent):
                     "id": f"{context.run_id}_rec_001",
                     "recommendation_type": "practice",
                     "target_id": first_point["id"],
-                    "title": "Complete targeted weak-point practice",
+                    "title": "完成薄弱知识点专项练习",
                     "reason_codes": ["weak_mastery", "no_existing_resource"],
                     "reason_text": [
-                        "The related knowledge point has low mastery.",
-                        "No matching generated resource is currently available.",
+                        "相关知识点当前掌握度较低。",
+                        "暂未找到匹配的已生成资源，建议先完成专项练习。",
                     ],
                     "score": 0.6,
                     "recommended_by": self.agent_name.value,
@@ -458,12 +478,12 @@ class ResourceAgent(BaseOrchestrationAgent):
 
     def _build_title(self, resource_type: str, topic: str) -> str:
         labels = {
-            "note": "Reinforcement note",
-            "mind_map": "Reinforcement mind map",
-            "quiz": "Reinforcement quiz",
-            "flashcards": "Reinforcement flashcards",
+            "note": "巩固笔记",
+            "mind_map": "巩固知识导图",
+            "quiz": "巩固选择题",
+            "flashcards": "巩固闪卡",
         }
-        return f"{labels.get(resource_type, 'Learning resource')}: {topic}"
+        return f"{labels.get(resource_type, '学习资源')}：{topic}"
 
     def _build_custom_instructions(self, context: AgentRunContext) -> str:
         requested_instructions = str(

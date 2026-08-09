@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { KTParameterSettings } from './kt-parameter-settings'
 
 import { useConfirmationDialog } from '@/components/confirmation-dialog'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -49,6 +50,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
+  authAtom,
   currentUserAtom,
   updateCurrentUserNameAtom,
   uploadCurrentUserAvatarAtom,
@@ -317,6 +319,7 @@ const UserSection = () => {
 }
 
 export function SettingsPage() {
+  const auth = useAtomValue(authAtom)
   const confirmationDialog = useConfirmationDialog()
   const usageResult = useAtomValue(usageAtom)
   const [isDeletingAllChats, setIsDeletingAllChats] = useState(false)
@@ -382,6 +385,8 @@ export function SettingsPage() {
           <section aria-label="账户设置">
             <UserSection />
           </section>
+
+          {auth.user?.is_admin && <KTParameterSettings />}
 
           <Card className="gap-0 py-0 shadow-none">
             <CardHeader className="gap-1 border-b px-5 py-5 sm:px-6">

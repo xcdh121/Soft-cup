@@ -13,6 +13,7 @@ import type { SimulationLinkDatum, SimulationNodeDatum } from 'd3-force'
 import type {
   KnowledgeGraph,
   KnowledgeGraphNode,
+  KnowledgeStateEvent,
 } from '@/data-acess/knowledge-graph'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -46,16 +47,69 @@ type LayoutLink = SimulationLinkDatum<LayoutNode> & {
   strength: number
 }
 
+const DETAIL_PANEL_WIDTH = 440
+const DETAIL_PANEL_HEIGHT = 520
+
+export const KNOWLEDGE_STATUS_OPTIONS = [
+  {
+    value: 'not_started',
+    label: '未开始',
+    color: '#5483b3',
+    className: 'border-[#5483B3]/60 bg-[#052659]/70',
+  },
+  {
+    value: 'insufficient_evidence',
+    label: '证据不足',
+    color: '#8fa9bf',
+    className: 'border-[#8FA9BF]/60 bg-[#8FA9BF]/15',
+  },
+  {
+    value: 'weak',
+    label: '薄弱',
+    color: '#7da0ca',
+    className: 'border-[#7DA0CA]/60 bg-[#7DA0CA]/15',
+  },
+  {
+    value: 'learning',
+    label: '学习中',
+    color: '#c1e8ff',
+    className: 'border-[#C1E8FF]/60 bg-[#C1E8FF]/15',
+  },
+  {
+    value: 'developing',
+    label: '发展中',
+    color: '#76b5d8',
+    className: 'border-[#76B5D8]/60 bg-[#76B5D8]/15',
+  },
+  {
+    value: 'mastered',
+    label: '已掌握',
+    color: '#ffffff',
+    className: 'border-white/60 bg-white/15',
+  },
+  {
+    value: 'at_risk',
+    label: '待复核',
+    color: '#f3b66f',
+    className: 'border-[#F3B66F]/60 bg-[#F3B66F]/15 text-[#FFE0B7]',
+  },
+] as const
+
 const statusLabel: Partial<Record<string, string>> = {
   not_started: '未开始',
   learning: '学习中',
+  insufficient_evidence: '证据不足',
+  weak: '薄弱',
+  developing: '发展中',
   mastered: '已掌握',
+  at_risk: '待复核',
 }
 
 const trendLabel: Partial<Record<string, string>> = {
   up: '上升',
   stable: '稳定',
   down: '下降',
+  insufficient_evidence: '证据不足',
 }
 
 const difficultyLabel: Partial<Record<string, string>> = {
@@ -65,7 +119,10 @@ const difficultyLabel: Partial<Record<string, string>> = {
 }
 
 function getMasteryColor(node: KnowledgeGraphNode) {
-  if (node.status === 'not_started') return '#5483b3'
+  const statusOption = KNOWLEDGE_STATUS_OPTIONS.find(
+    (option) => option.value === node.status,
+  )
+  if (statusOption) return statusOption.color
   if (node.mastery_score < 40) return '#7da0ca'
   if (node.mastery_score < 80) return '#c1e8ff'
   return '#052659'
@@ -169,7 +226,7 @@ function buildViewBox(positions: Map<string, Point>) {
     minX - padding,
     minY - padding,
     Math.max(720, maxX - minX + padding * 2),
-    Math.max(480, maxY - minY + padding * 2),
+    Math.max(640, maxY - minY + padding * 2),
   ].join(' ')
 }
 
@@ -219,11 +276,19 @@ function getConnectedNodes(
 export function KnowledgeGraphCanvas({
   graph,
   selectedNodeId,
+  events,
+  activeStatuses,
   onSelect,
+  onStatusToggle,
+  onClearStatusFilters,
 }: {
   graph: KnowledgeGraph
   selectedNodeId: string | null
+  events: Array<KnowledgeStateEvent>
+  activeStatuses: ReadonlySet<string>
   onSelect: (node: KnowledgeGraphNode | null) => void
+  onStatusToggle: (status: string) => void
+  onClearStatusFilters: () => void
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const dragStateRef = useRef<DragState | null>(null)
@@ -261,8 +326,6 @@ export function KnowledgeGraphCanvas({
     () => getConnectedNodes(graph, selectedNode),
     [graph, selectedNode],
   )
-  const detailPanelWidth = 440
-  const detailPanelHeight = 340
   const selectedViewportPoint = selectedPoint
     ? {
         x: selectedPoint.x * viewport.zoom + viewport.pan.x,
@@ -270,16 +333,16 @@ export function KnowledgeGraphCanvas({
       }
     : null
   const detailPanelX = selectedViewportPoint
-    ? selectedViewportPoint.x + detailPanelWidth + 48 <=
+    ? selectedViewportPoint.x + DETAIL_PANEL_WIDTH + 48 <=
       viewBoxRect.x + viewBoxRect.width
       ? selectedViewportPoint.x + 32
-      : selectedViewportPoint.x - detailPanelWidth - 32
+      : selectedViewportPoint.x - DETAIL_PANEL_WIDTH - 32
     : 0
   const detailPanelY = selectedViewportPoint
     ? clamp(
         selectedViewportPoint.y - 24,
         viewBoxRect.y + 16,
-        viewBoxRect.y + viewBoxRect.height - detailPanelHeight - 16,
+        viewBoxRect.y + viewBoxRect.height - DETAIL_PANEL_HEIGHT - 16,
       )
     : 0
 
@@ -548,12 +611,19 @@ export function KnowledgeGraphCanvas({
 
         {selectedNode && selectedPoint && (
           <foreignObject
-            height={detailPanelHeight}
-            width={detailPanelWidth}
+            height={DETAIL_PANEL_HEIGHT}
+            width={DETAIL_PANEL_WIDTH}
             x={detailPanelX}
             y={detailPanelY}
           >
-            <div className="pointer-events-auto w-[428px] rounded-lg border border-[#7DA0CA]/40 bg-[#052659]/95 p-5 font-sans text-sm text-[#C1E8FF] shadow-2xl shadow-[#021024]/50 backdrop-blur">
+            <div
+              aria-label={`${selectedNode.label}知识点详情`}
+              className="pointer-events-auto h-full w-[428px] overflow-y-auto overscroll-contain rounded-lg border border-[#7DA0CA]/40 bg-[#052659]/95 p-5 font-sans text-sm text-[#C1E8FF] shadow-2xl shadow-[#021024]/50 backdrop-blur"
+              data-testid="knowledge-point-detail-panel"
+              role="region"
+              onPointerDown={(event) => event.stopPropagation()}
+              onWheel={(event) => event.stopPropagation()}
+            >
               <div className="mb-4 flex items-start justify-between gap-4">
                 <div>
                   <div className="text-lg font-semibold leading-6 text-white">
@@ -590,17 +660,29 @@ export function KnowledgeGraphCanvas({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
                   <div className="text-slate-500">置信度</div>
                   <div className="mt-1 font-medium text-white">
-                    {Math.round(selectedNode.confidence * 100)}%
+                    {Math.round(selectedNode.evidence_confidence * 100)}%
                   </div>
                 </div>
                 <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
                   <div className="text-slate-500">趋势</div>
                   <div className="mt-1 font-medium text-white">
                     {trendLabel[selectedNode.trend] ?? selectedNode.trend}
+                  </div>
+                </div>
+                <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
+                  <div className="text-slate-500">下一题正确率</div>
+                  <div className="mt-1 font-medium text-white">
+                    {Math.round(selectedNode.p_correct_next * 100)}%
+                  </div>
+                </div>
+                <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
+                  <div className="text-slate-500">模型</div>
+                  <div className="mt-1 truncate font-medium text-white">
+                    {selectedNode.model_version}
                   </div>
                 </div>
                 <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
@@ -621,24 +703,156 @@ export function KnowledgeGraphCanvas({
                   {successors.map((node) => node.label).join('、') || '无'}
                 </div>
               </div>
+
+              <div className="mt-4 border-t border-white/10 pt-3">
+                <div className="mb-2 font-medium text-white">最近状态事件</div>
+                {events.length > 0 ? (
+                  <div className="space-y-2 pr-1">
+                    {events.map((event) => (
+                      <div
+                        key={event.id}
+                        className="rounded border border-white/10 bg-white/[0.04] p-2"
+                      >
+                        <div className="flex justify-between gap-3 text-xs text-[#7DA0CA]">
+                          <span>
+                            {Math.round(event.score_before)}% →{' '}
+                            {Math.round(event.score_after)}%
+                          </span>
+                          <span>{event.model_version}</span>
+                        </div>
+                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-[#C1E8FF]">
+                          {event.explanation_summary ||
+                            event.reason_codes.join('、') ||
+                            '该事件已计入知识状态。'}
+                        </div>
+                        {event.algorithm === 'expert_bkt' && (
+                          <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+                            <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                              <div className="rounded bg-[#021024]/70 px-2 py-1.5">
+                                更新前{' '}
+                                <span className="text-white">
+                                  {event.prior_mastery == null
+                                    ? '—'
+                                    : `${Math.round(event.prior_mastery * 100)}%`}
+                                </span>
+                              </div>
+                              <div className="rounded bg-[#021024]/70 px-2 py-1.5">
+                                遗忘后{' '}
+                                <span className="text-white">
+                                  {event.prior_after_forgetting == null
+                                    ? '—'
+                                    : `${Math.round(event.prior_after_forgetting * 100)}%`}
+                                </span>
+                              </div>
+                              <div className="rounded bg-[#021024]/70 px-2 py-1.5">
+                                观察后{' '}
+                                <span className="text-white">
+                                  {event.posterior_after_observation == null
+                                    ? '—'
+                                    : `${Math.round(event.posterior_after_observation * 100)}%`}
+                                </span>
+                              </div>
+                              <div className="rounded bg-[#021024]/70 px-2 py-1.5">
+                                学习后{' '}
+                                <span className="text-white">
+                                  {event.posterior_after_learning == null
+                                    ? '—'
+                                    : `${Math.round(event.posterior_after_learning * 100)}%`}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-[#7DA0CA]">
+                              <span>
+                                证据权重 {event.event_weight.toFixed(2)}
+                              </span>
+                              {event.effective_parameters.learn_probability !=
+                                null && (
+                                <span>
+                                  学习转移{' '}
+                                  {Math.round(
+                                    event.effective_parameters
+                                      .learn_probability * 100,
+                                  )}
+                                  %
+                                </span>
+                              )}
+                              {event.effective_parameters.slip_probability !=
+                                null && (
+                                <span>
+                                  失误率{' '}
+                                  {Math.round(
+                                    event.effective_parameters
+                                      .slip_probability * 100,
+                                  )}
+                                  %
+                                </span>
+                              )}
+                              {event.effective_parameters.guess_probability !=
+                                null && (
+                                <span>
+                                  猜测率{' '}
+                                  {Math.round(
+                                    event.effective_parameters
+                                      .guess_probability * 100,
+                                  )}
+                                  %
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-[#7DA0CA]">
+                    暂无状态变化事件。
+                  </div>
+                )}
+              </div>
             </div>
           </foreignObject>
         )}
       </svg>
 
-      <div className="absolute left-4 top-4 flex flex-wrap gap-2 text-[11px] font-medium text-[#C1E8FF]">
-        <span className="rounded-full border border-[#5483B3]/50 bg-[#052659]/60 px-2.5 py-1 backdrop-blur">
-          未开始
-        </span>
-        <span className="rounded-full border border-[#7DA0CA]/50 bg-[#7DA0CA]/15 px-2.5 py-1 text-[#C1E8FF] backdrop-blur">
-          薄弱
-        </span>
-        <span className="rounded-full border border-[#C1E8FF]/50 bg-[#5483B3]/20 px-2.5 py-1 text-[#C1E8FF] backdrop-blur">
-          学习中
-        </span>
-        <span className="rounded-full border border-white/40 bg-[#C1E8FF]/20 px-2.5 py-1 text-white backdrop-blur">
-          已掌握
-        </span>
+      <div
+        aria-label="按知识点状态筛选"
+        className="absolute left-4 top-4 flex max-w-[calc(100%-8rem)] flex-wrap gap-2 text-[11px] font-medium text-[#C1E8FF]"
+        role="group"
+      >
+        <button
+          type="button"
+          aria-pressed={activeStatuses.size === 0}
+          className={cn(
+            'rounded-full border border-[#7DA0CA]/60 bg-[#021024]/80 px-2.5 py-1 backdrop-blur transition hover:bg-[#052659] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white',
+            activeStatuses.size === 0 ? 'ring-2 ring-white/80' : 'opacity-60',
+          )}
+          onClick={onClearStatusFilters}
+        >
+          全部
+        </button>
+        {KNOWLEDGE_STATUS_OPTIONS.map((option) => {
+          const isActive =
+            activeStatuses.size === 0 || activeStatuses.has(option.value)
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={isActive}
+              className={cn(
+                'rounded-full border px-2.5 py-1 backdrop-blur transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white',
+                option.className,
+                isActive
+                  ? 'ring-1 ring-white/70'
+                  : 'opacity-45 hover:opacity-80',
+              )}
+              data-testid={`knowledge-status-filter-${option.value}`}
+              onClick={() => onStatusToggle(option.value)}
+            >
+              {option.label}
+            </button>
+          )
+        })}
       </div>
 
       <div className="absolute right-4 top-4 flex gap-2">

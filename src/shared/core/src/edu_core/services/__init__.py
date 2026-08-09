@@ -11,6 +11,10 @@ from edu_core.services.document_upload import DocumentUploadService
 from edu_core.services.documents import DocumentService
 from edu_core.services.flashcard_groups import FlashcardGroupService
 from edu_core.services.knowledge_states import KnowledgeStateService
+from edu_core.services.learning_closed_loop import (
+    KTConfigurationService,
+    LearningClosedLoopService,
+)
 from edu_core.services.learner_profiles import LearnerProfileService
 from edu_core.services.mind_maps import MindMapService
 from edu_core.services.notes import NoteService
@@ -36,6 +40,8 @@ __all__ = [
     "DocumentUploadService",
     "FlashcardGroupService",
     "KnowledgeStateService",
+    "KTConfigurationService",
+    "LearningClosedLoopService",
     "LearnerProfileService",
     "MindMapService",
     "NotFoundError",

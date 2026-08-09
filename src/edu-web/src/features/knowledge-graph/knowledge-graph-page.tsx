@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Result, useAtomValue } from '@effect-atom/atom-react'
 import { Search, TrendingDown } from 'lucide-react'
+import { filterKnowledgeGraph } from './filter-knowledge-graph'
 import { KnowledgeGraphCanvas } from './knowledge-graph-canvas'
 import type {
   KnowledgeGraph,
@@ -8,39 +9,60 @@ import type {
 } from '@/data-acess/knowledge-graph'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { knowledgeGraphAtom } from '@/data-acess/knowledge-graph'
+import {
+  knowledgeGraphAtom,
+  knowledgeStateEventsAtom,
+} from '@/data-acess/knowledge-graph'
 import { ProjectHeader } from '@/features/project/components/project-header'
 
-function GraphContent({ graph }: { graph: KnowledgeGraph }) {
+function GraphContent({
+  graph,
+  projectId,
+}: {
+  graph: KnowledgeGraph
+  projectId: string
+}) {
   const [query, setQuery] = useState('')
   const [onlyWeak, setOnlyWeak] = useState(false)
+  const [activeStatuses, setActiveStatuses] = useState<Set<string>>(new Set())
   const [selectedNode, setSelectedNode] = useState<KnowledgeGraphNode | null>(
     null,
   )
+  const eventsResult = useAtomValue(
+    knowledgeStateEventsAtom(
+      selectedNode ? JSON.stringify([projectId, selectedNode.id]) : '',
+    ),
+  )
+  const selectedEvents = Result.isSuccess(eventsResult)
+    ? eventsResult.value
+    : []
 
   const filteredGraph = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase()
-    if (!normalizedQuery && !onlyWeak) return graph
+    return filterKnowledgeGraph(graph, query, onlyWeak, activeStatuses)
+  }, [activeStatuses, graph, onlyWeak, query])
 
-    const nodes = graph.nodes.filter((node) => {
-      const matchesQuery =
-        !normalizedQuery ||
-        node.label.toLocaleLowerCase().includes(normalizedQuery) ||
-        node.tags.some((tag) =>
-          tag.toLocaleLowerCase().includes(normalizedQuery),
-        )
-      const matchesWeak = !onlyWeak || node.mastery_score < 60
-      return matchesQuery && matchesWeak
-    })
-    const nodeIds = new Set(nodes.map((node) => node.id))
-    return {
-      ...graph,
-      nodes,
-      edges: graph.edges.filter(
-        (edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target),
-      ),
+  const toggleStatus = (status: string) => {
+    const nextStatuses = new Set(activeStatuses)
+    if (nextStatuses.size === 0) {
+      nextStatuses.add(status)
+    } else if (nextStatuses.has(status)) {
+      nextStatuses.delete(status)
+    } else {
+      nextStatuses.add(status)
     }
-  }, [graph, onlyWeak, query])
+    setActiveStatuses(nextStatuses)
+    if (
+      nextStatuses.size > 0 &&
+      selectedNode &&
+      !nextStatuses.has(selectedNode.status)
+    ) {
+      setSelectedNode(null)
+    }
+  }
+
+  const clearStatusFilters = () => {
+    setActiveStatuses(new Set())
+  }
 
   return (
     <section className="flex min-h-[720px] flex-col overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm">
@@ -74,15 +96,18 @@ function GraphContent({ graph }: { graph: KnowledgeGraph }) {
       </div>
 
       <div className="relative min-h-0 flex-1">
-        {filteredGraph.nodes.length > 0 ? (
-          <KnowledgeGraphCanvas
-            graph={filteredGraph}
-            selectedNodeId={selectedNode?.id ?? null}
-            onSelect={setSelectedNode}
-          />
-        ) : (
-          <div className="flex h-full min-h-[620px] items-center justify-center text-sm text-muted-foreground">
-            没有符合当前筛选条件的知识点。
+        <KnowledgeGraphCanvas
+          activeStatuses={activeStatuses}
+          graph={filteredGraph}
+          selectedNodeId={selectedNode?.id ?? null}
+          events={selectedEvents}
+          onClearStatusFilters={clearStatusFilters}
+          onSelect={setSelectedNode}
+          onStatusToggle={toggleStatus}
+        />
+        {filteredGraph.nodes.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+            没有符合当前筛选条件的知识点，可点击“全部”恢复显示。
           </div>
         )}
       </div>
@@ -99,7 +124,9 @@ export const KnowledgeGraphPage = ({ projectId }: { projectId: string }) => {
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="container mx-auto flex max-w-[1600px] flex-1 flex-col gap-6 px-4 py-6">
           {Result.builder(graphResult)
-            .onSuccess((graph) => <GraphContent graph={graph} />)
+            .onSuccess((graph) => (
+              <GraphContent graph={graph} projectId={projectId} />
+            ))
             .onInitialOrWaiting(() => (
               <section className="rounded-2xl border bg-card p-8 text-sm text-muted-foreground shadow-sm">
                 正在计算知识图谱布局...

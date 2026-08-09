@@ -1,11 +1,11 @@
-import { ApiClientService } from '@/integrations/api/http'
-import { makeAtomRuntime } from '@/lib/make-atom-runtime'
-import { appendSseChunk } from '@/lib/sse'
-import { withToast } from '@/lib/with-toast'
 import { Atom, Registry } from '@effect-atom/atom-react'
 import { HttpBody } from '@effect/platform'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Effect, Layer, Schema, Stream } from 'effect'
+import { ApiClientService } from '@/integrations/api/http'
+import { makeAtomRuntime } from '@/lib/make-atom-runtime'
+import { appendSseChunk } from '@/lib/sse'
+import { withToast } from '@/lib/with-toast'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -14,21 +14,58 @@ const runtime = makeAtomRuntime(
   ),
 )
 
-type LearningPathStep = {
+export type LearningPathStep = {
+  id?: string
   step_no?: number
   type?: string
   target_id?: string | null
   title?: string
   reason?: string
+  recommendation_id?: string | null
+  knowledge_point_id?: string | null
+  baseline_mastery?: number | null
+  target_mastery?: number | null
+  status?: string
+  acceptance_condition?: Record<string, unknown>
 }
 
-type LearningPathContent = {
+export type LearningPathContent = {
   title?: string
   estimated_minutes?: number
   path_steps?: Array<LearningPathStep>
   based_on_profile_fields?: Array<string>
   based_on_knowledge_points?: Array<string>
   adjust_reasons?: Array<string>
+  version?: number
+  previous_path_id?: string | null
+  status?: string
+  adjust_trigger_type?: string | null
+  adjust_trigger_id?: string | null
+  adjust_trigger_ids?: Array<string>
+  explanation_id?: string | null
+  adjustment?: {
+    trigger_type?: string
+    trigger_id?: string
+    trigger_ids?: Array<string>
+    outcome_count?: number
+    knowledge_point_count?: number
+    target_achieved_count?: number
+    needs_reinforcement_count?: number
+    results?: Array<{
+      outcome_id: string
+      recommendation_id: string
+      knowledge_point_id: string
+      mastery_before: number
+      mastery_after: number
+      target_mastery: number
+      target_achieved: boolean
+      evaluated_at: string
+    }>
+    mastery_before?: number
+    mastery_after?: number
+    target_mastery?: number
+    target_achieved?: boolean
+  }
 }
 
 type LearningPathResponse = {
@@ -66,7 +103,15 @@ type StudyPlanProgress = {
   agentName?: string
   eventType?: string
   partialPlan?: LearningPathContent
+  recommendations?: Array<StudyPlanRecommendationPreview>
   error?: string
+}
+
+export type StudyPlanRecommendationPreview = {
+  id: string
+  title: string
+  recommendation_type?: string
+  reason_text: Array<string>
 }
 
 const partialLearningPathFromPayload = (
@@ -78,7 +123,36 @@ const partialLearningPathFromPayload = (
   if (!value.learning_path || typeof value.learning_path !== 'object') {
     return undefined
   }
-  return value.learning_path as LearningPathContent
+  return value.learning_path
+}
+
+const recommendationsFromPayload = (
+  payload: unknown,
+): Array<StudyPlanRecommendationPreview> | undefined => {
+  if (!payload || typeof payload !== 'object') return undefined
+  const value = payload as Record<string, unknown>
+  if (!Array.isArray(value.recommendations)) return undefined
+  return value.recommendations
+    .filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === 'object',
+    )
+    .map((item, index) => ({
+      id:
+        typeof item.id === 'string'
+          ? item.id
+          : `recommendation-preview-${index}`,
+      title: typeof item.title === 'string' ? item.title : '学习推荐',
+      recommendation_type:
+        typeof item.recommendation_type === 'string'
+          ? item.recommendation_type
+          : undefined,
+      reason_text: Array.isArray(item.reason_text)
+        ? item.reason_text.filter(
+            (reason): reason is string => typeof reason === 'string',
+          )
+        : [],
+    }))
 }
 
 const progressMessage = (
@@ -109,7 +183,7 @@ const progressMessage = (
 
 export const studyPlanProgressAtom = Atom.make<StudyPlanProgress | null>(null)
 
-type AdaptedStudyPlan = {
+export type AdaptedStudyPlan = {
   id: string
   user_id: string
   project_id: string
@@ -136,6 +210,11 @@ type AdaptedStudyPlan = {
   learning_path_id: string
   run_id: string
   planner_mode: 'llm' | 'rule_fallback' | 'rule' | 'unknown'
+  version: number
+  previous_path_id: string | null
+  status: string
+  based_on_recommendation_ids: Array<string>
+  based_on_diagnosis_id: string | null
   raw_learning_path: LearningPathContent
 }
 
@@ -149,6 +228,21 @@ const normalizeLabel = (value: string) =>
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+const legacyPlanText: Record<string, string> = {
+  'Personalized reinforcement path': '个性化巩固学习路径',
+  'Practice to verify improvement': '完成推荐后的巩固练习',
+  'Use targeted practice to confirm the weak point is improving.':
+    '通过针对性练习巩固当前薄弱知识点。',
+  'Recommended next step.': '建议按此顺序完成学习资源。',
+  'Prioritize the weakest knowledge points first.':
+    '优先巩固当前掌握度最低的知识点。',
+  'Sequence available recommendations into an actionable plan.':
+    '把已生成的推荐资源组织为可执行的学习顺序。',
+}
+
+const studentFacingPlanText = (value: string | undefined, fallback: string) =>
+  value ? (legacyPlanText[value.trim()] ?? value) : fallback
 
 const buildAnalysis = (path: LearningPathContent) => {
   const reasons = (path.adjust_reasons ?? []).filter(Boolean)
@@ -182,8 +276,8 @@ const buildActionItems = (path: LearningPathContent) =>
     id: step.target_id || `path-step-${index + 1}`,
     parent_id: step.target_id || null,
     type: inferActionType(step.type),
-    title: step.title || `Step ${index + 1}`,
-    description: step.reason || null,
+    title: studentFacingPlanText(step.title, `学习步骤 ${index + 1}`),
+    description: step.reason ? studentFacingPlanText(step.reason, '') : null,
     source_type: step.type || 'resource',
     is_navigable:
       (step.type === 'quiz' || step.type === 'flashcard') && !!step.target_id,
@@ -191,10 +285,13 @@ const buildActionItems = (path: LearningPathContent) =>
 
 const buildSchedule = (path: LearningPathContent) =>
   (path.path_steps ?? []).map((step, index) => ({
-    day: `Day ${index + 1}`,
-    tasks: [step.title, step.reason].filter(
-      (value): value is string => typeof value === 'string' && value.length > 0,
-    ),
+    day: `第 ${index + 1} 天`,
+    tasks: [step.title, step.reason]
+      .filter(
+        (value): value is string =>
+          typeof value === 'string' && value.length > 0,
+      )
+      .map((value) => studentFacingPlanText(value, '')),
   }))
 
 const getPlannerModeFromEvents = (
@@ -228,7 +325,7 @@ const mapLearningPathToStudyPlan = (
   response: LearningPathResponse,
   plannerMode: AdaptedStudyPlan['planner_mode'] = 'unknown',
 ): AdaptedStudyPlan => {
-  const path = response.learning_path ?? {}
+  const path = response.learning_path
   const focusAreas = buildFocusAreas(path)
 
   return {
@@ -240,14 +337,18 @@ const mapLearningPathToStudyPlan = (
       focus_areas: focusAreas,
       action_items: buildActionItems(path),
       schedule: buildSchedule(path),
-      encouragement:
-        '不积跬步，无以至千里',
+      encouragement: '不积跬步，无以至千里',
     },
     weak_topics: focusAreas,
     created_at: response.created_at,
     learning_path_id: response.path_id,
     run_id: response.run_id,
     planner_mode: plannerMode,
+    version: path.version ?? 1,
+    previous_path_id: path.previous_path_id ?? null,
+    status: path.status ?? 'active',
+    based_on_recommendation_ids: response.based_on_recommendation_ids,
+    based_on_diagnosis_id: response.based_on_diagnosis_id ?? null,
     raw_learning_path: response.learning_path,
   }
 }
@@ -339,6 +440,7 @@ export const generateStudyPlanAtom = runtime.fn(
         event: 'started',
         status: 'running',
         message: '正在准备学习计划…',
+        recommendations: [],
       })
 
       const body = HttpBody.unsafeJson({
@@ -356,6 +458,7 @@ export const generateStudyPlanAtom = runtime.fn(
       let learningPath: LearningPathResponse | undefined
       let streamError: string | undefined
       let streamedLearningPath: LearningPathContent | undefined
+      let streamedRecommendations: Array<StudyPlanRecommendationPreview> = []
       const decoder = new TextDecoder()
       let buffer = ''
       const responseStream = response.stream.pipe(
@@ -390,6 +493,9 @@ export const generateStudyPlanAtom = runtime.fn(
             streamedLearningPath =
               partialLearningPathFromPayload(progress.payload) ??
               streamedLearningPath
+            streamedRecommendations =
+              recommendationsFromPayload(progress.payload) ??
+              streamedRecommendations
             if (progress.error) {
               streamError = progress.error
             }
@@ -400,6 +506,7 @@ export const generateStudyPlanAtom = runtime.fn(
               agentName: progress.agent_name ?? undefined,
               eventType: progress.event_type ?? undefined,
               partialPlan: streamedLearningPath,
+              recommendations: streamedRecommendations,
               error: progress.error ?? undefined,
             })
           }),

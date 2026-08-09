@@ -4,14 +4,18 @@ from collections.abc import AsyncGenerator
 from contextlib import suppress
 
 from auth import get_current_user
-from dependencies import get_agent_orchestration_service
+from dependencies import (
+    get_agent_orchestration_service,
+    get_learning_closed_loop_service,
+)
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.agent_orchestration import (
     LearningPathGenerateRequest,
     LearningPathResponse,
 )
 from edu_core.schemas.users import UserDto
-from edu_core.services import AgentOrchestrationService
+from edu_core.schemas.closed_loop import LearningPathAdjustRequest
+from edu_core.services import AgentOrchestrationService, LearningClosedLoopService
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
@@ -127,4 +131,47 @@ async def generate_learning_path_stream(
         generate_stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+@router.post("/{path_id}/adjust", response_model=LearningPathResponse)
+async def adjust_learning_path(
+    project_id: str,
+    path_id: str,
+    request: LearningPathAdjustRequest,
+    current_user: UserDto = Depends(get_current_user),
+    service: LearningClosedLoopService = Depends(
+        get_learning_closed_loop_service
+    ),
+):
+    try:
+        path = service.adjust_learning_path(
+            project_id,
+            path_id,
+            current_user.id,
+            trigger_type=request.trigger_type,
+            trigger_id=request.trigger_id,
+            outcome_ids=request.outcome_ids,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return LearningPathResponse(
+        path_id=path.id,
+        run_id=path.run_id,
+        project_id=path.project_id,
+        learning_path={
+            **(path.content or {}),
+            "version": path.version,
+            "previous_path_id": path.previous_path_id,
+            "status": path.status,
+            "adjust_trigger_type": path.adjust_trigger_type,
+            "adjust_trigger_id": path.adjust_trigger_id,
+            "adjust_trigger_ids": path.adjust_trigger_ids or [],
+            "explanation_id": path.explanation_id,
+        },
+        based_on_diagnosis_id=path.diagnosis_id,
+        based_on_recommendation_ids=path.based_on_recommendation_ids or [],
+        created_at=path.created_at,
     )

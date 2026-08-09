@@ -69,3 +69,79 @@ class AgentContractTest(unittest.IsolatedAsyncioTestCase):
             )
             if result.fallback_used:
                 self.assertIsNotNone(result.fallback_reason)
+
+    async def test_diagnosis_preserves_real_prerequisite_relation(self):
+        context = AgentRunContext(
+            run_id="run_prerequisite",
+            project_id="project_1",
+            student_id="student_1",
+            context=AgentContextData(
+                knowledge_points=[
+                    {"id": "kp_loss", "name": "Loss function"},
+                    {
+                        "id": "kp_gradient",
+                        "name": "Gradient descent",
+                        "prerequisite_ids": ["kp_loss"],
+                        "prerequisite_relations": [
+                            {
+                                "id": "relation_loss_gradient",
+                                "source_knowledge_point_id": "kp_loss",
+                                "strength": 0.8,
+                            }
+                        ],
+                    },
+                ],
+                knowledge_states=[
+                    {
+                        "id": "state_loss",
+                        "knowledge_point_id": "kp_loss",
+                        "topic": "Loss function",
+                        "mastery_score": 40,
+                        "confidence": 0.6,
+                        "attempt_count": 3,
+                        "correct_count": 1,
+                    },
+                    {
+                        "id": "state_gradient",
+                        "knowledge_point_id": "kp_gradient",
+                        "topic": "Gradient descent",
+                        "mastery_score": 35,
+                        "confidence": 0.7,
+                        "attempt_count": 3,
+                        "correct_count": 1,
+                    },
+                ],
+            ),
+            artifacts={
+                "knowledge_state": {
+                    "knowledge_state_summary": {
+                        "weak_points": [
+                            {
+                                "knowledge_point_id": "kp_gradient",
+                                "mastery_score": 35,
+                            }
+                        ]
+                    },
+                    "knowledge_state_details": {
+                        "kp_gradient": {
+                            "topic": "Gradient descent",
+                            "confidence": 0.7,
+                            "attempt_count": 3,
+                            "correct_count": 1,
+                        }
+                    },
+                },
+                "collective_insight": {"matched_patterns": []},
+            },
+        )
+
+        result = await DiagnosisAgent().run(context)
+        cause = next(
+            item
+            for item in result.result["diagnosis"]["root_causes"]
+            if item["type"] == "weak_prerequisite"
+        )
+
+        self.assertEqual(cause["knowledge_point_id"], "kp_loss")
+        self.assertEqual(cause["relation_id"], "relation_loss_gradient")
+        self.assertGreater(cause["confidence"], 0)

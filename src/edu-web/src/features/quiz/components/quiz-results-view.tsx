@@ -180,8 +180,10 @@ const QuizQuestionListItem = ({
             )}
           </div>
           {question.explanation && (
-            <div className="text-xs text-muted-foreground italic leading-relaxed">
+            <div className="text-xs text-muted-foreground leading-relaxed">
+              <Response className="text-xs">
               {question.explanation}
+              </Response>
             </div>
           )}
         </div>
