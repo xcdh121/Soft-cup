@@ -26,9 +26,11 @@ from routers import (
     flashcard_groups_router,
     generated_resources_router,
     handwriting_router,
+    intervention_outcomes_router,
     knowledge_graph_router,
     knowledge_points_router,
     knowledge_states_router,
+    kt_parameters_router,
     learner_profiles_router,
     learning_paths_router,
     mind_maps_router,
@@ -117,6 +119,7 @@ class Api:
         self.app.include_router(course_books_router)
         self.app.include_router(learner_profiles_router)
         self.app.include_router(knowledge_states_router)
+        self.app.include_router(kt_parameters_router)
         self.app.include_router(knowledge_graph_router)
         self.app.include_router(knowledge_points_router)
         self.app.include_router(documents_router)
@@ -133,6 +136,7 @@ class Api:
         self.app.include_router(study_plans_router)
         self.app.include_router(translation_router)
         self.app.include_router(recommendations_router)
+        self.app.include_router(intervention_outcomes_router)
         self.app.include_router(learning_paths_router)
         self.app.include_router(resource_packages_router)
         self.app.include_router(generated_resources_router)

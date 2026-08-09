@@ -374,7 +374,8 @@ class ASectionServiceTests(unittest.TestCase):
         second = state_service.refresh_states("project-1", "user-1")
 
         self.assertEqual(first.processed_count, 1)
-        self.assertEqual(first.updated_states[0].mastery_score, 30)
+        self.assertAlmostEqual(first.updated_states[0].mastery_score, 58.59, places=2)
+        self.assertEqual(first.updated_states[0].algorithm, "expert_bkt")
         self.assertEqual(second.processed_count, 0)
         self.assertEqual(second.already_processed_count, 1)
         with self.session_factory() as db:
@@ -407,7 +408,7 @@ class ASectionServiceTests(unittest.TestCase):
 
         self.assertEqual(record.knowledge_point_id, "kp-1")
         self.assertEqual(result.processed_count, 1)
-        self.assertEqual(result.updated_states[0].mastery_score, 30)
+        self.assertAlmostEqual(result.updated_states[0].mastery_score, 58.59, places=2)
 
     def test_legacy_quiz_question_matches_knowledge_point_from_content(self):
         with self.session_factory() as db:
@@ -470,7 +471,9 @@ class ASectionServiceTests(unittest.TestCase):
             record = db.query(PracticeRecord).filter_by(id="legacy-practice").one()
             self.assertEqual(record.knowledge_point_id, "kp-1")
             self.assertEqual(db.query(StudentKnowledgeState).count(), 1)
-            self.assertEqual(db.query(StudentKnowledgeState).one().mastery_score, 51)
+            self.assertAlmostEqual(
+                db.query(StudentKnowledgeState).one().mastery_score, 95.12, places=2
+            )
         self.assertEqual(result.processed_count, 2)
         self.assertEqual(result.unmatched_count, 0)
 
@@ -491,8 +494,8 @@ class ASectionServiceTests(unittest.TestCase):
 
         self.assertEqual(record.knowledge_point_id, "kp-1")
         self.assertEqual(result.processed_count, 1)
-        self.assertEqual(result.updated_states[0].mastery_score, 0)
-        self.assertEqual(result.updated_states[0].status, "learning")
+        self.assertAlmostEqual(result.updated_states[0].mastery_score, 14.67, places=2)
+        self.assertEqual(result.updated_states[0].status, "insufficient_evidence")
 
     def test_knowledge_graph_includes_relations_and_mastery(self):
         CourseService().create_knowledge_point_relation(

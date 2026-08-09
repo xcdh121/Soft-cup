@@ -77,7 +77,7 @@ class RouteRulesTest(unittest.TestCase):
 
         self.assertEqual(route, [AgentName.RESOURCE])
 
-    def test_learning_path_uses_rule_planner_route_without_resource_requirement(self):
+    def test_learning_path_generates_recommendations_before_planning(self):
         supervisor = SupervisorAgent()
         context = self._context(
             "learning_path",
@@ -93,5 +93,11 @@ class RouteRulesTest(unittest.TestCase):
 
         self.assertEqual(
             route,
-            [AgentName.PROFILE, AgentName.KT, AgentName.DIAGNOSIS, AgentName.PLANNER],
+            [
+                AgentName.PROFILE,
+                AgentName.KT,
+                AgentName.DIAGNOSIS,
+                AgentName.RESOURCE,
+                AgentName.PLANNER,
+            ],
         )

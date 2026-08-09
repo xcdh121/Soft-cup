@@ -282,6 +282,11 @@ class SupervisorAgent:
                     )
                     if event_sink:
                         await event_sink(events[-1])
+                artifact_payload = {"artifact_key": agent.artifact_key}
+                if result.agent_name == AgentName.RESOURCE:
+                    artifact_payload["recommendations"] = result.result.get(
+                        "recommendations", []
+                    )
                 events.append(
                     self._event(
                         AgentEventType.ARTIFACT_UPDATED,
@@ -289,7 +294,7 @@ class SupervisorAgent:
                         RunStatus.COMPLETED,
                         f"Updated artifact: {agent.artifact_key}",
                         result.agent_name,
-                        {"artifact_key": agent.artifact_key},
+                        artifact_payload,
                     )
                 )
                 if event_sink:
@@ -423,6 +428,7 @@ class SupervisorAgent:
                 AgentName.PROFILE,
                 AgentName.KT,
                 AgentName.DIAGNOSIS,
+                AgentName.RESOURCE,
                 AgentName.PLANNER,
             ]
 

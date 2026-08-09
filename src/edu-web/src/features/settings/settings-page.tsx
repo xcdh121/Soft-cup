@@ -18,6 +18,7 @@ import {
   XCircleIcon,
 } from 'lucide-react'
 import { useState } from 'react'
+import { KTParameterSettings } from './kt-parameter-settings'
 
 import { useConfirmationDialog } from '@/components/confirmation-dialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -54,7 +55,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { currentUserAtom } from '@/data-acess/auth'
+import { authAtom, currentUserAtom } from '@/data-acess/auth'
 import { usageAtom } from '@/data-acess/usage'
 import { useTheme } from '@/providers/theme-provider'
 
@@ -173,6 +174,7 @@ const UserSection = () => {
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme()
+  const auth = useAtomValue(authAtom)
   const confirmationDialog = useConfirmationDialog()
   const usageResult = useAtomValue(usageAtom)
   const [isDeletingAllChats, setIsDeletingAllChats] = useState(false)
@@ -281,6 +283,8 @@ export function SettingsPage() {
               </CardContent>
             </Card>
           </section>
+
+          {auth.user?.is_admin && <KTParameterSettings />}
 
           <Card className="gap-0 py-0 shadow-none">
             <CardHeader className="gap-1 border-b px-5 py-5 sm:px-6">

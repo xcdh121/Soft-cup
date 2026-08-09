@@ -24,6 +24,23 @@ class PracticeRecordDto(BaseModel):
     )
     correct_answer: str = Field(..., description="The correct answer")
     was_correct: bool = Field(..., description="Whether the user got it right")
+    session_id: str | None = None
+    attempt_no: int = 1
+    score: float = 0.0
+    response_time_ms: int | None = None
+    hint_count: int = 0
+    difficulty_snapshot: str | None = None
+    answer_mode: str = "manual"
+    mapping_method: str | None = None
+    mapping_status: str = "pending"
+    mapping_confidence: float | None = None
+    recommendation_id: str | None = None
+    resource_id: str | None = None
+    learning_path_id: str | None = None
+    learning_path_step_id: str | None = None
+    is_verification: bool = False
+    occurred_at: datetime
+    metadata: dict = Field(default_factory=dict)
     created_at: datetime = Field(
         ..., description="Date and time the practice record was created"
     )

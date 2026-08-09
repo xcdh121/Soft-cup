@@ -1,6 +1,8 @@
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Option } from 'effect'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { quizQuestionsAtom } from '@/data-acess/quiz'
 import {
@@ -18,6 +20,7 @@ type QuizControlsProps = {
 }
 
 export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const stateResult = useAtomValue(quizDetailStateAtom(quizId))
   const questionsResult = useAtomValue(
     quizQuestionsAtom(`${projectId}:${quizId}`),
@@ -59,7 +62,21 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
   )
 
   const handleSubmitQuestion = async () => {
-    await submitQuestion({ quizId, projectId, questionId: currentQuestion.id })
+    setIsSubmitting(true)
+    try {
+      const submitted = await submitQuestion({
+        quizId,
+        projectId,
+        questionId: currentQuestion.id,
+      })
+      if (!submitted) {
+        toast.error('提交失败，请重新选择答案后再试。')
+      }
+    } catch {
+      toast.error('答案提交失败，请稍后重试。')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleShowResults = async () => {
@@ -84,11 +101,19 @@ export const QuizControls = ({ quizId, projectId }: QuizControlsProps) => {
         {!isCurrentSubmitted ? (
           <Button
             onClick={handleSubmitQuestion}
-            disabled={!state.selectedByQuestionId[currentQuestion.id]}
+            disabled={
+              isSubmitting || !state.selectedByQuestionId[currentQuestion.id]
+            }
             size="lg"
             className="px-8"
           >
-            提交本题
+            {isSubmitting ? (
+              <>
+                <Loader2 className="size-4 animate-spin" /> 提交中…
+              </>
+            ) : (
+              '提交本题'
+            )}
           </Button>
         ) : currentIndex === totalQuestions - 1 ? (
           <Button

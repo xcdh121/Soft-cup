@@ -354,8 +354,8 @@ class QuizQuestionReorder(BaseModel):
 class PracticeRecordCreate(BaseModel):
     item_type: str = Field(
         ...,
-        pattern="^(flashcard|quiz)$",
-        description="Type of study resource: flashcard or quiz",
+        pattern="^(flashcard|quiz|programming|subjective|manual)$",
+        description="Type of practice item",
     )
     item_id: str = Field(
         ..., description="ID of the study resource (flashcard or quiz question)"
@@ -371,13 +371,33 @@ class PracticeRecordCreate(BaseModel):
         ..., description="The correct answer - flashcard answer or quiz correct option"
     )
     was_correct: bool = Field(..., description="Whether the user got it right")
+    session_id: str | None = None
+    attempt_no: int = Field(1, ge=1)
+    score: float | None = Field(None, ge=0, le=1)
+    response_time_ms: int | None = Field(None, ge=0)
+    hint_count: int = Field(0, ge=0)
+    difficulty_snapshot: str | None = None
+    answer_mode: Literal[
+        "quiz", "flashcard", "programming", "subjective", "manual"
+    ] | None = None
+    mapping_method: Literal[
+        "explicit", "item_binding", "rule_match", "semantic_match", "manual_review"
+    ] | None = None
+    mapping_confidence: float | None = Field(None, ge=0, le=1)
+    recommendation_id: str | None = None
+    resource_id: str | None = None
+    learning_path_id: str | None = None
+    learning_path_step_id: str | None = None
+    is_verification: bool = False
+    occurred_at: datetime | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class PracticeRecordBatchCreate(BaseModel):
     practice_records: list[PracticeRecordCreate] = Field(
         ...,
-        min_items=1,
-        max_items=100,
+        min_length=1,
+        max_length=100,
         description="List of practice records to create",
     )
 

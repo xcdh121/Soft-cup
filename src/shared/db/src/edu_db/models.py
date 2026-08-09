@@ -512,6 +512,38 @@ class PracticeRecord(Base):
         Boolean, default=False
     )  # Whether the user got it right
 
+    # P0 learning-event context. Existing callers can omit every field.
+    session_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    attempt_no: Mapped[int] = mapped_column(Integer, default=1)
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    response_time_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hint_count: Mapped[int] = mapped_column(Integer, default=0)
+    difficulty_snapshot: Mapped[str | None] = mapped_column(String, nullable=True)
+    answer_mode: Mapped[str] = mapped_column(String, default="manual", index=True)
+    mapping_method: Mapped[str | None] = mapped_column(String, nullable=True)
+    mapping_status: Mapped[str] = mapped_column(String, default="pending", index=True)
+    mapping_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recommendation_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("recommendations.id", ondelete="SET NULL"), nullable=True
+    )
+    resource_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("generated_resources.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    learning_path_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("learning_paths.id", ondelete="SET NULL"), nullable=True
+    )
+    learning_path_step_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("learning_path_steps.id", ondelete="SET NULL"), nullable=True
+    )
+    is_verification: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -825,6 +857,20 @@ class Diagnosis(Base):
     status: Mapped[str] = mapped_column(String, index=True)
     diagnosis: Mapped[dict] = mapped_column(JSON, default=dict)
     next_actions: Mapped[list[str]] = mapped_column(JSON, default=list)
+    trigger_type: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    trigger_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    primary_knowledge_point_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    state_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    explanation_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("explanations.id", ondelete="SET NULL"), nullable=True
+    )
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    diagnosis_version: Mapped[str] = mapped_column(String, default="diagnosis-rule-v1")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
@@ -865,6 +911,20 @@ class Recommendation(Base):
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     recommended_by: Mapped[str | None] = mapped_column(String, nullable=True)
     feedback: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    explanation_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("explanations.id", ondelete="SET NULL"), nullable=True
+    )
+    source_state_event_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_state_events.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    expected_outcome: Mapped[dict] = mapped_column(JSON, default=dict)
+    verification_plan: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String, default="active", index=True)
+    valid_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
@@ -894,6 +954,23 @@ class LearningPath(Base):
 
     content: Mapped[dict] = mapped_column(JSON, default=dict)
     based_on_recommendation_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    previous_path_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("learning_paths.id", ondelete="SET NULL"), nullable=True
+    )
+    adjust_trigger_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    adjust_trigger_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    adjust_trigger_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    explanation_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("explanations.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String, default="active", index=True)
+    activated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    replaced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
@@ -1426,9 +1503,26 @@ class StudentKnowledgeState(Base):
         index=True,
     )
     mastery_score: Mapped[float] = mapped_column(Float, default=0.0)
+    mastery_probability: Mapped[float] = mapped_column(Float, default=0.0)
+    p_correct_next: Mapped[float] = mapped_column(Float, default=0.0)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    evidence_confidence: Mapped[float] = mapped_column(Float, default=0.0)
     trend: Mapped[str] = mapped_column(String, default="stable", index=True)
     status: Mapped[str] = mapped_column(String, default="not_started", index=True)
+    algorithm: Mapped[str] = mapped_column(String, default="legacy_ewma", index=True)
+    model_version: Mapped[str] = mapped_column(String, default="legacy-rule-v1")
+    parameter_set_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("kt_parameter_sets.id", ondelete="SET NULL"), nullable=True
+    )
+    threshold_version: Mapped[str] = mapped_column(String, default="threshold-v1")
+    effective_event_count: Mapped[float] = mapped_column(Float, default=0.0)
+    last_event_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    state_version: Mapped[int] = mapped_column(Integer, default=0)
+    lock_version: Mapped[int] = mapped_column(Integer, default=0)
+    status_reason_codes: Mapped[list[str]] = mapped_column(JSON, default=list)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     correct_count: Mapped[int] = mapped_column(Integer, default=0)
     evidence: Mapped[list[dict]] = mapped_column(JSON, default=list)
@@ -1501,6 +1595,38 @@ class KnowledgeStateEvent(Base):
     impact: Mapped[float] = mapped_column(Float)
     was_correct: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    algorithm: Mapped[str] = mapped_column(String, default="legacy_ewma", index=True)
+    model_version: Mapped[str] = mapped_column(String, default="legacy-rule-v1")
+    parameter_set_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("kt_parameter_sets.id", ondelete="SET NULL"), nullable=True
+    )
+    prior_mastery: Mapped[float | None] = mapped_column(Float, nullable=True)
+    prior_after_forgetting: Mapped[float | None] = mapped_column(Float, nullable=True)
+    posterior_after_observation: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    posterior_after_learning: Mapped[float | None] = mapped_column(Float, nullable=True)
+    p_correct_before: Mapped[float | None] = mapped_column(Float, nullable=True)
+    p_correct_next: Mapped[float | None] = mapped_column(Float, nullable=True)
+    observed_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    event_weight: Mapped[float] = mapped_column(Float, default=1.0)
+    effective_parameters: Mapped[dict] = mapped_column(JSON, default=dict)
+    reason_codes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    explanation_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_payload_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    processed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    supersedes_event_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_state_events.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    state_version: Mapped[int] = mapped_column(Integer, default=1)
+    shadow_results: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -1508,3 +1634,268 @@ class KnowledgeStateEvent(Base):
     knowledge_state = relationship(
         "StudentKnowledgeState", back_populates="events"
     )
+
+
+class KTParameterSet(Base):
+    __tablename__ = "kt_parameter_sets"
+    __table_args__ = (
+        UniqueConstraint("version", "scope_type", "scope_id", name="uq_kt_parameter_scope"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    name: Mapped[str] = mapped_column(String)
+    version: Mapped[str] = mapped_column(String, index=True)
+    scope_type: Mapped[str] = mapped_column(String, default="global", index=True)
+    scope_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    initial_mastery: Mapped[float] = mapped_column(Float, default=0.20)
+    learn_probability: Mapped[float] = mapped_column(Float, default=0.12)
+    slip_probability: Mapped[float] = mapped_column(Float, default=0.10)
+    guess_probability: Mapped[float] = mapped_column(Float, default=0.20)
+    forget_probability_daily: Mapped[float] = mapped_column(Float, default=0.005)
+    difficulty_adjustments: Mapped[dict] = mapped_column(JSON, default=dict)
+    answer_mode_adjustments: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String, default="draft", index=True)
+    expert_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    effective_from: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class KnowledgePointKTParameter(Base):
+    __tablename__ = "knowledge_point_kt_parameters"
+    __table_args__ = (
+        UniqueConstraint(
+            "knowledge_point_id", "parameter_set_id", name="uq_kp_kt_parameter"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    knowledge_point_id: Mapped[str] = mapped_column(
+        String, ForeignKey("knowledge_points.id", ondelete="CASCADE"), index=True
+    )
+    parameter_set_id: Mapped[str] = mapped_column(
+        String, ForeignKey("kt_parameter_sets.id", ondelete="CASCADE"), index=True
+    )
+    initial_mastery_override: Mapped[float | None] = mapped_column(Float, nullable=True)
+    learn_override: Mapped[float | None] = mapped_column(Float, nullable=True)
+    slip_override: Mapped[float | None] = mapped_column(Float, nullable=True)
+    guess_override: Mapped[float | None] = mapped_column(Float, nullable=True)
+    forget_override: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expert_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class ItemKnowledgePointMapping(Base):
+    __tablename__ = "item_knowledge_point_mappings"
+    __table_args__ = (
+        UniqueConstraint(
+            "item_type", "item_id", "knowledge_point_id", name="uq_item_kp_mapping"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    item_type: Mapped[str] = mapped_column(String, index=True)
+    item_id: Mapped[str] = mapped_column(String, index=True)
+    knowledge_point_id: Mapped[str] = mapped_column(
+        String, ForeignKey("knowledge_points.id", ondelete="CASCADE"), index=True
+    )
+    weight: Mapped[float] = mapped_column(Float, default=1.0)
+    mapping_method: Mapped[str] = mapped_column(String, default="manual_review")
+    mapping_confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    review_status: Mapped[str] = mapped_column(String, default="approved", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Explanation(Base):
+    __tablename__ = "explanations"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    object_type: Mapped[str] = mapped_column(String, index=True)
+    object_id: Mapped[str] = mapped_column(String, index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    reason_codes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    model_version: Mapped[str] = mapped_column(String)
+    threshold_version: Mapped[str] = mapped_column(String, default="threshold-v1")
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class ExplanationEvidence(Base):
+    __tablename__ = "explanation_evidences"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    explanation_id: Mapped[str] = mapped_column(
+        String, ForeignKey("explanations.id", ondelete="CASCADE"), index=True
+    )
+    source_type: Mapped[str] = mapped_column(String)
+    source_id: Mapped[str] = mapped_column(String)
+    knowledge_point_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    contribution_direction: Mapped[str] = mapped_column(String, default="supporting")
+    contribution_score: Mapped[float] = mapped_column(Float, default=0.0)
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class DiagnosisCause(Base):
+    __tablename__ = "diagnosis_causes"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    diagnosis_id: Mapped[str] = mapped_column(
+        String, ForeignKey("diagnoses.id", ondelete="CASCADE"), index=True
+    )
+    parent_cause_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("diagnosis_causes.id", ondelete="CASCADE"), nullable=True
+    )
+    cause_type: Mapped[str] = mapped_column(String, index=True)
+    knowledge_point_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    relation_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_point_relations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    rank: Mapped[int] = mapped_column(Integer, default=1)
+    reason_text: Mapped[str] = mapped_column(Text)
+
+
+class RecommendationInteraction(Base):
+    __tablename__ = "recommendation_interactions"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    recommendation_id: Mapped[str] = mapped_column(
+        String, ForeignKey("recommendations.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    event_type: Mapped[str] = mapped_column(String, index=True)
+    resource_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    learning_session_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    progress: Mapped[float | None] = mapped_column(Float, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reason_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class InterventionOutcome(Base):
+    __tablename__ = "intervention_outcomes"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    project_id: Mapped[str] = mapped_column(
+        String, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    recommendation_id: Mapped[str] = mapped_column(
+        String, ForeignKey("recommendations.id", ondelete="CASCADE"), index=True
+    )
+    knowledge_point_id: Mapped[str] = mapped_column(
+        String, ForeignKey("knowledge_points.id", ondelete="CASCADE"), index=True
+    )
+    baseline_state_event_id: Mapped[str] = mapped_column(
+        String, ForeignKey("knowledge_state_events.id", ondelete="CASCADE")
+    )
+    verification_event_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("knowledge_state_events.id", ondelete="CASCADE"),
+        unique=True,
+    )
+    mastery_before: Mapped[float] = mapped_column(Float)
+    mastery_after: Mapped[float] = mapped_column(Float)
+    mastery_gain: Mapped[float] = mapped_column(Float)
+    verification_score: Mapped[float] = mapped_column(Float)
+    target_mastery: Mapped[float] = mapped_column(Float, default=0.8)
+    target_achieved: Mapped[bool] = mapped_column(Boolean, default=False)
+    attribution_confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    evaluation_window_hours: Mapped[int] = mapped_column(Integer, default=72)
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    explanation_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("explanations.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class LearningPathStep(Base):
+    __tablename__ = "learning_path_steps"
+    __table_args__ = (
+        UniqueConstraint("learning_path_id", "step_no", name="uq_learning_path_step_no"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: str(uuid4())
+    )
+    learning_path_id: Mapped[str] = mapped_column(
+        String, ForeignKey("learning_paths.id", ondelete="CASCADE"), index=True
+    )
+    step_no: Mapped[int] = mapped_column(Integer)
+    step_type: Mapped[str] = mapped_column(String)
+    target_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    knowledge_point_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    recommendation_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("recommendations.id", ondelete="SET NULL"), nullable=True
+    )
+    objective: Mapped[str | None] = mapped_column(Text, nullable=True)
+    acceptance_condition: Mapped[dict] = mapped_column(JSON, default=dict)
+    baseline_mastery: Mapped[float | None] = mapped_column(Float, nullable=True)
+    target_mastery: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="pending", index=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completion_event_id: Mapped[str | None] = mapped_column(String, nullable=True)
