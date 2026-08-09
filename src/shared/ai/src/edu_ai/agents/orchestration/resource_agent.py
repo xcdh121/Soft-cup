@@ -116,7 +116,8 @@ class ResourceAgent(BaseOrchestrationAgent):
         diagnosis = context.artifacts.get("diagnosis", {}).get("diagnosis", {})
         weak_points = diagnosis.get("related_knowledge_points", [])
         preferred_types = self._normalize_resource_types(
-            profile.get("preferred_resource_type", [])
+            profile.get("resource_preference")
+            or profile.get("preferred_resource_type", [])
         )
 
         selected: list[str] = ["note", "quiz"]
@@ -226,16 +227,25 @@ class ResourceAgent(BaseOrchestrationAgent):
                 and bool(context.meta.get("stream_quiz_in_package"))
             )
             if not stream_in_package:
-                self.quiz_service.queue_generation(
-                    quiz_id=quiz.id,
-                    project_id=context.project_id,
-                    topic=topic,
-                    custom_instructions=custom_instructions,
-                    count=quiz_count
-                    if isinstance(quiz_count, int) and quiz_count > 0
-                    else 5,
-                    user_id=context.student_id,
-                )
+                try:
+                    self.quiz_service.queue_generation(
+                        quiz_id=quiz.id,
+                        project_id=context.project_id,
+                        topic=topic,
+                        custom_instructions=custom_instructions,
+                        count=quiz_count
+                        if isinstance(quiz_count, int) and quiz_count > 0
+                        else 5,
+                        user_id=context.student_id,
+                    )
+                except Exception:
+                    # Do not leave a permanently empty quiz shell behind when
+                    # the synchronous generation worker rejects the request.
+                    self.quiz_service.delete_quiz(
+                        quiz_id=quiz.id,
+                        project_id=context.project_id,
+                    )
+                    raise
             return {
                 **self._queued_resource("quiz", quiz, quiz.id, quiz.name),
                 "topic": topic,
@@ -286,22 +296,33 @@ class ResourceAgent(BaseOrchestrationAgent):
             }
 
         if resource_type == "mind_map" and self.mind_map_service:
+            custom_instructions = self._build_custom_instructions(context)
             mind_map = self.mind_map_service.create_mind_map(
                 user_id=context.student_id,
                 project_id=context.project_id,
                 title=self._build_title("mind_map", topic),
                 description="根据本次学习诊断新生成的巩固知识导图",
             )
-            self.mind_map_service.queue_generation(
-                user_id=context.student_id,
-                project_id=context.project_id,
-                mind_map_id=mind_map.id,
-                topic=topic,
-                custom_instructions=self._build_custom_instructions(context),
+            stream_in_package = (
+                context.trigger.type == "resource_package"
+                and bool(context.meta.get("stream_mind_map_in_package"))
             )
-            return self._queued_resource(
-                "mind_map", mind_map, mind_map.id, mind_map.title
-            )
+            if not stream_in_package:
+                self.mind_map_service.queue_generation(
+                    user_id=context.student_id,
+                    project_id=context.project_id,
+                    mind_map_id=mind_map.id,
+                    topic=topic,
+                    custom_instructions=custom_instructions,
+                )
+            return {
+                **self._queued_resource(
+                    "mind_map", mind_map, mind_map.id, mind_map.title
+                ),
+                "topic": topic,
+                "custom_instructions": custom_instructions,
+                "stream_in_package": stream_in_package,
+            }
 
         return None
 

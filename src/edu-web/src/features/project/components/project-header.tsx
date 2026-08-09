@@ -1,3 +1,7 @@
+import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { ArrowLeft, PencilIcon, TrashIcon } from 'lucide-react'
+import { useCreateProjectDialog } from './upsert-project-dialog'
 import { useConfirmationDialog } from '@/components/confirmation-dialog'
 import {
   Breadcrumb,
@@ -11,10 +15,6 @@ import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { deleteProjectAtom, projectAtom } from '@/data-acess/project'
 import { cn } from '@/lib/utils'
-import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { Link, useNavigate } from '@tanstack/react-router'
-import { PencilIcon, TrashIcon } from 'lucide-react'
-import { useCreateProjectDialog } from './upsert-project-dialog'
 
 const ProjectHeaderContent = ({ projectId }: { projectId: string }) => {
   const projectResult = useAtomValue(projectAtom(projectId))
@@ -37,9 +37,13 @@ const ProjectHeaderContent = ({ projectId }: { projectId: string }) => {
 
 type ProjectHeaderProps = {
   projectId: string
+  backToPractice?: boolean
 }
 
-export const ProjectHeader = ({ projectId }: ProjectHeaderProps) => {
+export const ProjectHeader = ({
+  projectId,
+  backToPractice = false,
+}: ProjectHeaderProps) => {
   const projectResult = useAtomValue(projectAtom(projectId))
   const deleteProject = useAtomSet(deleteProjectAtom, { mode: 'promise' })
   const navigate = useNavigate()
@@ -71,7 +75,18 @@ export const ProjectHeader = ({ projectId }: ProjectHeaderProps) => {
   return (
     <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-2">
       <div className="flex flex-1 items-center gap-2 px-3">
-        {Result.isSuccess(projectResult) && <SidebarTrigger />}
+        <SidebarTrigger />
+        {backToPractice && (
+          <Button variant="ghost" size="icon" className="size-7" asChild>
+            <Link
+              to="/dashboard/p/$projectId/learning-evaluation/practice"
+              params={{ projectId }}
+            >
+              <ArrowLeft className="size-4" />
+              <span className="sr-only">返回题目练习</span>
+            </Link>
+          </Button>
+        )}
         <Separator
           orientation="vertical"
           className="mr-2 data-[orientation=vertical]:h-4"

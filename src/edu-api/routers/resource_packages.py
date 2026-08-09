@@ -2,17 +2,19 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncGenerator
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
 from auth import get_current_user
-from code_execution import CodeExecutionError, execute_code
+from code_execution import CodeExecutionError, execute_code, judge_code
 from config import Settings
 from dependencies import get_resource_package_service, get_settings_dep
 from edu_core.schemas.resource_packages import (
     GeneratedResourceDto,
     ProgrammingGradeDto,
     ProgrammingRunDto,
+    ProgrammingSubmissionDto,
     ResourcePackageDto,
     ResourcePackageStreamEventDto,
 )
@@ -46,6 +48,7 @@ def _track_resource_package_task(task: asyncio.Task[Any]) -> None:
             logger.exception("Background resource-package generation failed")
 
     task.add_done_callback(finish)
+
 
 resource_packages_router = APIRouter(
     prefix="/api/v1/projects/{project_id}/resource-packages",
@@ -144,6 +147,15 @@ def import_resource_package(
     )
 
 
+@resource_packages_router.post("/reconcile")
+def reconcile_generated_resources(
+    project_id: str,
+    user=Depends(get_current_user),
+    service: ResourcePackageService = Depends(get_resource_package_service),
+):
+    return service.reconcile_generated_resources(user.id, project_id)
+
+
 @resource_packages_router.post("/generate/stream")
 async def generate_resource_package_stream(
     project_id: str,
@@ -156,12 +168,14 @@ async def generate_resource_package_stream(
     async def generate_stream() -> AsyncGenerator[bytes]:
         queue: asyncio.Queue[ResourcePackageStreamEventDto] = asyncio.Queue()
         last_package_id = ""
-        task = asyncio.create_task(service.generate_resource_package(
-            user_id=user.id,
-            project_id=project_id,
-            payload=request.model_dump(),
-            event_sink=queue.put,
-        ))
+        task = asyncio.create_task(
+            service.generate_resource_package(
+                user_id=user.id,
+                project_id=project_id,
+                payload=request.model_dump(),
+                event_sink=queue.put,
+            )
+        )
         try:
             while not task.done() or not queue.empty():
                 try:
@@ -201,7 +215,9 @@ def get_resource_package(
     return service.get_resource_package(user.id, project_id, package_id)
 
 
-@resource_packages_router.delete("/{package_id}", status_code=status.HTTP_204_NO_CONTENT)
+@resource_packages_router.delete(
+    "/{package_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 def delete_resource_package(
     project_id: str,
     package_id: str,
@@ -344,6 +360,84 @@ def update_generated_resource(
 
 
 @generated_resources_router.post(
+    "/{resource_id}/programming-submit", response_model=ProgrammingSubmissionDto
+)
+async def submit_programming_answer(
+    project_id: str,
+    resource_id: str,
+    request: ProgrammingGradeRequest,
+    user=Depends(get_current_user),
+    service: ResourcePackageService = Depends(get_resource_package_service),
+    settings: Settings = Depends(get_settings_dep),
+):
+    """Run deterministic tests without waiting for an AI explanation."""
+    resource = service.get_generated_resource(user.id, project_id, resource_id)
+    if resource.resource_type != "programming_questions":
+        raise HTTPException(status_code=400, detail="所选资源不是编程题。")
+    questions = (resource.content_json or {}).get("questions", [])
+    if not isinstance(questions, list):
+        questions = []
+    question = next(
+        (
+            item
+            for item in questions
+            if isinstance(item, dict) and str(item.get("id")) == request.question_id
+        ),
+        None,
+    )
+    if question is None:
+        raise HTTPException(status_code=404, detail="未找到对应的编程题。")
+    raw_test_cases = question.get("test_cases")
+    if not isinstance(raw_test_cases, list) or not raw_test_cases:
+        raw_test_cases = question.get("examples")
+    test_cases = [item for item in (raw_test_cases or []) if isinstance(item, dict)]
+    if not test_cases:
+        raise HTTPException(
+            status_code=422,
+            detail="该编程题尚未配置测试案例, 请重新生成题目后再提交。",
+        )
+    if not settings.code_execution_api_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="代码判题服务尚未配置, 请联系管理员设置 CODE_EXECUTION_API_URL。",
+        )
+
+    try:
+        judge_result = await judge_code(
+            api_url=settings.code_execution_api_url,
+            api_token=settings.code_execution_api_token,
+            language=request.language,
+            code=request.answer,
+            test_cases=test_cases,
+            timeout_seconds=settings.code_execution_timeout_seconds,
+        )
+    except CodeExecutionError as exc:
+        logger.warning("Sandboxed test judging failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    judge_payload = asdict(judge_result)
+    score = (
+        100
+        if judge_result.verdict == "AC"
+        else round(judge_result.passed_cases / judge_result.total_cases * 100)
+        if judge_result.verdict == "WA" and judge_result.total_cases
+        else 0
+    )
+    return ProgrammingSubmissionDto(
+        score=score,
+        passed=judge_result.verdict == "AC",
+        judge_verdict=judge_result.verdict,
+        judge_message=judge_result.message,
+        passed_cases=judge_result.passed_cases,
+        total_cases=judge_result.total_cases,
+        test_results=judge_payload["test_results"],
+    )
+
+
+@generated_resources_router.post(
     "/{resource_id}/programming-grade", response_model=ProgrammingGradeDto
 )
 async def grade_programming_answer(
@@ -366,7 +460,7 @@ async def grade_programming_answer(
         logger.exception("AI programming grading failed")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="AI 判题服务暂时不可用，请稍后重试。",
+            detail="中文智能评语服务暂时不可用, 请稍后重试。",
         ) from exc
 
 
@@ -395,7 +489,7 @@ async def run_programming_answer(
     if not settings.code_execution_api_url:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="代码运行服务尚未配置，请联系管理员设置 CODE_EXECUTION_API_URL。",
+            detail="代码运行服务尚未配置, 请联系管理员设置 CODE_EXECUTION_API_URL。",
         )
 
     try:
@@ -426,6 +520,4 @@ async def regenerate_generated_resource(
     user=Depends(get_current_user),
     service: ResourcePackageService = Depends(get_resource_package_service),
 ):
-    return await service.regenerate_generated_resource(
-        user.id, project_id, resource_id
-    )
+    return await service.regenerate_generated_resource(user.id, project_id, resource_id)

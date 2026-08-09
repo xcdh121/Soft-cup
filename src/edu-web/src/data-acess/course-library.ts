@@ -56,6 +56,7 @@ export type CourseResource = {
   course_id: string
   chapter_id: string | null
   document_id: string | null
+  document_project_id: string | null
   generated_resource_id: string | null
   resource_type: string
   title: string

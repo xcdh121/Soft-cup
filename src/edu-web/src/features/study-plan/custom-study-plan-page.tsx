@@ -89,7 +89,7 @@ export const CustomStudyPlanPage = ({
   return (
     <div className="flex h-full max-h-screen flex-col">
       <StudyPlanHeader projectId={projectId} pageTitle="自定义学习计划" />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-muted/25">
         <div className="container mx-auto max-w-7xl space-y-6 px-4 py-8">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
@@ -129,7 +129,7 @@ export const CustomStudyPlanPage = ({
           </div>
 
           <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="min-w-0 border bg-background">
+            <div className="min-w-0 border bg-white text-slate-950 shadow-sm">
               <div className="w-full overflow-hidden">
                 <table className="w-full table-fixed border-collapse text-sm">
                   <colgroup>
@@ -170,7 +170,7 @@ export const CustomStudyPlanPage = ({
                       return (
                         <tr
                           key={entry.date}
-                          className="group align-top hover:bg-muted/20"
+                          className="group bg-white align-top hover:bg-slate-50"
                         >
                           <td className="border-b border-r px-2 py-3">
                             <p className="font-semibold">
@@ -192,7 +192,7 @@ export const CustomStudyPlanPage = ({
                                 updateEntry(index, 'topic', event.target.value)
                               }
                               placeholder="如：动态规划"
-                              className="h-20 min-w-0 rounded-none border-0 bg-transparent px-2 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
+                              className="h-20 min-w-0 rounded-none border-0 bg-white px-2 text-slate-950 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
                               aria-label={`${entry.date} 学习主题`}
                             />
                           </td>
@@ -203,7 +203,7 @@ export const CustomStudyPlanPage = ({
                                 updateEntry(index, 'task', event.target.value)
                               }
                               placeholder="填写资料阅读、习题练习或复习任务"
-                              className="min-h-20 min-w-0 resize-none rounded-none border-0 bg-transparent px-2 py-3 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
+                              className="min-h-20 min-w-0 resize-none rounded-none border-0 bg-white px-2 py-3 text-slate-950 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
                               aria-label={`${entry.date} 学习任务`}
                             />
                           </td>
@@ -218,12 +218,12 @@ export const CustomStudyPlanPage = ({
                                   event.target.value,
                                 )
                               }
-                              className="h-20 min-w-0 rounded-none border-0 bg-transparent px-2 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
+                              className="h-20 min-w-0 rounded-none border-0 bg-white px-2 text-slate-950 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
                               aria-label={`${entry.date} 开始时间`}
                             />
                           </td>
                           <td className="border-b border-r p-0">
-                            <div className="flex h-20 min-w-0 items-center">
+                            <div className="flex h-20 min-w-0 items-center bg-white">
                               <Input
                                 type="number"
                                 min="0"
@@ -237,7 +237,7 @@ export const CustomStudyPlanPage = ({
                                   )
                                 }
                                 placeholder="45"
-                                className="h-20 min-w-0 rounded-none border-0 bg-transparent px-2 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
+                                className="h-20 min-w-0 rounded-none border-0 bg-white px-2 text-slate-950 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
                                 aria-label={`${entry.date} 预计时长（分钟）`}
                               />
                               <span className="pr-2 text-xs text-muted-foreground">
@@ -252,7 +252,7 @@ export const CustomStudyPlanPage = ({
                                 updateEntry(index, 'goal', event.target.value)
                               }
                               placeholder="完成后应达到什么结果"
-                              className="min-h-20 min-w-0 resize-none rounded-none border-0 bg-transparent px-2 py-3 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
+                              className="min-h-20 min-w-0 resize-none rounded-none border-0 bg-white px-2 py-3 text-slate-950 shadow-none focus-visible:ring-2 focus-visible:ring-inset"
                               aria-label={`${entry.date} 当日目标`}
                             />
                           </td>
@@ -273,7 +273,7 @@ export const CustomStudyPlanPage = ({
             </div>
 
             <aside className="space-y-4 xl:sticky xl:top-20">
-              <div className="border bg-background">
+              <div className="border bg-white text-slate-950 shadow-sm">
                 <div className="border-b px-4 py-4">
                   <h2 className="flex items-center gap-2 font-semibold">
                     <Target className="size-4 text-destructive" />
@@ -290,7 +290,7 @@ export const CustomStudyPlanPage = ({
                         key={topic}
                         type="button"
                         onClick={() => useWeakTopic(topic)}
-                        className="flex w-full items-center justify-between border px-3 py-2.5 text-left text-sm transition-colors hover:border-primary hover:bg-primary/5"
+                        className="flex w-full items-center justify-between border bg-white px-3 py-2.5 text-left text-sm transition-colors hover:border-primary hover:bg-slate-50"
                       >
                         <span>{topic}</span>
                         <span className="text-xs text-primary">加入计划</span>
@@ -304,7 +304,7 @@ export const CustomStudyPlanPage = ({
                 </div>
               </div>
 
-              <div className="border bg-muted/30 p-4">
+              <div className="border bg-white p-4 text-slate-950 shadow-sm">
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
                   <Lightbulb className="size-4 text-amber-500" />
                   填写建议

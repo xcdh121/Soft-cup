@@ -48,6 +48,8 @@ CHAT_PROFILE_FIELDS = frozenset(
     }
 )
 
+RESOURCE_PREFERENCE_LIMIT = 3
+
 
 class LearnerProfileService:
     """Read and update one profile per user and project."""
@@ -203,6 +205,8 @@ class LearnerProfileService:
                     if "value" in existing_field
                     else existing
                 )
+                if field_key == "resource_preference":
+                    value = self._merge_resource_preferences(existing_value, value)
                 # Values written manually before field metadata was introduced are
                 # treated as confirmed so an LLM inference cannot silently replace them.
                 existing_status = existing_field.get(
@@ -271,6 +275,24 @@ class LearnerProfileService:
             db.commit()
             db.refresh(profile)
             return LearnerProfileDto.model_validate(profile)
+
+    @staticmethod
+    def _merge_resource_preferences(existing, candidate) -> list[str]:
+        """Keep stable resource-format preferences without unbounded growth."""
+
+        def as_items(value) -> list[str]:
+            values = value if isinstance(value, list) else [value]
+            return [
+                str(item).strip()
+                for item in values
+                if item is not None and str(item).strip()
+            ]
+
+        merged: list[str] = []
+        for item in [*as_items(existing), *as_items(candidate)]:
+            if item not in merged:
+                merged.append(item)
+        return merged[-RESOURCE_PREFERENCE_LIMIT:]
 
     def list_revisions(
         self, project_id: str, user_id: str

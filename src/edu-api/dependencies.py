@@ -280,6 +280,7 @@ def get_resource_package_service(
         note_streamer=task_runner.stream_note,
         quiz_streamer=task_runner.stream_quiz,
         flashcard_streamer=task_runner.stream_flashcards,
+        mind_map_streamer=task_runner.stream_mind_map,
     )
 
 

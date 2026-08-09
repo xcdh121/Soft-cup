@@ -11,6 +11,7 @@ import {
   PlayCircle,
   RotateCw,
   SkipForward,
+  Sparkles,
   Target,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -244,6 +245,265 @@ const RecommendationResourceLink = ({
         查看学习资源 <ArrowUpRight className="size-3.5" />
       </Link>
     </Button>
+  )
+}
+
+export const StudyPlanRecommendationFeedback = ({
+  projectId,
+  plan,
+}: {
+  projectId: string
+  plan: AdaptedStudyPlan
+}) => {
+  const overviewResult = useAtomValue(closedLoopOverviewAtom(projectId))
+  const recordFeedback = useAtomSet(recordRecommendationFeedbackAtom, {
+    mode: 'promise',
+  })
+  const impressionRequests = useRef(new Set<string>())
+  const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const [ratings, setRatings] = useState<Record<string, string>>({})
+
+  const overview = Result.isSuccess(overviewResult)
+    ? overviewResult.value
+    : null
+  const recommendationIds = new Set(plan.based_on_recommendation_ids)
+  const recommendations = (overview?.recommendations ?? []).filter((item) =>
+    recommendationIds.has(item.id),
+  )
+
+  useEffect(() => {
+    if (!overview) return
+    for (const recommendation of recommendations) {
+      const interactions =
+        overview.interactionsByRecommendation[recommendation.id] ?? []
+      if (
+        interactions.some((item) => item.event_type === 'impression') ||
+        impressionRequests.current.has(recommendation.id)
+      ) {
+        continue
+      }
+      impressionRequests.current.add(recommendation.id)
+      void recordFeedback({
+        projectId,
+        recommendationId: recommendation.id,
+        eventType: 'impression',
+        resourceId: recommendation.target_id ?? undefined,
+      }).catch(() => impressionRequests.current.delete(recommendation.id))
+    }
+  }, [overview, projectId, recommendations, recordFeedback])
+
+  const submitFeedback = async (
+    recommendation: LearningRecommendation,
+    eventType: RecommendationEventType,
+    extra: {
+      progress?: number
+      rating?: number
+      reasonCode?: string
+    } = {},
+  ) => {
+    setPendingAction(`${recommendation.id}:${eventType}`)
+    try {
+      await recordFeedback({
+        projectId,
+        recommendationId: recommendation.id,
+        eventType,
+        resourceId: recommendation.target_id ?? undefined,
+        ...extra,
+      })
+      toast.success(
+        eventType === 'completed'
+          ? '已记录学习完成，后续验证任务将自动生成。'
+          : '学习反馈已记录。',
+      )
+    } catch {
+      toast.error('学习反馈记录失败，请稍后重试。')
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
+  if (Result.isInitial(overviewResult) || Result.isWaiting(overviewResult)) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        正在加载行动项执行反馈…
+      </div>
+    )
+  }
+
+  if (Result.isFailure(overviewResult)) {
+    return (
+      <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+        推荐执行反馈加载失败，请刷新后重试。
+      </div>
+    )
+  }
+
+  if (recommendations.length === 0) return null
+
+  return (
+    <div className="grid gap-3" data-testid="study-plan-action-feedback">
+      {recommendations.map((recommendation) => {
+        const interactions =
+          overview?.interactionsByRecommendation[recommendation.id] ?? []
+        const stage = getRecommendationStage(interactions)
+        const targetMastery = toNumber(
+          recommendation.expected_outcome.target_mastery,
+        )
+        const isTerminal = stage === 'completed' || stage === 'skipped'
+
+        return (
+          <article
+            key={recommendation.id}
+            className="space-y-3 rounded-md border bg-muted/30 p-3"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-4 shrink-0 text-primary" />
+                  <div className="font-medium text-sm">
+                    {studentFacingText(recommendation.title)}
+                  </div>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {recommendation.reason_text
+                    .map(studentFacingText)
+                    .join('；') || '根据当前知识状态推荐。'}
+                </p>
+              </div>
+              <Badge variant={stage === 'completed' ? 'default' : 'outline'}>
+                {stageLabels[stage]}
+              </Badge>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <Badge variant="secondary" className="font-normal">
+                {recommendationSourceLabel(recommendation)}
+              </Badge>
+              <span>目标掌握度：{percent(targetMastery)}</span>
+              <span>推荐置信度：{percent(recommendation.score)}</span>
+            </div>
+
+            <Progress
+              value={(stageOrder[stage] / 4) * 100}
+              aria-label={`${recommendation.title}执行进度`}
+            />
+
+            {interactions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+                {interactions.slice(-5).map((interaction) => (
+                  <span
+                    key={interaction.id}
+                    className="rounded-full border bg-background px-2 py-1"
+                  >
+                    {eventLabels[interaction.event_type]}
+                    {interaction.progress != null
+                      ? ` ${percent(interaction.progress)}`
+                      : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <RecommendationResourceLink
+                projectId={projectId}
+                recommendation={recommendation}
+                onOpen={() => {
+                  if (stage === 'unseen' || stage === 'seen') {
+                    void submitFeedback(recommendation, 'clicked')
+                  }
+                }}
+              />
+              {!isTerminal && stage !== 'started' && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() =>
+                    void submitFeedback(recommendation, 'started', {
+                      progress: 0,
+                    })
+                  }
+                  disabled={pendingAction !== null}
+                >
+                  <PlayCircle className="size-3.5" /> 开始学习
+                </Button>
+              )}
+              {stage === 'started' && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() =>
+                    void submitFeedback(recommendation, 'completed', {
+                      progress: 1,
+                    })
+                  }
+                  disabled={pendingAction !== null}
+                >
+                  <CheckCircle2 className="size-3.5" /> 完成学习
+                </Button>
+              )}
+              {!isTerminal && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    void submitFeedback(recommendation, 'skipped', {
+                      reasonCode: 'user_skipped_for_now',
+                    })
+                  }
+                  disabled={pendingAction !== null}
+                >
+                  <SkipForward className="size-3.5" /> 暂时跳过
+                </Button>
+              )}
+              {stage === 'completed' && (
+                <>
+                  <Select
+                    value={ratings[recommendation.id] ?? '5'}
+                    onValueChange={(value) =>
+                      setRatings((current) => ({
+                        ...current,
+                        [recommendation.id]: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className="w-24"
+                      aria-label={`${recommendation.title}评分`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[5, 4, 3, 2, 1].map((rating) => (
+                        <SelectItem key={rating} value={String(rating)}>
+                          {rating} 星
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      void submitFeedback(recommendation, 'rated', {
+                        rating: Number(ratings[recommendation.id] ?? 5),
+                      })
+                    }
+                    disabled={pendingAction !== null}
+                  >
+                    提交评分
+                  </Button>
+                </>
+              )}
+            </div>
+          </article>
+        )
+      })}
+    </div>
   )
 }
 
@@ -695,7 +955,10 @@ export const StudyPlanClosedLoop = ({
               step.knowledge_point_id,
             )
             const generationStatus = String(
-              step.acceptance_condition?.generation_status ?? 'generating',
+              step.acceptance_condition &&
+                typeof step.acceptance_condition === 'object'
+                ? (step.acceptance_condition.generation_status ?? 'generating')
+                : 'generating',
             )
             return (
               <div

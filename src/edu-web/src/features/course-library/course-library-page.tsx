@@ -24,7 +24,6 @@ import {
   coursesAtom,
   knowledgePointResourcesAtom,
 } from '@/data-acess/course-library'
-import { projectsAtom } from '@/data-acess/project'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -234,10 +233,6 @@ const ChapterPdfList = ({
   chapterId: string | null
 }) => {
   const resourcesResult = useAtomValue(courseResourcesAtom(courseId))
-  const projectsResult = useAtomValue(projectsAtom)
-  const project = Result.isSuccess(projectsResult)
-    ? projectsResult.value.find((item) => item.course_id === courseId)
-    : null
 
   return Result.builder(resourcesResult)
     .onSuccess((resources) => {
@@ -278,12 +273,12 @@ const ChapterPdfList = ({
                   ) : null}
                 </div>
 
-                {project && resource.document_id ? (
+                {resource.document_project_id && resource.document_id ? (
                   <Button variant="outline" size="sm" asChild>
                     <Link
                       to="/dashboard/p/$projectId/d/$documentId"
                       params={{
-                        projectId: project.id,
+                        projectId: resource.document_project_id,
                         documentId: resource.document_id,
                       }}
                     >
@@ -291,7 +286,7 @@ const ChapterPdfList = ({
                     </Link>
                   </Button>
                 ) : (
-                  <Badge variant="outline">无项目入口</Badge>
+                  <Badge variant="outline">PDF 暂不可用</Badge>
                 )}
               </div>
             </div>
@@ -410,11 +405,6 @@ const CourseBrowser = ({
                       <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
                       第 {chapter.position} 章：{chapter.title}
                     </h3>
-                    {chapter.description ? (
-                      <Response className="mt-1 text-sm text-muted-foreground">
-                        {chapter.description}
-                      </Response>
-                    ) : null}
                   </div>
                   <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
                     {chapterPoints.length} 个知识点

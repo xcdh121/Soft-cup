@@ -67,6 +67,7 @@ import {
 } from '@/components/ai-elements/tool'
 import {
   chatAtom,
+  chatRuntimeEventsAtom,
   chatStreamStatusAtom,
   streamMessageAtom,
 } from '@/data-acess/chat'
@@ -383,6 +384,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
   const chatKey = `${projectId}:${chatId}`
   const chatResult = useAtomValue(chatAtom(chatKey))
   const streamStatus = useAtomValue(chatStreamStatusAtom(chatId))
+  const runtimeEvents = useAtomValue(chatRuntimeEventsAtom(chatId))
   const streamMessage = useAtomSet(streamMessageAtom, {
     mode: 'promise',
   })
@@ -394,9 +396,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
   const isBusy = isStreaming || isPreparingAttachments
   const latestMessage = messages[messages.length - 1]
   const streamingAssistantMessageId =
-    isStreaming && latestMessage?.role === 'assistant'
-      ? latestMessage.id
-      : null
+    isStreaming && latestMessage?.role === 'assistant' ? latestMessage.id : null
   const blobToDataUrl = useCallback(
     async (blobUrl: string): Promise<string> => {
       const response = await fetch(blobUrl)
@@ -955,7 +955,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
         </div>
       </div>
 
-      <MultiAgentCallSequence isRunning={isStreaming} />
+      <MultiAgentCallSequence isRunning={isStreaming} events={runtimeEvents} />
     </div>
   )
 }

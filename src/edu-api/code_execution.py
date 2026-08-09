@@ -1,6 +1,7 @@
 import asyncio
 import json
 from dataclasses import dataclass
+from typing import Any, Literal
 from urllib import error, request
 
 LANGUAGE_ALIASES = {
@@ -25,6 +26,31 @@ class CodeExecutionResult:
     output: str
     exit_code: int | None
     signal: str | None
+    compile_exit_code: int | None = None
+
+
+JudgeVerdict = Literal["AC", "WA", "TLE", "RE", "CE"]
+
+
+@dataclass(frozen=True)
+class JudgeTestResult:
+    index: int
+    passed: bool
+    verdict: JudgeVerdict
+    input: str | None
+    expected_output: str | None
+    actual_output: str
+    stderr: str
+    hidden: bool
+
+
+@dataclass(frozen=True)
+class ProgrammingJudgeResult:
+    verdict: JudgeVerdict
+    message: str
+    passed_cases: int
+    total_cases: int
+    test_results: list[JudgeTestResult]
 
 
 def _post_execution_request(
@@ -119,7 +145,9 @@ async def execute_code(
             if part
         )
 
-    raw_code = run_result.get("code", compile_result.get("code"))
+    raw_compile_code = compile_result.get("code")
+    compile_exit_code = raw_compile_code if isinstance(raw_compile_code, int) else None
+    raw_code = run_result.get("code", raw_compile_code)
     exit_code = raw_code if isinstance(raw_code, int) else None
     raw_signal = run_result.get("signal", compile_result.get("signal"))
 
@@ -131,4 +159,99 @@ async def execute_code(
         output=output,
         exit_code=exit_code,
         signal=str(raw_signal) if raw_signal else None,
+        compile_exit_code=compile_exit_code,
+    )
+
+
+def normalize_judge_output(value: str) -> str:
+    """Compare output consistently while tolerating trailing whitespace."""
+    return "\n".join(
+        line.rstrip() for line in value.replace("\r\n", "\n").split("\n")
+    ).strip()
+
+
+def classify_execution_result(result: CodeExecutionResult) -> JudgeVerdict | None:
+    """Return an execution failure verdict, or None when output can be judged."""
+    if result.compile_exit_code not in (None, 0):
+        return "CE"
+    combined = f"{result.output}\n{result.stderr}".casefold()
+    signal = (result.signal or "").upper()
+    if (
+        signal in {"SIGKILL", "SIGXCPU"}
+        or "time limit" in combined
+        or "timed out" in combined
+    ):
+        return "TLE"
+    if result.signal or result.exit_code not in (None, 0):
+        return "RE"
+    return None
+
+
+async def judge_code(
+    *,
+    api_url: str,
+    api_token: str,
+    language: str,
+    code: str,
+    test_cases: list[dict[str, Any]],
+    timeout_seconds: float,
+) -> ProgrammingJudgeResult:
+    """Run code against deterministic test cases and produce an OJ-style verdict."""
+    results: list[JudgeTestResult] = []
+    passed_cases = 0
+    overall_verdict: JudgeVerdict = "AC"
+
+    for index, test_case in enumerate(test_cases, start=1):
+        stdin = str(test_case.get("input") or "")
+        expected = str(
+            test_case.get("expected_output", test_case.get("output", "")) or ""
+        )
+        hidden = bool(test_case.get("hidden", False))
+        execution = await execute_code(
+            api_url=api_url,
+            api_token=api_token,
+            language=language,
+            code=code,
+            stdin=stdin,
+            timeout_seconds=timeout_seconds,
+        )
+        failure = classify_execution_result(execution)
+        verdict: JudgeVerdict = failure or (
+            "AC"
+            if normalize_judge_output(execution.stdout)
+            == normalize_judge_output(expected)
+            else "WA"
+        )
+        passed = verdict == "AC"
+        passed_cases += int(passed)
+        if overall_verdict == "AC" and not passed:
+            overall_verdict = verdict
+        results.append(
+            JudgeTestResult(
+                index=index,
+                passed=passed,
+                verdict=verdict,
+                input=None if hidden else stdin,
+                expected_output=None if hidden else expected,
+                actual_output=execution.stdout,
+                stderr=execution.stderr,
+                hidden=hidden,
+            )
+        )
+        if verdict in {"CE", "TLE", "RE"}:
+            break
+
+    messages = {
+        "AC": "全部测试案例通过。",
+        "WA": "输出与预期结果不一致。",
+        "TLE": "程序运行超出时间限制。",
+        "RE": "程序运行时发生错误。",
+        "CE": "代码编译失败。",
+    }
+    return ProgrammingJudgeResult(
+        verdict=overall_verdict,
+        message=messages[overall_verdict],
+        passed_cases=passed_cases,
+        total_cases=len(test_cases),
+        test_results=results,
     )

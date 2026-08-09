@@ -1,3 +1,6 @@
+import { Result, useAtomValue } from '@effect-atom/atom-react'
+import { Link } from '@tanstack/react-router'
+import { ArrowLeft } from 'lucide-react'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -9,9 +12,6 @@ import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { noteAtom } from '@/data-acess/note'
-import { Result, useAtomValue } from '@effect-atom/atom-react'
-import { Link } from '@tanstack/react-router'
-import { ArrowLeft } from 'lucide-react'
 
 type NoteHeaderContentProps = {
   noteId: string
@@ -54,22 +54,19 @@ type NoteHeaderProps = {
 }
 
 export const NoteHeader = ({ noteId, projectId }: NoteHeaderProps) => {
-  const noteResult = useAtomValue(noteAtom(`${projectId}:${noteId}`))
-
   return (
     <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b px-2">
       <div className="flex flex-1 items-center gap-2 px-3">
-        {Result.isSuccess(noteResult) && (
-          <>
-            <SidebarTrigger />
-            <Button variant="ghost" size="icon" className="size-7" asChild>
-              <Link to="/dashboard/p/$projectId" params={{ projectId }}>
-                <ArrowLeft className="size-4" />
-                <span className="sr-only">返回项目</span>
-              </Link>
-            </Button>
-          </>
-        )}
+        <SidebarTrigger />
+        <Button variant="ghost" size="icon" className="size-7" asChild>
+          <Link
+            to="/dashboard/p/$projectId/my-resources"
+            params={{ projectId }}
+          >
+            <ArrowLeft className="size-4" />
+            <span className="sr-only">返回我的资源</span>
+          </Link>
+        </Button>
         <Separator
           orientation="vertical"
           className="mr-2 data-[orientation=vertical]:h-4"

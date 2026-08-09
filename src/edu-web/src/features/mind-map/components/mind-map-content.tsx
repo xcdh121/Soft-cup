@@ -1,7 +1,7 @@
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Loader2Icon } from 'lucide-react'
 import { useEffect } from 'react'
-import { MindMapView } from './mind-map-view'
+import { MindMapView, normalizeMindMapData } from './mind-map-view'
 import { Response } from '@/components/ai-elements/response'
 import {
   mindMapAtom,
@@ -44,23 +44,9 @@ export const MindMapContent = ({
 
   return Result.builder(mindMapResult)
     .onSuccess((mindMap) => {
-      const persistedMapData = mindMap.map_data as {
-        nodes: Array<{
-          id: string
-          type?: string
-          position: { x: number; y: number }
-          data: { label: string; [key: string]: unknown }
-        }>
-        edges: Array<{
-          id: string
-          source: string
-          target: string
-          label?: string | null
-          type?: string
-        }>
-      }
-      const mapData =
-        streamProgress?.mindMapId === mindMapId && streamProgress.nodes.length > 0
+      const rawMapData =
+        streamProgress?.mindMapId === mindMapId &&
+        streamProgress.nodes.length > 0
           ? {
               nodes: streamProgress.nodes.map((node) => ({
                 id: String(node.id),
@@ -77,7 +63,8 @@ export const MindMapContent = ({
                 label: edge.label == null ? null : String(edge.label),
               })),
             }
-          : persistedMapData
+          : mindMap.map_data
+      const mapData = normalizeMindMapData(rawMapData)
 
       return (
         <div className={`flex flex-col h-full ${className || ''}`}>

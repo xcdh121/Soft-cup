@@ -21,12 +21,13 @@ export type LearningPathStep = {
   target_id?: string | null
   title?: string
   reason?: string
+  objective?: string
   recommendation_id?: string | null
   knowledge_point_id?: string | null
   baseline_mastery?: number | null
   target_mastery?: number | null
   status?: string
-  acceptance_condition?: Record<string, unknown>
+  acceptance_condition?: Record<string, unknown> | string
 }
 
 export type LearningPathContent = {
@@ -193,6 +194,7 @@ export type AdaptedStudyPlan = {
     action_items: Array<{
       id: string
       parent_id: string | null
+      recommendation_id?: string | null
       type: 'quiz' | 'flashcard'
       title: string
       description: string | null
@@ -275,6 +277,7 @@ const buildActionItems = (path: LearningPathContent) =>
   (path.path_steps ?? []).map((step, index) => ({
     id: step.target_id || `path-step-${index + 1}`,
     parent_id: step.target_id || null,
+    recommendation_id: step.recommendation_id ?? null,
     type: inferActionType(step.type),
     title: studentFacingPlanText(step.title, `学习步骤 ${index + 1}`),
     description: step.reason ? studentFacingPlanText(step.reason, '') : null,
@@ -283,16 +286,73 @@ const buildActionItems = (path: LearningPathContent) =>
       (step.type === 'quiz' || step.type === 'flashcard') && !!step.target_id,
   }))
 
-const buildSchedule = (path: LearningPathContent) =>
-  (path.path_steps ?? []).map((step, index) => ({
-    day: `第 ${index + 1} 天`,
-    tasks: [step.title, step.reason]
-      .filter(
-        (value): value is string =>
-          typeof value === 'string' && value.length > 0,
-      )
-      .map((value) => studentFacingPlanText(value, '')),
-  }))
+const completionGuide = (stepType: string | undefined) => {
+  if (stepType === 'quiz' || stepType === 'practice') {
+    return '核对练习结果，把错题对应的知识点、错误原因和正确思路分别记录下来。'
+  }
+  if (stepType === 'flashcard' || stepType === 'flashcards') {
+    return '筛出仍需提示才能回忆的卡片，并在当天结束前进行一次无提示复述。'
+  }
+  if (stepType === 'mind_map') {
+    return '补充概念之间的连接关系，并尝试不看资料复述完整知识结构。'
+  }
+  if (stepType === 'note') {
+    return '整理一份自己的要点摘要，并写下至少一个仍需继续确认的问题。'
+  }
+  return '用自己的话总结核心内容，记录完成情况以及下一次复习时需要重点关注的问题。'
+}
+
+const scheduleTaskFromStep = (
+  step: LearningPathStep,
+  focus: string,
+  isReview: boolean,
+) => {
+  const title = studentFacingPlanText(step.title, focus)
+  const reason = step.reason
+    ? studentFacingPlanText(step.reason, '')
+    : `本次任务用于巩固当前计划中的「${focus}」。`
+  const objective = step.objective
+    ? studentFacingPlanText(step.objective, '')
+    : `能够独立说明「${focus}」的关键概念并完成对应行动项。`
+  const acceptance =
+    typeof step.acceptance_condition === 'string'
+      ? studentFacingPlanText(step.acceptance_condition, '')
+      : completionGuide(step.type)
+
+  return `${isReview ? '回顾并强化' : '完成'}「${title}」，本日重点围绕「${focus}」展开。学习原因：${reason} 学习目标：${objective} 完成后：${acceptance}`
+}
+
+export const buildWeeklySchedule = (path: LearningPathContent) => {
+  const steps = (path.path_steps ?? []).filter((step) =>
+    Boolean(step.title || step.reason || step.objective),
+  )
+  const knowledgePoints = (path.based_on_knowledge_points ?? [])
+    .filter((value) => value && !UUID_PATTERN.test(value))
+    .map(normalizeLabel)
+  const planFocus = studentFacingPlanText(path.title, '本周重点知识')
+  const focusFor = (index: number, step?: LearningPathStep) =>
+    (knowledgePoints.length > 0
+      ? knowledgePoints[index % knowledgePoints.length]
+      : undefined) || studentFacingPlanText(step?.title, planFocus)
+
+  const schedule = Array.from({ length: 7 }, (_, index) => {
+    const step = steps.length > 0 ? steps[index % steps.length] : undefined
+    const focus = focusFor(index, step)
+    const task = step
+      ? scheduleTaskFromStep(step, focus, index >= steps.length)
+      : `围绕「${focus}」梳理本周学习目标，结合当前学习路径整理关键概念、已有证据与尚未解决的问题。完成后用自己的话形成一份学习摘要，并明确下一次学习需要验证的内容。`
+    return { day: `第 ${index + 1} 天`, tasks: [task] }
+  })
+
+  steps.slice(7).forEach((step, index) => {
+    const dayIndex = index % schedule.length
+    schedule[dayIndex].tasks.push(
+      scheduleTaskFromStep(step, focusFor(dayIndex, step), false),
+    )
+  })
+
+  return schedule
+}
 
 const getPlannerModeFromEvents = (
   events: Array<AgentEvent>,
@@ -336,7 +396,7 @@ const mapLearningPathToStudyPlan = (
       analysis: buildAnalysis(path),
       focus_areas: focusAreas,
       action_items: buildActionItems(path),
-      schedule: buildSchedule(path),
+      schedule: buildWeeklySchedule(path),
       encouragement: '不积跬步，无以至千里',
     },
     weak_topics: focusAreas,
@@ -422,6 +482,7 @@ export class StudyResource extends Schema.Class<StudyResource>('StudyResource')(
   {
     id: Schema.String,
     parent_id: Schema.NullOr(Schema.String),
+    recommendation_id: Schema.optional(Schema.NullOr(Schema.String)),
     type: Schema.Literal('quiz', 'flashcard'),
     title: Schema.String,
     description: Schema.NullOr(Schema.String),

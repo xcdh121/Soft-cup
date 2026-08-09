@@ -96,6 +96,17 @@ class StreamingChatMessage(ChatMessageDto):
     status: str | None = Field(None, description="Current streaming status")
 
 
+class ChatRuntimeEventDto(BaseModel):
+    """A server-observed stage in the AI tutor request lifecycle."""
+
+    id: str
+    actor: str
+    label: str
+    status: Literal["running", "completed", "failed", "skipped"]
+    summary: str
+    sequence: int
+
+
 class StreamEventDto(BaseModel):
     """DTO for a single SSE event in the chat stream."""
 
@@ -108,7 +119,17 @@ class StreamEventDto(BaseModel):
         None, description="ID of the part (streaming text chunks)"
     )
     delta: str | None = Field(None, description="Text delta content")
-    part: Union[
-        TextPartDto, FilePartDto, ToolCallPartDto, SourceDocumentPartDto, dict[str, Any]
-    ] | None = Field(None, description="Complete part object")
+    part: (
+        Union[
+            TextPartDto,
+            FilePartDto,
+            ToolCallPartDto,
+            SourceDocumentPartDto,
+            dict[str, Any],
+        ]
+        | None
+    ) = Field(None, description="Complete part object")
     status: str | None = Field(None, description="Status of the generation")
+    runtime_event: ChatRuntimeEventDto | None = Field(
+        None, description="Server-observed AI tutor processing stage"
+    )

@@ -1,0 +1,2 @@
+tools/piston-runtimes/**/run text eol=lf
+tools/piston-runtimes/**/compile text eol=lf

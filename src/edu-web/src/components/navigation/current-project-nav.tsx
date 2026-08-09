@@ -1,6 +1,7 @@
 import { Result, useAtomValue } from '@effect-atom/atom-react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import {
+  ArchiveIcon,
   BarChart3Icon,
   BookOpenTextIcon,
   BotIcon,
@@ -157,6 +158,28 @@ export function CurrentProjectNav() {
             </ProjectNavSection>
 
             <ProjectNavSection title="学习中心">
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  tooltip="我的资源"
+                  isActive={
+                    location.pathname ===
+                      `/dashboard/p/${currentProjectId}/my-resources` ||
+                    new RegExp(
+                      `^/dashboard/p/${currentProjectId}/(?:n|f|m|r)/`,
+                    ).test(location.pathname)
+                  }
+                >
+                  <Link
+                    to="/dashboard/p/$projectId/my-resources"
+                    params={{ projectId: currentProjectId }}
+                  >
+                    <ArchiveIcon className="size-4 opacity-70" />
+                    <span>我的资源</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild

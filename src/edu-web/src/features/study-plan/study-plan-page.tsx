@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { StudyPlanCalendar } from './components/study-plan-calendar'
-import { StudyPlanClosedLoop } from './components/study-plan-closed-loop'
+import { StudyPlanRecommendationFeedback } from './components/study-plan-closed-loop'
 import { StudyPlanHeader } from './components/study-plan-header'
 import { loadCustomStudyPlan } from './custom-study-plan'
 import {
@@ -362,11 +362,6 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-6">
-                      <StudyPlanClosedLoop
-                        projectId={projectId}
-                        plan={displayedPlan}
-                      />
-
                       {/* Analysis */}
                       <div>
                         <h3 className="text-lg font-semibold mb-2">分析</h3>
@@ -393,83 +388,91 @@ export const StudyPlanPage = ({ projectId }: StudyPlanPageProps) => {
 
                       {/* Action Items */}
                       <div>
-                        <h3 className="text-lg font-semibold mb-2">行动项</h3>
+                        <h3 className="text-lg font-semibold mb-2">
+                          行动项与推荐执行反馈
+                        </h3>
                         <div className="grid gap-2">
-                          {displayedPlan.content.action_items.map((item, i) => {
-                            const isQuiz = item.type === 'quiz'
-                            const targetId = item.parent_id || item.id
-                            const hasDirectTarget =
-                              item.is_navigable &&
-                              Boolean(targetId) &&
-                              !targetId.startsWith('path-step-')
-                            const content = (
-                              <div className="flex items-center gap-2 p-3 rounded-md bg-muted/50 hover:bg-muted transition-colors border">
-                                {isQuiz ? (
-                                  <BrainCircuit className="h-4 w-4 text-blue-500" />
-                                ) : (
-                                  <Sparkles className="h-4 w-4 text-[#5483B3]" />
-                                )}
-                                <div className="flex-1">
-                                  <div className="font-medium text-sm">
-                                    {item.title}
-                                  </div>
-                                  {item.description && (
-                                    <Response className="text-xs text-muted-foreground">
-                                      {item.description}
-                                    </Response>
+                          {displayedPlan.content.action_items
+                            .filter((item) => !item.recommendation_id)
+                            .map((item, i) => {
+                              const isQuiz = item.type === 'quiz'
+                              const targetId = item.parent_id || item.id
+                              const hasDirectTarget =
+                                item.is_navigable &&
+                                Boolean(targetId) &&
+                                !targetId.startsWith('path-step-')
+                              const content = (
+                                <div className="flex items-center gap-2 p-3 rounded-md bg-muted/50 hover:bg-muted transition-colors border">
+                                  {isQuiz ? (
+                                    <BrainCircuit className="h-4 w-4 text-blue-500" />
+                                  ) : (
+                                    <Sparkles className="h-4 w-4 text-[#5483B3]" />
                                   )}
+                                  <div className="flex-1">
+                                    <div className="font-medium text-sm">
+                                      {item.title}
+                                    </div>
+                                    {item.description && (
+                                      <Response className="text-xs text-muted-foreground">
+                                        {item.description}
+                                      </Response>
+                                    )}
+                                  </div>
+                                  <span className="rounded border px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                                    {resourceTypeLabels[
+                                      item.source_type || item.type
+                                    ] ?? '学习资源'}
+                                  </span>
+                                  <ArrowUpRight className="size-4 shrink-0 text-muted-foreground" />
                                 </div>
-                                <span className="rounded border px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-                                  {resourceTypeLabels[
-                                    item.source_type || item.type
-                                  ] ?? '学习资源'}
-                                </span>
-                                <ArrowUpRight className="size-4 shrink-0 text-muted-foreground" />
-                              </div>
-                            )
+                              )
 
-                            if (!hasDirectTarget) {
+                              if (!hasDirectTarget) {
+                                return (
+                                  <Link
+                                    key={i}
+                                    to={
+                                      isQuiz
+                                        ? '/dashboard/p/$projectId/learning-evaluation/practice'
+                                        : '/dashboard/p/$projectId/resource-packages'
+                                    }
+                                    params={{ projectId }}
+                                    className="block"
+                                  >
+                                    {content}
+                                  </Link>
+                                )
+                              }
+
                               return (
                                 <Link
                                   key={i}
                                   to={
                                     isQuiz
-                                      ? '/dashboard/p/$projectId/learning-evaluation/practice'
-                                      : '/dashboard/p/$projectId/resource-packages'
+                                      ? '/dashboard/p/$projectId/q/$quizId'
+                                      : '/dashboard/p/$projectId/f/$flashcardGroupId'
                                   }
-                                  params={{ projectId }}
+                                  params={
+                                    isQuiz
+                                      ? {
+                                          projectId,
+                                          quizId: targetId,
+                                        }
+                                      : {
+                                          projectId,
+                                          flashcardGroupId: targetId,
+                                        }
+                                  }
                                   className="block"
                                 >
                                   {content}
                                 </Link>
                               )
-                            }
-
-                            return (
-                              <Link
-                                key={i}
-                                to={
-                                  isQuiz
-                                    ? '/dashboard/p/$projectId/q/$quizId'
-                                    : '/dashboard/p/$projectId/f/$flashcardGroupId'
-                                }
-                                params={
-                                  isQuiz
-                                    ? {
-                                        projectId,
-                                        quizId: targetId,
-                                      }
-                                    : {
-                                        projectId,
-                                        flashcardGroupId: targetId,
-                                      }
-                                }
-                                className="block"
-                              >
-                                {content}
-                              </Link>
-                            )
-                          })}
+                            })}
+                          <StudyPlanRecommendationFeedback
+                            projectId={projectId}
+                            plan={displayedPlan}
+                          />
                         </div>
                       </div>
 

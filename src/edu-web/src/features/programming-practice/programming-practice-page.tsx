@@ -43,6 +43,39 @@ type ProgrammingGrade = {
   language?: ProgrammingLanguage
 }
 
+type JudgeVerdict = 'AC' | 'WA' | 'TLE' | 'RE' | 'CE'
+
+type ProgrammingTestResult = {
+  index: number
+  passed: boolean
+  verdict: JudgeVerdict
+  input: string | null
+  expected_output: string | null
+  actual_output: string
+  stderr: string
+  hidden: boolean
+}
+
+type ProgrammingSubmission = {
+  score: number
+  passed: boolean
+  judge_verdict: JudgeVerdict
+  judge_message: string
+  passed_cases: number
+  total_cases: number
+  test_results: Array<ProgrammingTestResult>
+  answer: string
+  language: ProgrammingLanguage
+}
+
+const judgeVerdictLabels = {
+  AC: '答案正确',
+  WA: '答案错误',
+  TLE: '运行超时',
+  RE: '运行错误',
+  CE: '编译错误',
+} as const
+
 type ProgrammingRunResult = {
   language: string
   version: string
@@ -124,6 +157,20 @@ const readStoredGrades = (key: string): Record<string, ProgrammingGrade> => {
   }
 }
 
+const readStoredSubmissions = (
+  key: string,
+): Record<string, ProgrammingSubmission> => {
+  if (typeof window === 'undefined') return {}
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) ?? '{}')
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, ProgrammingSubmission>)
+      : {}
+  } catch {
+    return {}
+  }
+}
+
 const GradeList = ({
   title,
   items,
@@ -169,6 +216,7 @@ export const ProgrammingPracticePage = ({
   const packagesResult = useAtomValue(resourcePackagesAtom(projectId))
   const draftKey = `programming-drafts:${projectId}:${resourceId}`
   const gradeKey = `programming-grades:${projectId}:${resourceId}`
+  const submissionKey = `programming-submissions:${projectId}:${resourceId}`
   const languageKey = `programming-languages:${projectId}:${resourceId}`
   const inputKey = `programming-inputs:${projectId}:${resourceId}`
   const [activeIndex, setActiveIndex] = useState(0)
@@ -178,6 +226,9 @@ export const ProgrammingPracticePage = ({
   const [grades, setGrades] = useState<Record<string, ProgrammingGrade>>(() =>
     readStoredGrades(gradeKey),
   )
+  const [submissions, setSubmissions] = useState<
+    Record<string, ProgrammingSubmission>
+  >(() => readStoredSubmissions(submissionKey))
   const [languages, setLanguages] = useState<Record<string, string>>(() =>
     readStoredObject(languageKey),
   )
@@ -192,8 +243,10 @@ export const ProgrammingPracticePage = ({
   )
   const [runningDraftId, setRunningDraftId] = useState<string | null>(null)
   const [revealedSolutions, setRevealedSolutions] = useState<Array<string>>([])
-  const [isGrading, setIsGrading] = useState(false)
-  const [gradingError, setGradingError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submissionError, setSubmissionError] = useState<string | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
 
   const content = Result.builder(packagesResult)
     .onInitialOrWaiting(() => (
@@ -263,10 +316,17 @@ export const ProgrammingPracticePage = ({
         storedGrade && (storedGrade.language ?? 'python') === language
           ? storedGrade
           : undefined
-      const isSubmitted = Boolean(grade)
+      const storedSubmission = Object.hasOwn(submissions, question.id)
+        ? submissions[question.id]
+        : undefined
+      const submission =
+        storedSubmission && storedSubmission.language === language
+          ? storedSubmission
+          : undefined
+      const isSubmitted = Boolean(submission)
       const isSolutionRevealed = revealedSolutions.includes(question.id)
       const completion = Math.round(
-        (Object.keys(grades).filter((id) =>
+        (Object.keys(submissions).filter((id) =>
           questions.some((item) => item.id === id),
         ).length /
           questions.length) *
@@ -358,15 +418,15 @@ export const ProgrammingPracticePage = ({
         const nextDrafts = { ...drafts, [draftId]: answer }
         setDrafts(nextDrafts)
         window.localStorage.setItem(draftKey, JSON.stringify(nextDrafts))
-        setIsGrading(true)
-        setGradingError(null)
+        setIsSubmitting(true)
+        setSubmissionError(null)
 
         try {
           const {
             data: { session },
           } = await authClient.auth.getSession()
           const response = await fetch(
-            `${serverUrl}/api/v1/projects/${projectId}/generated-resources/${resourceId}/programming-grade`,
+            `${serverUrl}/api/v1/projects/${projectId}/generated-resources/${resourceId}/programming-submit`,
             {
               method: 'POST',
               headers: {
@@ -392,28 +452,103 @@ export const ProgrammingPracticePage = ({
           if (
             !payload ||
             typeof payload !== 'object' ||
-            !('score' in payload)
+            !('judge_verdict' in payload) ||
+            !('test_results' in payload)
           ) {
             throw new Error('判题服务返回了无法识别的数据，请稍后重试。')
           }
 
+          const programmingSubmission = {
+            ...(payload as Omit<ProgrammingSubmission, 'answer' | 'language'>),
+            answer,
+            language,
+          }
+          const nextSubmissions = {
+            ...submissions,
+            [question.id]: programmingSubmission,
+          }
+          setSubmissions(nextSubmissions)
+          window.localStorage.setItem(
+            submissionKey,
+            JSON.stringify(nextSubmissions),
+          )
+
+          const nextGrades = { ...grades }
+          delete nextGrades[question.id]
+          setGrades(nextGrades)
+          window.localStorage.setItem(gradeKey, JSON.stringify(nextGrades))
+          setAnalysisError(null)
+        } catch (error) {
+          setSubmissionError(
+            error instanceof TypeError
+              ? `无法连接判题服务（${serverUrl}）。请确认后端已启动，并检查 VITE_SERVER_URL 与跨域配置。`
+              : error instanceof Error
+                ? error.message
+                : '提交判题失败，请稍后重试。',
+          )
+        } finally {
+          setIsSubmitting(false)
+        }
+      }
+
+      const analyzeSubmission = async () => {
+        if (!submission) return
+        setIsAnalyzing(true)
+        setAnalysisError(null)
+
+        try {
+          const {
+            data: { session },
+          } = await authClient.auth.getSession()
+          const response = await fetch(
+            `${serverUrl}/api/v1/projects/${projectId}/generated-resources/${resourceId}/programming-grade`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(session?.access_token
+                  ? { Authorization: `Bearer ${session.access_token}` }
+                  : {}),
+              },
+              body: JSON.stringify({
+                question_id: question.id,
+                answer: submission.answer,
+                language: submission.language,
+              }),
+            },
+          )
+          const payload: unknown = await response.json().catch(() => null)
+          if (!response.ok) {
+            throw new Error(
+              getApiErrorMessage(payload) ??
+                `AI 解析服务返回错误（HTTP ${response.status}）`,
+            )
+          }
+          if (
+            !payload ||
+            typeof payload !== 'object' ||
+            !('summary' in payload)
+          ) {
+            throw new Error('AI 解析服务返回了无法识别的数据，请稍后重试。')
+          }
+
           const programmingGrade = {
             ...(payload as ProgrammingGrade),
-            language,
+            language: submission.language,
           }
           const nextGrades = { ...grades, [question.id]: programmingGrade }
           setGrades(nextGrades)
           window.localStorage.setItem(gradeKey, JSON.stringify(nextGrades))
         } catch (error) {
-          setGradingError(
+          setAnalysisError(
             error instanceof TypeError
-              ? `无法连接判题服务（${serverUrl}）。请确认后端已启动，并检查 VITE_SERVER_URL 与跨域配置。`
+              ? `无法连接 AI 解析服务（${serverUrl}）。请确认后端已启动。`
               : error instanceof Error
                 ? error.message
-                : 'AI 评分失败，请稍后重试。',
+                : 'AI 解析失败，请稍后重试。',
           )
         } finally {
-          setIsGrading(false)
+          setIsAnalyzing(false)
         }
       }
 
@@ -579,11 +714,11 @@ export const ProgrammingPracticePage = ({
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm text-muted-foreground">
-                  {grade
-                    ? `AI 已评分：${grade.score} 分`
-                    : '提交后将由 AI 从正确性、复杂度和代码质量等方面评分。'}
+                  {submission
+                    ? `${submission.judge_verdict} · 通过 ${submission.passed_cases}/${submission.total_cases} 个测试案例`
+                    : '提交只运行测试案例；提交完成后可另行请求 AI 解析。'}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
                     variant="secondary"
@@ -615,26 +750,156 @@ export const ProgrammingPracticePage = ({
                   <Button
                     type="button"
                     onClick={() => void submitAnswer()}
-                    disabled={!answer.trim() || isGrading}
+                    disabled={!answer.trim() || isSubmitting}
                   >
-                    {isGrading ? (
+                    {isSubmitting ? (
                       <>
                         <Loader2 className="mr-2 size-4 animate-spin" />
-                        AI 评分中
+                        正在提交
                       </>
                     ) : isSubmitted ? (
-                      '重新提交并评分'
+                      '重新提交'
                     ) : (
-                      '提交并由 AI 评分'
+                      '提交代码'
                     )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void analyzeSubmission()}
+                    disabled={!submission || isAnalyzing}
+                  >
+                    {isAnalyzing ? (
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="mr-2 size-4" />
+                    )}
+                    {isAnalyzing
+                      ? 'AI 解析中'
+                      : grade
+                        ? '重新 AI 解析'
+                        : 'AI 解析'}
                   </Button>
                 </div>
               </div>
 
-              {gradingError ? (
+              {submissionError ? (
                 <div className="flex gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
                   <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                  <span>{gradingError}</span>
+                  <span>{submissionError}</span>
+                </div>
+              ) : null}
+
+              {submission ? (
+                <div className="space-y-4 rounded-2xl border p-5">
+                  <div
+                    className={cn(
+                      'flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4',
+                      submission.passed
+                        ? 'border-emerald-500/30 bg-emerald-500/5'
+                        : 'border-destructive/30 bg-destructive/5',
+                    )}
+                  >
+                    <div>
+                      <div className="text-lg font-bold">
+                        {submission.judge_verdict} ·{' '}
+                        {judgeVerdictLabels[submission.judge_verdict]}
+                      </div>
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        {submission.judge_message}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold">
+                        {submission.score}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        通过 {submission.passed_cases} /{' '}
+                        {submission.total_cases}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="mb-3 font-semibold">测试案例</h3>
+                    <div className="space-y-3">
+                      {submission.test_results.map((testResult) => (
+                        <div
+                          key={testResult.index}
+                          className="rounded-xl border bg-card p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="font-medium">
+                              测试案例 #{testResult.index}
+                              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                                {testResult.hidden ? '隐藏案例' : '公开案例'}
+                              </span>
+                            </div>
+                            <span
+                              className={cn(
+                                'text-sm font-semibold',
+                                testResult.passed
+                                  ? 'text-emerald-700'
+                                  : 'text-destructive',
+                              )}
+                            >
+                              {testResult.verdict} ·{' '}
+                              {judgeVerdictLabels[testResult.verdict]}
+                            </span>
+                          </div>
+                          {testResult.hidden ? (
+                            <p className="mt-3 text-sm text-muted-foreground">
+                              该案例为隐藏案例，输入与预期输出不公开。
+                            </p>
+                          ) : (
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <div>
+                                <div className="mb-1 text-xs font-medium text-muted-foreground">
+                                  输入
+                                </div>
+                                <pre className="overflow-x-auto bg-muted/50 p-3 text-xs">
+                                  {testResult.input || '（空输入）'}
+                                </pre>
+                              </div>
+                              <div>
+                                <div className="mb-1 text-xs font-medium text-muted-foreground">
+                                  预期输出
+                                </div>
+                                <pre className="overflow-x-auto bg-muted/50 p-3 text-xs">
+                                  {testResult.expected_output || '（空输出）'}
+                                </pre>
+                              </div>
+                            </div>
+                          )}
+                          <div className="mt-3">
+                            <div className="mb-1 text-xs font-medium text-muted-foreground">
+                              实际输出
+                            </div>
+                            <pre className="overflow-x-auto bg-slate-950 p-3 text-xs text-slate-100">
+                              {testResult.actual_output || '（无输出）'}
+                            </pre>
+                          </div>
+                          {testResult.stderr ? (
+                            <div className="mt-3">
+                              <div className="mb-1 text-xs font-medium text-destructive">
+                                错误信息
+                              </div>
+                              <pre className="overflow-x-auto bg-destructive/5 p-3 text-xs text-destructive">
+                                {testResult.stderr}
+                              </pre>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {analysisError ? (
+                <div className="flex gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                  <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                  <span>{analysisError}</span>
                 </div>
               ) : null}
 
@@ -655,10 +920,10 @@ export const ProgrammingPracticePage = ({
                       <div>
                         <div className="flex items-center gap-2 font-semibold">
                           <Sparkles className="size-4 text-primary" />
-                          AI 评分结果
+                          中文智能评语
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">
-                          {grade.passed ? '已通过' : '暂未通过'} · 满分 100
+                          AI 静态分析评分 · {grade.score} 分
                         </div>
                       </div>
                     </div>
@@ -765,7 +1030,7 @@ export const ProgrammingPracticePage = ({
 
   return (
     <div className="flex h-full max-h-screen flex-col">
-      <ProjectHeader projectId={projectId} />
+      <ProjectHeader projectId={projectId} backToPractice />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <main className="container mx-auto max-w-7xl space-y-4 px-4 py-6">
           {content}

@@ -13,6 +13,7 @@ from edu_db.models import (
     Course,
     CourseChapter,
     CourseResourceKnowledgePoint,
+    Document,
     KnowledgePoint,
     KnowledgePointRelation,
     KnowledgeStateEvent,
@@ -134,6 +135,49 @@ class ASectionServiceTests(unittest.TestCase):
 
         self.assertEqual(created.knowledge_point_ids, ["kp-1"])
         self.assertEqual(service.list_resources("course-1", "user-1")[0].id, created.id)
+
+    def test_course_resource_exposes_its_document_project(self):
+        with self.session_factory() as db:
+            db.add(
+                Project(
+                    id="source-project",
+                    owner_id="user-1",
+                    course_id="course-1",
+                    name="Course PDF source",
+                )
+            )
+            db.add(
+                Document(
+                    id="course-pdf",
+                    owner_id="user-1",
+                    project_id="source-project",
+                    file_name="transactions.pdf",
+                    file_type="pdf",
+                    file_size=1024,
+                )
+            )
+            db.commit()
+
+        resource = CourseResourceService().create_resource(
+            "course-1",
+            "user-1",
+            chapter_id="chapter-1",
+            document_id="course-pdf",
+            generated_resource_id=None,
+            resource_type="pdf",
+            title="Transaction textbook",
+            description=None,
+            source_type="internal",
+            source_url=None,
+            difficulty_level="beginner",
+            estimated_minutes=30,
+            license_info=None,
+            target_audiences=[],
+            metadata={},
+            knowledge_point_ids=["kp-1"],
+        )
+
+        self.assertEqual(resource.document_project_id, "source-project")
 
     def test_knowledge_point_get_and_update(self):
         service = CourseService()
@@ -354,6 +398,39 @@ class ASectionServiceTests(unittest.TestCase):
             "Pass the database exam",
         )
         self.assertEqual(len(service.list_revisions("project-1", "user-1")), 1)
+
+    def test_chat_inferences_merge_up_to_three_resource_preferences(self):
+        service = LearnerProfileService()
+        service.replace_profile(
+            "project-1",
+            "user-1",
+            {
+                "resource_preference": {
+                    "value": ["编程题", "学习笔记"],
+                    "confidence": 1.0,
+                    "status": "confirmed",
+                }
+            },
+        )
+
+        profile = service.apply_chat_inferences(
+            "project-1",
+            "user-1",
+            "message-preference",
+            "我也喜欢通过选择题巩固。",
+            {
+                "resource_preference": {
+                    "value": ["选择题"],
+                    "confidence": 0.95,
+                    "status": "confirmed",
+                }
+            },
+        )
+
+        self.assertEqual(
+            profile.profile_data["resource_preference"]["value"],
+            ["编程题", "学习笔记", "选择题"],
+        )
 
     def test_practice_refresh_is_automatic_and_idempotent(self):
         practice_service = PracticeService()

@@ -10,6 +10,9 @@ class CourseResourceDto(BaseModel):
     course_id: str = Field(..., description="ID of the parent course")
     chapter_id: str | None = Field(None, description="Optional chapter ID")
     document_id: str | None = Field(None, description="Optional source document ID")
+    document_project_id: str | None = Field(
+        None, description="Project ID that owns the source document"
+    )
     generated_resource_id: str | None = Field(
         None, description="Optional generated resource ID"
     )

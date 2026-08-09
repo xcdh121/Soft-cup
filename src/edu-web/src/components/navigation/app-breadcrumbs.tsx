@@ -19,12 +19,13 @@ const getPageTrail = (pathname: string): Array<string> => {
 
   if (/\/c\/[^/]+$/.test(pathname)) return ['对话记录', '对话详情']
   if (/\/d\/[^/]+$/.test(pathname)) return ['文档学习', '文档详情']
-  if (/\/f\/[^/]+\/edit$/.test(pathname)) return ['闪卡', '编辑闪卡']
-  if (/\/f\/[^/]+$/.test(pathname)) return ['闪卡', '闪卡学习']
+  if (/\/f\/[^/]+\/edit$/.test(pathname)) return ['我的资源', '编辑闪卡']
+  if (/\/f\/[^/]+$/.test(pathname)) return ['我的资源', '闪卡学习']
   if (/\/q\/[^/]+\/edit$/.test(pathname)) return ['题目练习', '编辑题目']
   if (/\/q\/[^/]+$/.test(pathname)) return ['题目练习', '练习详情']
-  if (/\/n\/[^/]+$/.test(pathname)) return ['资源包', '笔记详情']
-  if (/\/m\/[^/]+$/.test(pathname)) return ['资源包', '思维导图详情']
+  if (/\/n\/[^/]+$/.test(pathname)) return ['我的资源', '笔记详情']
+  if (/\/m\/[^/]+$/.test(pathname)) return ['我的资源', '思维导图详情']
+  if (/\/r\/[^/]+$/.test(pathname)) return ['我的资源', '资源详情']
   if (/\/programming\/[^/]+$/.test(pathname)) {
     return ['题目练习', '编程练习']
   }
@@ -32,6 +33,7 @@ const getPageTrail = (pathname: string): Array<string> => {
   if (pathname.endsWith('/handwriting-recognition')) return ['手写笔记识别']
   if (pathname.endsWith('/pdf-ocr')) return ['PDF 文档识别']
   if (pathname.endsWith('/document-translation')) return ['文档翻译']
+  if (pathname.endsWith('/my-resources')) return ['学习中心', '我的资源']
   if (pathname.endsWith('/knowledge-graph')) return ['知识图谱']
   if (pathname.endsWith('/learner-profile')) return ['学生画像']
   if (pathname.endsWith('/study-plan/customize')) {

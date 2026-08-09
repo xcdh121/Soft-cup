@@ -425,6 +425,9 @@ class CourseResourceService:
             course_id=resource.course_id,
             chapter_id=resource.chapter_id,
             document_id=resource.document_id,
+            document_project_id=(
+                resource.document.project_id if resource.document else None
+            ),
             generated_resource_id=resource.generated_resource_id,
             resource_type=resource.resource_type,
             title=resource.title,

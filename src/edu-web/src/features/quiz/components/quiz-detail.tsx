@@ -11,7 +11,11 @@ import {
   setSelectedAnswerAtom,
   submitQuizQuestionAtom,
 } from '@/data-acess/quiz-detail-state'
-import { quizQuestionsAtom, refreshQuizQuestionsAtom } from '@/data-acess/quiz'
+import {
+  quizAtom,
+  quizQuestionsAtom,
+  refreshQuizQuestionsAtom,
+} from '@/data-acess/quiz'
 import { cn } from '@/lib/utils'
 import { useGeneratedResourceSnapshot } from '@/hooks/use-generated-resource-snapshot'
 import { readLearningVerification } from '@/lib/learning-verification-context'
@@ -30,6 +34,7 @@ export const QuizDetail = ({
   const questionsResult = useAtomValue(
     quizQuestionsAtom(`${projectId}:${quizId}`),
   )
+  const quizResult = useAtomValue(quizAtom(`${projectId}:${quizId}`))
   const stateResult = useAtomValue(quizDetailStateAtom(quizId))
   const refreshQuestions = useAtomSet(refreshQuizQuestionsAtom, {
     mode: 'promise',
@@ -48,6 +53,7 @@ export const QuizDetail = ({
   const goToPrevious = useAtomSet(goToPreviousQuestionAtom, { mode: 'promise' })
   const submitQuestion = useAtomSet(submitQuizQuestionAtom, { mode: 'promise' })
   const wasGenerating = useRef(false)
+  const emptyRefreshCount = useRef(0)
   const verificationContext = readLearningVerification(projectId)
 
   // Keyboard shortcuts
@@ -144,12 +150,45 @@ export const QuizDetail = ({
     snapshot.isGenerating,
   ])
 
+  const quizName = quizResult._tag === 'Success' ? quizResult.value.name : ''
+  const isGeneratedReinforcementQuiz =
+    /^(巩固选择题|reinforcement quiz)\s*[:：]/i.test(quizName)
+  const isEmpty =
+    questionsResult._tag === 'Success' && questionsResult.value.length === 0
+
+  useEffect(() => {
+    if (!isGeneratedReinforcementQuiz || !isEmpty || snapshot.isGenerating) {
+      emptyRefreshCount.current = 0
+      return
+    }
+
+    const timer = window.setInterval(() => {
+      if (emptyRefreshCount.current >= 30) {
+        window.clearInterval(timer)
+        return
+      }
+      emptyRefreshCount.current += 1
+      void refreshQuestions({ projectId, quizId })
+    }, 2000)
+    return () => window.clearInterval(timer)
+  }, [
+    projectId,
+    quizId,
+    isEmpty,
+    isGeneratedReinforcementQuiz,
+    refreshQuestions,
+    snapshot.isGenerating,
+  ])
+
   const loadedQuestionCount =
     questionsResult._tag === 'Success' ? questionsResult.value.length : 0
   const snapshotQuestions = snapshot.data ?? []
   const showIncrementalGeneration =
     snapshot.checking ||
     snapshot.isGenerating ||
+    (isGeneratedReinforcementQuiz &&
+      isEmpty &&
+      emptyRefreshCount.current < 30) ||
     (snapshot.isManaged &&
       snapshotQuestions.length > 0 &&
       loadedQuestionCount < snapshotQuestions.length)
