@@ -55,6 +55,17 @@ class CourseResourceService:
                 knowledge_point_ids,
             )
 
+            existing = self._find_generated_resource_link(
+                db, course_id, generated_resource_id
+            )
+            if existing is not None:
+                self._merge_knowledge_point_links(existing, knowledge_point_ids)
+                if existing.chapter_id is None and chapter_id is not None:
+                    existing.chapter_id = chapter_id
+                db.commit()
+                db.refresh(existing)
+                return self._to_dto(existing)
+
             resource = CourseResource(
                 id=str(uuid4()),
                 course_id=course_id,
@@ -73,16 +84,12 @@ class CourseResourceService:
                 extra_metadata=metadata,
             )
             db.add(resource)
-            self._replace_knowledge_point_links(
-                db, resource, knowledge_point_ids
-            )
+            self._replace_knowledge_point_links(db, resource, knowledge_point_ids)
             db.commit()
             db.refresh(resource)
             return self._to_dto(resource)
 
-    def list_resources(
-        self, course_id: str, owner_id: str
-    ) -> list[CourseResourceDto]:
+    def list_resources(self, course_id: str, owner_id: str) -> list[CourseResourceDto]:
         with self._get_db_session() as db:
             self._get_readable_course(db, course_id, owner_id)
             resources = (
@@ -98,17 +105,13 @@ class CourseResourceService:
     ) -> CourseResourceDto:
         with self._get_db_session() as db:
             self._get_readable_course(db, course_id, owner_id)
-            return self._to_dto(
-                self._get_course_resource(db, course_id, resource_id)
-            )
+            return self._to_dto(self._get_course_resource(db, course_id, resource_id))
 
     def list_resources_by_knowledge_point(
         self, knowledge_point_id: str, owner_id: str
     ) -> list[CourseResourceDto]:
         with self._get_db_session() as db:
-            point = self._get_readable_knowledge_point(
-                db, knowledge_point_id, owner_id
-            )
+            point = self._get_readable_knowledge_point(db, knowledge_point_id, owner_id)
             resources = (
                 db.query(CourseResource)
                 .join(
@@ -147,9 +150,7 @@ class CourseResourceService:
         knowledge_point_ids: list[str],
     ) -> CourseResourceDto:
         with self._get_db_session() as db:
-            point = self._get_owned_knowledge_point(
-                db, knowledge_point_id, owner_id
-            )
+            point = self._get_owned_knowledge_point(db, knowledge_point_id, owner_id)
             linked_point_ids = list(
                 dict.fromkeys([knowledge_point_id, *knowledge_point_ids])
             )
@@ -165,6 +166,17 @@ class CourseResourceService:
                 generated_resource_id,
                 linked_point_ids,
             )
+
+            existing = self._find_generated_resource_link(
+                db, point.course_id, generated_resource_id
+            )
+            if existing is not None:
+                self._merge_knowledge_point_links(existing, linked_point_ids)
+                if existing.chapter_id is None and resource_chapter_id is not None:
+                    existing.chapter_id = resource_chapter_id
+                db.commit()
+                db.refresh(existing)
+                return self._to_dto(existing)
 
             resource = CourseResource(
                 id=str(uuid4()),
@@ -212,10 +224,7 @@ class CourseResourceService:
 
             knowledge_point_ids = updates.get(
                 "knowledge_point_ids",
-                [
-                    link.knowledge_point_id
-                    for link in resource.knowledge_point_links
-                ],
+                [link.knowledge_point_id for link in resource.knowledge_point_links],
             )
             self._validate_references(
                 db,
@@ -234,17 +243,13 @@ class CourseResourceService:
                 setattr(resource, column_map.get(field, field), value)
 
             if "knowledge_point_ids" in updates:
-                self._replace_knowledge_point_links(
-                    db, resource, knowledge_point_ids
-                )
+                self._replace_knowledge_point_links(db, resource, knowledge_point_ids)
 
             db.commit()
             db.refresh(resource)
             return self._to_dto(resource)
 
-    def delete_resource(
-        self, course_id: str, resource_id: str, owner_id: str
-    ) -> None:
+    def delete_resource(self, course_id: str, resource_id: str, owner_id: str) -> None:
         with self._get_db_session() as db:
             self._get_owned_course(db, course_id, owner_id)
             resource = self._get_course_resource(db, course_id, resource_id)
@@ -341,6 +346,39 @@ class CourseResourceService:
             )
 
     @staticmethod
+    def _merge_knowledge_point_links(
+        resource: CourseResource, knowledge_point_ids: list[str]
+    ) -> None:
+        existing_ids = {
+            link.knowledge_point_id for link in resource.knowledge_point_links
+        }
+        for knowledge_point_id in dict.fromkeys(knowledge_point_ids):
+            if knowledge_point_id in existing_ids:
+                continue
+            resource.knowledge_point_links.append(
+                CourseResourceKnowledgePoint(
+                    id=str(uuid4()),
+                    knowledge_point_id=knowledge_point_id,
+                    relevance_score=1.0,
+                )
+            )
+
+    @staticmethod
+    def _find_generated_resource_link(
+        db, course_id: str, generated_resource_id: str | None
+    ) -> CourseResource | None:
+        if not generated_resource_id:
+            return None
+        return (
+            db.query(CourseResource)
+            .filter(
+                CourseResource.course_id == course_id,
+                CourseResource.generated_resource_id == generated_resource_id,
+            )
+            .first()
+        )
+
+    @staticmethod
     def _get_owned_course(db, course_id: str, owner_id: str) -> Course:
         course = (
             db.query(Course)
@@ -352,9 +390,7 @@ class CourseResourceService:
         return course
 
     @staticmethod
-    def _get_course_resource(
-        db, course_id: str, resource_id: str
-    ) -> CourseResource:
+    def _get_course_resource(db, course_id: str, resource_id: str) -> CourseResource:
         resource = (
             db.query(CourseResource)
             .filter(
@@ -371,14 +407,18 @@ class CourseResourceService:
 
     @staticmethod
     def _get_readable_course(db, course_id: str, owner_id: str) -> Course:
-        course = db.query(Course).filter(
-            Course.id == course_id,
-            or_(
-                Course.owner_id == owner_id,
-                (Course.visibility == "platform")
-                & (Course.publish_status == "published"),
-            ),
-        ).first()
+        course = (
+            db.query(Course)
+            .filter(
+                Course.id == course_id,
+                or_(
+                    Course.owner_id == owner_id,
+                    (Course.visibility == "platform")
+                    & (Course.publish_status == "published"),
+                ),
+            )
+            .first()
+        )
         if not course:
             raise NotFoundError(f"Course {course_id} not found")
         return course
@@ -387,16 +427,19 @@ class CourseResourceService:
     def _get_readable_knowledge_point(
         db, knowledge_point_id: str, owner_id: str
     ) -> KnowledgePoint:
-        point = db.query(KnowledgePoint).join(
-            Course, KnowledgePoint.course_id == Course.id
-        ).filter(
-            KnowledgePoint.id == knowledge_point_id,
-            or_(
-                Course.owner_id == owner_id,
-                (Course.visibility == "platform")
-                & (Course.publish_status == "published"),
-            ),
-        ).first()
+        point = (
+            db.query(KnowledgePoint)
+            .join(Course, KnowledgePoint.course_id == Course.id)
+            .filter(
+                KnowledgePoint.id == knowledge_point_id,
+                or_(
+                    Course.owner_id == owner_id,
+                    (Course.visibility == "platform")
+                    & (Course.publish_status == "published"),
+                ),
+            )
+            .first()
+        )
         if not point:
             raise NotFoundError(f"Knowledge point {knowledge_point_id} not found")
         return point
@@ -429,6 +472,13 @@ class CourseResourceService:
                 resource.document.project_id if resource.document else None
             ),
             generated_resource_id=resource.generated_resource_id,
+            generated_resource=(
+                CourseResourceService._resource_to_generated_dto(
+                    resource.generated_resource
+                )
+                if resource.generated_resource
+                else None
+            ),
             resource_type=resource.resource_type,
             title=resource.title,
             description=resource.description,
@@ -440,12 +490,17 @@ class CourseResourceService:
             target_audiences=resource.target_audiences or [],
             metadata=resource.extra_metadata or {},
             knowledge_point_ids=[
-                link.knowledge_point_id
-                for link in resource.knowledge_point_links
+                link.knowledge_point_id for link in resource.knowledge_point_links
             ],
             created_at=resource.created_at,
             updated_at=resource.updated_at,
         )
+
+    @staticmethod
+    def _resource_to_generated_dto(resource: GeneratedResource):
+        from edu_core.schemas.resource_packages import GeneratedResourceDto
+
+        return GeneratedResourceDto.model_validate(resource)
 
     @contextmanager
     def _get_db_session(self):

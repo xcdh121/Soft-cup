@@ -14,6 +14,7 @@ from edu_db.models import (
     CourseChapter,
     CourseResourceKnowledgePoint,
     Document,
+    GeneratedResource,
     KnowledgePoint,
     KnowledgePointRelation,
     KnowledgeStateEvent,
@@ -23,6 +24,7 @@ from edu_db.models import (
     Project,
     Quiz,
     QuizQuestion,
+    ResourcePackage,
     StudentKnowledgeState,
     User,
 )
@@ -178,6 +180,83 @@ class ASectionServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(resource.document_project_id, "source-project")
+
+    def test_generated_course_resource_is_resolved_and_reused(self):
+        with self.session_factory() as db:
+            db.add(
+                ResourcePackage(
+                    id="package-1",
+                    project_id="project-1",
+                    user_id="user-1",
+                    title="Transaction resources",
+                    status="completed",
+                    target_topic="Transactions",
+                    preferred_resource_types=["lecture_note"],
+                    resource_count=1,
+                    completed_resource_count=1,
+                )
+            )
+            db.add(
+                GeneratedResource(
+                    id="generated-1",
+                    resource_package_id="package-1",
+                    project_id="project-1",
+                    user_id="user-1",
+                    resource_type="lecture_note",
+                    title="Generated transaction note",
+                    summary="Generated summary",
+                    status="completed",
+                    format="markdown",
+                    content_text="# Transaction note",
+                    knowledge_point_ids=["kp-1"],
+                )
+            )
+            db.commit()
+
+        service = CourseResourceService()
+        created = service.create_resource(
+            "course-1",
+            "user-1",
+            chapter_id="chapter-1",
+            document_id=None,
+            generated_resource_id="generated-1",
+            resource_type="lecture_note",
+            title="Course transaction note",
+            description="Keep this description",
+            source_type="generated",
+            source_url=None,
+            difficulty_level="beginner",
+            estimated_minutes=15,
+            license_info=None,
+            target_audiences=["beginner"],
+            metadata={},
+            knowledge_point_ids=["kp-1"],
+        )
+        reused = service.create_resource(
+            "course-1",
+            "user-1",
+            chapter_id="chapter-1",
+            document_id=None,
+            generated_resource_id="generated-1",
+            resource_type="lecture_note",
+            title="Replacement title",
+            description="Do not replace the original description",
+            source_type="generated",
+            source_url=None,
+            difficulty_level="advanced",
+            estimated_minutes=99,
+            license_info=None,
+            target_audiences=["advanced"],
+            metadata={},
+            knowledge_point_ids=["kp-2"],
+        )
+
+        self.assertEqual(reused.id, created.id)
+        self.assertEqual(reused.title, "Course transaction note")
+        self.assertEqual(reused.description, "Keep this description")
+        self.assertEqual(set(reused.knowledge_point_ids), {"kp-1", "kp-2"})
+        self.assertEqual(reused.generated_resource.id, "generated-1")
+        self.assertEqual(reused.generated_resource.content_text, "# Transaction note")
 
     def test_knowledge_point_get_and_update(self):
         service = CourseService()

@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from edu_core.schemas.resource_packages import GeneratedResourceDto
 from pydantic import BaseModel, Field
 
 
@@ -15,6 +16,9 @@ class CourseResourceDto(BaseModel):
     )
     generated_resource_id: str | None = Field(
         None, description="Optional generated resource ID"
+    )
+    generated_resource: GeneratedResourceDto | None = Field(
+        None, description="Resolved generated resource content"
     )
     resource_type: str = Field(..., description="Resource type")
     title: str = Field(..., description="Resource title")

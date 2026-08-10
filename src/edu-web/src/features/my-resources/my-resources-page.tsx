@@ -3,9 +3,11 @@ import { Link } from '@tanstack/react-router'
 import {
   ArchiveIcon,
   ArrowUpRightIcon,
+  Code2Icon,
   DownloadIcon,
   FileTextIcon,
   Layers3Icon,
+  ListChecksIcon,
   ListIcon,
   Loader2Icon,
   NetworkIcon,
@@ -44,6 +46,8 @@ const RESOURCE_TYPES = [
   'lecture_note',
   'flashcards',
   'mind_map',
+  'practice_set',
+  'programming_questions',
   'video_recommendations',
   'pptx',
   'ppt_outline',
@@ -65,6 +69,8 @@ const RESOURCE_META: Record<SupportedResourceType, ResourceMeta> = {
   lecture_note: { label: '笔记', icon: FileTextIcon },
   flashcards: { label: '闪卡', icon: Layers3Icon },
   mind_map: { label: '思维导图', icon: NetworkIcon },
+  practice_set: { label: '题库', icon: ListChecksIcon },
+  programming_questions: { label: '编程练习', icon: Code2Icon },
   video_recommendations: { label: '视频推荐', icon: VideoIcon },
   pptx: { label: 'PPT', icon: PresentationIcon },
   ppt_outline: { label: 'PPT 大纲', icon: ListIcon },
@@ -119,6 +125,43 @@ const resolveFileUrl = (url: string) => {
 
 const ResourceAction = ({ item }: { item: ResourceItem }) => {
   const { resource } = item
+
+  if (resource.resource_type === 'programming_questions') {
+    return (
+      <Button variant="ghost" size="sm" asChild>
+        <Link
+          to="/dashboard/p/$projectId/programming/$resourceId"
+          params={{
+            projectId: resource.project_id,
+            resourceId: resource.id,
+          }}
+        >
+          开始编程
+          <ArrowUpRightIcon />
+        </Link>
+      </Button>
+    )
+  }
+
+  if (resource.resource_type === 'practice_set') {
+    const targetId = resource.content_json?.target_id
+    if (typeof targetId === 'string' && targetId) {
+      return (
+        <Button variant="ghost" size="sm" asChild>
+          <Link
+            to="/dashboard/p/$projectId/q/$quizId"
+            params={{
+              projectId: resource.project_id,
+              quizId: targetId,
+            }}
+          >
+            开始练习
+            <ArrowUpRightIcon />
+          </Link>
+        </Button>
+      )
+    }
+  }
 
   if (resource.resource_type === 'mind_map') {
     return (
