@@ -113,6 +113,74 @@ class ResourcePackageImportTests(unittest.TestCase):
         self.assertEqual(result.id, "resource-1")
         self.assertEqual(result.status, "generating")
 
+    def test_reconciles_false_note_failure_and_deletes_empty_video_failure(self):
+        with self.session_factory() as db:
+            db.add(
+                Note(
+                    id="note-complete",
+                    project_id="project-1",
+                    title="Completed note",
+                    content="# Generated content",
+                )
+            )
+            package = ResourcePackage(
+                id="package-reconcile",
+                project_id="project-1",
+                user_id="user-1",
+                title="Recovered package",
+                status="failed",
+                target_topic="Recovery",
+                resource_count=2,
+                completed_resource_count=0,
+                failed_resource_count=2,
+            )
+            package.resources.extend(
+                [
+                    GeneratedResource(
+                        id="resource-note-complete",
+                        project_id="project-1",
+                        user_id="user-1",
+                        resource_type="lecture_note",
+                        title="Completed note",
+                        status="failed",
+                        content_json={
+                            "target_id": "note-complete",
+                            "target_type": "note",
+                        },
+                        error_message="Interrupted",
+                    ),
+                    GeneratedResource(
+                        id="resource-video-empty",
+                        project_id="project-1",
+                        user_id="user-1",
+                        resource_type="video_recommendations",
+                        title="Empty videos",
+                        status="failed",
+                        content_json={},
+                        error_message="No video results found",
+                    ),
+                ]
+            )
+            db.add(package)
+            db.commit()
+
+        result = ResourcePackageService().reconcile_generated_resources(
+            "user-1", "project-1"
+        )
+
+        self.assertEqual(result, {"repaired": 1, "deleted": 1})
+        with self.session_factory() as db:
+            note_resource = db.get(GeneratedResource, "resource-note-complete")
+            self.assertIsNotNone(note_resource)
+            self.assertEqual(note_resource.status, "completed")
+            self.assertIsNone(note_resource.error_message)
+            self.assertIsNone(db.get(GeneratedResource, "resource-video-empty"))
+            package = db.get(ResourcePackage, "package-reconcile")
+            self.assertEqual(package.status, "completed")
+            self.assertEqual(package.resource_count, 1)
+            self.assertEqual(package.completed_resource_count, 1)
+            self.assertEqual(package.failed_resource_count, 0)
+
     def test_streams_completed_note_snapshot(self):
         with self.session_factory() as db:
             db.add(

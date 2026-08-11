@@ -2,7 +2,10 @@ import unittest
 
 from edu_ai.chatbot.image_generation_routing import (
     extract_image_topic,
+    extract_programming_topic,
+    resolve_forced_resource_generation,
     should_force_image_generation,
+    should_force_programming_generation,
 )
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -45,11 +48,56 @@ class ChatbotImageGenerationRoutingTests(unittest.TestCase):
 
     def test_extracts_topic_from_image_question(self):
         self.assertEqual(
-            extract_image_topic(
-                [HumanMessage(content="你能生成关于树论的图片吗?")]
-            ),
+            extract_image_topic([HumanMessage(content="你能生成关于树论的图片吗?")]),
             "树论",
         )
+
+    def test_programming_question_request_is_forced(self):
+        messages = [HumanMessage(content="请你生成一份关于递归的编程题")]
+
+        self.assertTrue(should_force_programming_generation(messages))
+        self.assertEqual(extract_programming_topic(messages), "递归")
+        intent = resolve_forced_resource_generation(messages)
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.resource_types, ("programming_questions",))
+        self.assertEqual(intent.topic, "递归")
+
+    def test_api_chat_history_dictionary_routes_programming_request(self):
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "请你生成一份DFS的编程题",
+                    }
+                ],
+            }
+        ]
+
+        intent = resolve_forced_resource_generation(messages)
+
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.resource_types, ("programming_questions",))
+        self.assertEqual(intent.topic, "dfs")
+
+    def test_programming_explanation_does_not_trigger_generation(self):
+        self.assertFalse(
+            should_force_programming_generation(
+                [HumanMessage(content="请讲解这道递归编程题")]
+            )
+        )
+
+    def test_affirmative_reply_after_programming_offer_is_forced(self):
+        messages = [
+            AIMessage(content="要不要为递归生成一套编程题?"),
+            HumanMessage(content="好的"),
+        ]
+
+        intent = resolve_forced_resource_generation(messages)
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.resource_types, ("programming_questions",))
+        self.assertEqual(intent.topic, "递归")
 
 
 if __name__ == "__main__":

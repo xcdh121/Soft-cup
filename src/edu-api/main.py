@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from config import get_settings
 from edu_core.exceptions import NotFoundError, UsageLimitExceededError
+from edu_core.services.resource_packages import ResourcePackageService
 from edu_db.session import init_db
 from exception_handlers import (
     general_exception_handler,
@@ -29,9 +30,11 @@ from routers import (
     flashcard_groups_router,
     generated_resources_router,
     handwriting_router,
+    intervention_outcomes_router,
     knowledge_graph_router,
     knowledge_points_router,
     knowledge_states_router,
+    kt_parameters_router,
     learner_profiles_router,
     learning_paths_router,
     mind_maps_router,
@@ -67,6 +70,14 @@ class Api:
             settings = get_settings()
             # Initialize the database
             init_db(settings.database_url)
+            recovered_count = ResourcePackageService(
+                storage_root=settings.storage_root
+            ).reconcile_orphaned_generations()
+            if recovered_count:
+                print(
+                    f"[{self.config.name}] Startup: marked {recovered_count} "
+                    "interrupted generation record(s) as failed"
+                )
             print(
                 f"[{self.config.name}] Startup: Ready to serve on port {self.config.port}"
             )
@@ -122,6 +133,7 @@ class Api:
         self.app.include_router(course_books_router)
         self.app.include_router(learner_profiles_router)
         self.app.include_router(knowledge_states_router)
+        self.app.include_router(kt_parameters_router)
         self.app.include_router(knowledge_graph_router)
         self.app.include_router(knowledge_points_router)
         self.app.include_router(documents_router)
@@ -138,6 +150,7 @@ class Api:
         self.app.include_router(study_plans_router)
         self.app.include_router(translation_router)
         self.app.include_router(recommendations_router)
+        self.app.include_router(intervention_outcomes_router)
         self.app.include_router(learning_paths_router)
         self.app.include_router(resource_packages_router)
         self.app.include_router(generated_resources_router)

@@ -73,6 +73,11 @@ const MindMapDetailRoute = lazy(() =>
     default: m.MindMapDetailRoute,
   })),
 )
+const GeneratedResourceDetailRoute = lazy(() =>
+  import('./generated-resource-detail-route').then((m) => ({
+    default: m.GeneratedResourceDetailRoute,
+  })),
+)
 
 const StudyPlanRoute = lazy(() =>
   import('./study-plan-route').then((m) => ({
@@ -122,6 +127,11 @@ const CourseLibraryRoute = lazy(() =>
 const MyCoursesRoute = lazy(() =>
   import('./my-courses-route').then((m) => ({
     default: m.MyCoursesRoute,
+  })),
+)
+const MyResourcesRoute = lazy(() =>
+  import('./my-resources-route').then((m) => ({
+    default: m.MyResourcesRoute,
   })),
 )
 const KnowledgeGraphRoute = lazy(() =>
@@ -360,6 +370,16 @@ export const mindMapDetailRoute = createRoute({
   ),
 })
 
+export const generatedResourceDetailRoute = createRoute({
+  path: '/p/$projectId/r/$resourceId',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <GeneratedResourceDetailRoute />
+    </Suspense>
+  ),
+})
+
 export const studyPlanRoute = createRoute({
   path: '/p/$projectId/study-plan',
   getParentRoute: () => dashboardRoute,
@@ -458,6 +478,16 @@ export const myCoursesRoute = createRoute({
   component: () => (
     <Suspense fallback={<LoadingPage />}>
       <MyCoursesRoute />
+    </Suspense>
+  ),
+})
+
+export const myResourcesRoute = createRoute({
+  path: '/p/$projectId/my-resources',
+  getParentRoute: () => dashboardRoute,
+  component: () => (
+    <Suspense fallback={<LoadingPage />}>
+      <MyResourcesRoute />
     </Suspense>
   ),
 })
@@ -565,6 +595,7 @@ export const routeTree = rootRoute.addChildren([
     quizEditRoute,
     noteDetailRoute,
     mindMapDetailRoute,
+    generatedResourceDetailRoute,
 
     studyPlanRoute,
     customStudyPlanRoute,
@@ -575,6 +606,7 @@ export const routeTree = rootRoute.addChildren([
     programmingPracticeRoute,
     learnerProfileRoute,
     myCoursesRoute,
+    myResourcesRoute,
     courseLibraryRoute,
     knowledgeGraphRoute,
     learningEvaluationRoute,

@@ -1,12 +1,19 @@
 from auth import get_current_user
-from dependencies import get_agent_orchestration_service
+from dependencies import (
+    get_agent_orchestration_service,
+    get_learning_closed_loop_service,
+)
 from edu_core.exceptions import NotFoundError
 from edu_core.schemas.agent_orchestration import (
     RecommendationGenerateRequest,
     RecommendationsResponse,
 )
 from edu_core.schemas.users import UserDto
-from edu_core.services import AgentOrchestrationService
+from edu_core.schemas.closed_loop import (
+    RecommendationFeedbackCreate,
+    RecommendationInteractionDto,
+)
+from edu_core.services import AgentOrchestrationService, LearningClosedLoopService
 from fastapi import APIRouter, Depends, HTTPException, status
 
 router = APIRouter(
@@ -48,3 +55,39 @@ async def generate_recommendations(
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post(
+    "/{recommendation_id}/feedback",
+    response_model=RecommendationInteractionDto,
+    status_code=status.HTTP_201_CREATED,
+)
+async def record_recommendation_feedback(
+    project_id: str,
+    recommendation_id: str,
+    request: RecommendationFeedbackCreate,
+    current_user: UserDto = Depends(get_current_user),
+    service: LearningClosedLoopService = Depends(
+        get_learning_closed_loop_service
+    ),
+):
+    return service.record_recommendation_feedback(
+        project_id, recommendation_id, current_user.id, request
+    )
+
+
+@router.get(
+    "/{recommendation_id}/interactions",
+    response_model=list[RecommendationInteractionDto],
+)
+async def list_recommendation_interactions(
+    project_id: str,
+    recommendation_id: str,
+    current_user: UserDto = Depends(get_current_user),
+    service: LearningClosedLoopService = Depends(
+        get_learning_closed_loop_service
+    ),
+):
+    return service.list_recommendation_interactions(
+        project_id, recommendation_id, current_user.id
+    )

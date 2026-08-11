@@ -13,6 +13,7 @@ import {
   Trophy,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { KTModelMetricsCard } from './components/kt-model-metrics-card'
 import type { EvaluationResource } from '@/data-acess/learning-evaluation'
 import type { CourseChapter, KnowledgePoint } from '@/data-acess/course-library'
 import { projectCourseOutlineAtom } from '@/data-acess/course-library'
@@ -369,17 +370,31 @@ const dateKey = (date: Date) =>
 
 type RadarMetric = { label: string; value: number }
 
+const RADAR_CENTER_X = 210
+const RADAR_CENTER_Y = 170
+const RADAR_RADIUS = 96
+const RADAR_LABEL_RADIUS = 128
+
+export const splitRadarLabel = (label: string, charactersPerLine = 7) => {
+  const characters = Array.from(label)
+  const lines: Array<string> = []
+  for (let index = 0; index < characters.length; index += charactersPerLine) {
+    lines.push(characters.slice(index, index + charactersPerLine).join(''))
+  }
+  return lines.length ? lines : ['']
+}
+
 const radarPoint = (
   index: number,
   value: number,
   count: number,
-  radius = 92,
+  radius = RADAR_RADIUS,
 ) => {
   const angle = -Math.PI / 2 + (index * Math.PI * 2) / count
   const distance = radius * (Math.max(0, Math.min(100, value)) / 100)
   return {
-    x: 150 + Math.cos(angle) * distance,
-    y: 150 + Math.sin(angle) * distance,
+    x: RADAR_CENTER_X + Math.cos(angle) * distance,
+    y: RADAR_CENTER_Y + Math.sin(angle) * distance,
   }
 }
 
@@ -422,10 +437,10 @@ const RadarChart = ({
         <CardTitle className="text-lg">{title}</CardTitle>
         <p className="text-sm text-muted-foreground">{description}</p>
       </CardHeader>
-      <CardContent className="grid items-center gap-4 pt-2 sm:grid-cols-[minmax(0,1fr)_180px]">
+      <CardContent className="grid items-center gap-5 pt-2 sm:grid-cols-[minmax(0,1fr)_190px]">
         <svg
-          viewBox="0 0 300 300"
-          className="mx-auto aspect-square w-full max-w-80"
+          viewBox="0 0 420 340"
+          className="mx-auto aspect-[21/17] w-full max-w-[420px]"
           role="img"
           aria-label={title}
         >
@@ -445,12 +460,18 @@ const RadarChart = ({
           ))}
           {safeMetrics.map((metric, index) => {
             const end = radarPoint(index, 100, safeMetrics.length)
-            const label = radarPoint(index, 100, safeMetrics.length, 116)
+            const label = radarPoint(
+              index,
+              100,
+              safeMetrics.length,
+              RADAR_LABEL_RADIUS,
+            )
+            const labelLines = splitRadarLabel(metric.label)
             return (
               <g key={metric.label}>
                 <line
-                  x1="150"
-                  y1="150"
+                  x1={RADAR_CENTER_X}
+                  y1={RADAR_CENTER_Y}
                   x2={end.x}
                   y2={end.y}
                   stroke="currentColor"
@@ -460,16 +481,28 @@ const RadarChart = ({
                   x={label.x}
                   y={label.y}
                   textAnchor={
-                    Math.abs(label.x - 150) < 10
+                    Math.abs(label.x - RADAR_CENTER_X) < 10
                       ? 'middle'
-                      : label.x > 150
+                      : label.x > RADAR_CENTER_X
                         ? 'start'
                         : 'end'
                   }
                   dominantBaseline="middle"
-                  className="fill-muted-foreground text-[10px]"
+                  className="fill-muted-foreground text-[11px] font-medium"
                 >
-                  {metric.label.slice(0, 8)}
+                  {labelLines.map((line, lineIndex) => (
+                    <tspan
+                      key={`${metric.label}-${lineIndex}`}
+                      x={label.x}
+                      dy={
+                        lineIndex === 0
+                          ? `${-((labelLines.length - 1) * 0.55)}em`
+                          : '1.1em'
+                      }
+                    >
+                      {line}
+                    </tspan>
+                  ))}
                 </text>
               </g>
             )
@@ -496,12 +529,14 @@ const RadarChart = ({
         </svg>
         <div className="space-y-3">
           {safeMetrics.map((metric) => (
-            <div key={metric.label}>
-              <div className="mb-1 flex justify-between gap-2 text-xs">
-                <span className="truncate text-muted-foreground">
+            <div key={metric.label} className="min-w-0">
+              <div className="mb-1 flex items-start justify-between gap-3 text-xs">
+                <span className="min-w-0 break-words leading-5 text-muted-foreground">
                   {metric.label}
                 </span>
-                <span className="font-medium">{metric.value}%</span>
+                <span className="shrink-0 font-medium tabular-nums">
+                  {metric.value}%
+                </span>
               </div>
               <Progress value={metric.value} className="h-1.5" />
             </div>
@@ -672,6 +707,8 @@ const HistoryAnalysis = ({
 
   return (
     <div className="space-y-6">
+      <KTModelMetricsCard projectId={projectId} />
+
       <Card className="border-primary/20 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">

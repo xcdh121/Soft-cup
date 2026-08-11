@@ -19,6 +19,7 @@ import {
   resourcePackagesAtom,
 } from '@/data-acess/resource-package'
 import { Badge } from '@/components/ui/badge'
+import { Response } from '@/components/ai-elements/response'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
@@ -256,7 +257,11 @@ const ResourcePreview = ({
             <div>
               <div className="font-medium">{resource.title}</div>
               <div className="mt-1 text-sm text-muted-foreground">
-                {resource.summary ?? 'No summary yet.'}
+                {resource.summary ? (
+                  <Response className="text-sm">{resource.summary}</Response>
+                ) : (
+                  'No summary yet.'
+                )}
               </div>
             </div>
             <Badge variant={statusToneMap[resource.status]}>

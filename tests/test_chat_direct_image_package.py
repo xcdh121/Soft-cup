@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 from edu_core.schemas.chats import TextPartDto, ToolCallPartDto
 from edu_core.services.chats import ChatService
-from langchain_core.messages import HumanMessage
 
 
 class ChatDirectImagePackageTests(unittest.IsolatedAsyncioTestCase):
@@ -31,11 +30,12 @@ class ChatDirectImagePackageTests(unittest.IsolatedAsyncioTestCase):
         )
         service = ChatService.__new__(ChatService)
 
-        response = await service._create_direct_image_package_response(
-            messages=[HumanMessage(content="你能生成关于树论的图片吗?")],
+        response = await service._create_direct_resource_package_response(
             context=context,
             assistant_message_id="assistant-1",
             chat_id="chat-1",
+            topic="树论",
+            resource_types=["image"],
         )
 
         self.assertTrue(response.done)
@@ -47,6 +47,45 @@ class ChatDirectImagePackageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tool_output["resource_types"], ["image"])
         self.assertEqual(calls[0]["payload"]["resource_types"], ["image"])
         self.assertEqual(calls[0]["payload"]["target_topic"], "树论")
+
+    async def test_programming_request_returns_package_tool_result(self):
+        calls: list[dict] = []
+
+        class FakeResourcePackageService:
+            async def generate_resource_package(self, **kwargs):
+                calls.append(kwargs)
+                return SimpleNamespace(
+                    id="programming-package-1",
+                    status="generating",
+                    completed_resource_count=0,
+                    failed_resource_count=0,
+                )
+
+        context = SimpleNamespace(
+            user_id="user-1",
+            project_id="project-1",
+            resource_packages=FakeResourcePackageService(),
+            learner_profile={},
+            project_context={"course_name": "数据结构"},
+            learning_evidence={},
+        )
+        service = ChatService.__new__(ChatService)
+
+        response = await service._create_direct_resource_package_response(
+            context=context,
+            assistant_message_id="assistant-1",
+            chat_id="chat-1",
+            topic="递归",
+            resource_types=["programming_questions"],
+        )
+
+        self.assertIn("递归", response.parts[0].text_content)
+        self.assertIn("编程题正在后台生成", response.parts[0].text_content)
+        tool_output = json.loads(response.parts[1].tool_output)
+        self.assertEqual(tool_output["resource_types"], ["programming_questions"])
+        self.assertEqual(
+            calls[0]["payload"]["resource_types"], ["programming_questions"]
+        )
 
 
 if __name__ == "__main__":

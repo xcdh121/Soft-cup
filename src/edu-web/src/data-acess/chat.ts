@@ -142,64 +142,61 @@ export const chatAtom = Atom.family((input: string) =>
 
         const messages = Array.from(result.value.messages ?? [])
 
-        const update = ChatMessagesAction.$match(
-          action,
-          {
-            Append: ({ message }) => {
-              return { ...result.value, messages: [...messages, message] }
-            },
-            UpdateParts: ({ messageId, parts }) => {
-              return {
-                ...result.value,
-                messages: messages.map((msg: ChatMessageDto) =>
-                  msg.id === messageId ? { ...msg, parts } : msg,
-                ),
-              }
-            },
-            UpdateStatus: ({ messageId, status }) => {
-              return {
-                ...result.value,
-                messages: messages.map((msg: ChatMessageDto) =>
-                  msg.id === messageId
-                    ? {
-                        ...msg,
-                        parts: (msg.parts
-                          ? Array.from(msg.parts).map((part) =>
-                              // Update status of any tool call parts
-                              part.type === 'tool_call'
-                                ? { ...part, tool_state: status }
-                                : part,
-                            )
-                          : []) as ReadonlyArray<
-                          | TextPartDto
-                          | FilePartDto
-                          | ToolCallPartDto
-                          | SourceDocumentPartDto
-                        >,
-                      }
-                    : msg,
-                ),
-              }
-            },
-            RemoveTemporaryMessage: () => {
-              return {
-                ...result.value,
-                messages: messages.filter(
-                  (msg: ChatMessageDto) => msg.id !== 'temporary-message-id',
-                ),
-              }
-            },
-            UpdateMetadata: ({ chat }) => {
-              return {
-                ...result.value,
-                title: chat.title,
-                updated_at: chat.updated_at,
-                last_message_content: chat.last_message_content,
-                last_message_at: chat.last_message_at,
-              }
-            },
+        const update = ChatMessagesAction.$match(action, {
+          Append: ({ message }) => {
+            return { ...result.value, messages: [...messages, message] }
           },
-        )
+          UpdateParts: ({ messageId, parts }) => {
+            return {
+              ...result.value,
+              messages: messages.map((msg: ChatMessageDto) =>
+                msg.id === messageId ? { ...msg, parts } : msg,
+              ),
+            }
+          },
+          UpdateStatus: ({ messageId, status }) => {
+            return {
+              ...result.value,
+              messages: messages.map((msg: ChatMessageDto) =>
+                msg.id === messageId
+                  ? {
+                      ...msg,
+                      parts: (msg.parts
+                        ? Array.from(msg.parts).map((part) =>
+                            // Update status of any tool call parts
+                            part.type === 'tool_call'
+                              ? { ...part, tool_state: status }
+                              : part,
+                          )
+                        : []) as ReadonlyArray<
+                        | TextPartDto
+                        | FilePartDto
+                        | ToolCallPartDto
+                        | SourceDocumentPartDto
+                      >,
+                    }
+                  : msg,
+              ),
+            }
+          },
+          RemoveTemporaryMessage: () => {
+            return {
+              ...result.value,
+              messages: messages.filter(
+                (msg: ChatMessageDto) => msg.id !== 'temporary-message-id',
+              ),
+            }
+          },
+          UpdateMetadata: ({ chat }) => {
+            return {
+              ...result.value,
+              title: chat.title,
+              updated_at: chat.updated_at,
+              last_message_content: chat.last_message_content,
+              last_message_at: chat.last_message_at,
+            }
+          },
+        })
 
         ctx.setSelf(Result.success(update))
       },
@@ -214,6 +211,44 @@ export const chatAtom = Atom.family((input: string) =>
 export const chatStreamStatusAtom = Atom.family((_chatId: string) =>
   Atom.make<string | null>(null),
 )
+
+export type ChatRuntimeEvent = {
+  id: string
+  actor: string
+  label: string
+  status: 'running' | 'completed' | 'failed' | 'skipped'
+  summary: string
+  sequence: number
+}
+
+export const chatRuntimeEventsAtom = Atom.family((_chatId: string) =>
+  Atom.make<Array<ChatRuntimeEvent>>([]),
+)
+
+const upsertChatRuntimeEvent = (
+  registry: Registry.Registry,
+  chatId: string,
+  event: ChatRuntimeEvent,
+) => {
+  const atom = chatRuntimeEventsAtom(chatId)
+  const current = registry.get(atom)
+  const next = current.some((item) => item.id === event.id)
+    ? current.map((item) => (item.id === event.id ? event : item))
+    : [...current, event]
+  registry.set(
+    atom,
+    next.sort((left, right) => left.sequence - right.sequence),
+  )
+}
+
+const ChatRuntimeEventSchema = Schema.Struct({
+  id: Schema.String,
+  actor: Schema.String,
+  label: Schema.String,
+  status: Schema.Literal('running', 'completed', 'failed', 'skipped'),
+  summary: Schema.String,
+  sequence: Schema.Number,
+})
 
 // Schema for streaming events
 const StreamEventSchema = Schema.Struct({
@@ -233,6 +268,9 @@ const StreamEventSchema = Schema.Struct({
     ),
   ),
   status: Schema.optional(Schema.Union(Schema.String, Schema.Null)),
+  runtime_event: Schema.optional(
+    Schema.Union(ChatRuntimeEventSchema, Schema.Null),
+  ),
   done: Schema.Boolean,
 })
 
@@ -252,6 +290,11 @@ const handleStreamPart = (
       get.set(chatStreamStatusAtom(input.chatId), partEvent.status)
     } else if (partEvent.done) {
       get.set(chatStreamStatusAtom(input.chatId), null)
+    }
+
+    if (partEvent.runtime_event) {
+      upsertChatRuntimeEvent(registry, input.chatId, partEvent.runtime_event)
+      return
     }
 
     // Skip if done and no part/delta to process
@@ -390,6 +433,7 @@ export const streamMessageAtom = runtime
       // Start the UI lifecycle before waiting for the first SSE event. The
       // chat stream does not guarantee that every event carries a status.
       get.set(chatStreamStatusAtom(input.chatId), 'thinking')
+      get.set(chatRuntimeEventsAtom(input.chatId), [])
 
       // Add user message using the new action pattern
       const chatKey = `${input.projectId}:${input.chatId}`

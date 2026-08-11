@@ -37,20 +37,6 @@ const MindMapHeaderContent = ({
 
   return Result.builder(mindMapsResult)
     .onSuccess((mindMap) => {
-      if (!mindMap) {
-        return (
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbPage className="line-clamp-1 font-medium">
-                  思维导图
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        )
-      }
-
       return (
         <div className="flex items-center gap-4">
           <Breadcrumb>
@@ -115,9 +101,12 @@ export const MindMapHeader = ({ projectId, mindMapId }: MindMapHeaderProps) => {
       <div className="flex flex-1 items-center gap-2 px-3">
         <SidebarTrigger />
         <Button variant="ghost" size="icon" className="size-7" asChild>
-          <Link to="/dashboard/p/$projectId" params={{ projectId }}>
+          <Link
+            to="/dashboard/p/$projectId/my-resources"
+            params={{ projectId }}
+          >
             <ArrowLeft className="size-4" />
-            <span className="sr-only">返回项目</span>
+            <span className="sr-only">返回我的资源</span>
           </Link>
         </Button>
         <Separator
@@ -143,9 +132,7 @@ export const MindMapHeader = ({ projectId, mindMapId }: MindMapHeaderProps) => {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="customInstructions">
-                  自定义要求（可选）
-                </Label>
+                <Label htmlFor="customInstructions">自定义要求（可选）</Label>
                 <Textarea
                   id="customInstructions"
                   placeholder="例如：机器学习、数据结构、艺术史... 也可以说明结构、详细程度等格式偏好。"

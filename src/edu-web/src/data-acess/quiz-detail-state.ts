@@ -7,9 +7,19 @@ import {
 } from './practice'
 import { quizQuestionsAtom } from './quiz'
 import { knowledgeGraphAtom } from './knowledge-graph'
+import { closedLoopOverviewAtom } from './learning-closed-loop'
+import {
+  latestStudyPlanRemoteAtom,
+  studyPlansHistoryRemoteAtom,
+} from './study-plan'
 import type { PracticeRecordCreate, QuizQuestionDto } from '@/integrations/api'
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
+import {
+  consumeLearningVerification,
+  readLearningVerification,
+} from '@/lib/learning-verification-context'
+import type { LearningVerificationContext } from '@/lib/learning-verification-context'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -60,6 +70,45 @@ export const getQuizCorrectOption = (
     : null
 }
 
+export const buildQuizPracticeRecord = ({
+  question,
+  userAnswer,
+  quizId,
+  verification,
+}: {
+  question: QuizQuestionDto
+  userAnswer: QuizOption
+  quizId: string
+  verification: LearningVerificationContext | null
+}) => {
+  const correctOption = getQuizCorrectOption(question)
+  const correctAnswer = correctOption ?? question.correct_option.trim()
+  return {
+    item_type: 'quiz' as const,
+    item_id: question.id,
+    knowledge_point_id: question.knowledge_point_id,
+    topic: extractTopic(question.question_text),
+    user_answer: userAnswer,
+    correct_answer: correctAnswer,
+    was_correct: correctOption === userAnswer,
+    score: correctOption === userAnswer ? 1 : 0,
+    answer_mode: 'quiz',
+    mapping_method: question.knowledge_point_id ? 'explicit' : undefined,
+    recommendation_id: verification?.recommendationId,
+    learning_path_id: verification?.learningPathId,
+    learning_path_step_id: verification?.learningPathStepId,
+    is_verification: verification !== null,
+    // A quiz is a first-class resource, but it is not a generated_resources
+    // row. Keep its id in metadata instead of violating resource_id's FK.
+    metadata: verification
+      ? {
+          quiz_id: quizId,
+          verification_objective: verification.objective,
+        }
+      : { quiz_id: quizId },
+  }
+}
+
 export type QuizDetailState = {
   readonly currentQuestionIndex: number
   readonly showResults: boolean
@@ -93,12 +142,80 @@ const initialState: QuizDetailState = {
   submittedByQuestionId: {},
 }
 
+const QUIZ_PROGRESS_STORAGE_PREFIX = 'edu.quiz-progress.v1'
+
+const getQuizProgressStorage = (): Storage | null => {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.sessionStorage
+  } catch {
+    return null
+  }
+}
+
+const quizProgressStorageKey = (quizId: string) =>
+  `${QUIZ_PROGRESS_STORAGE_PREFIX}:${quizId}`
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+export const readQuizDetailProgress = (
+  quizId: string,
+): QuizDetailState | null => {
+  const storage = getQuizProgressStorage()
+  if (!storage) return null
+  try {
+    const value = storage.getItem(quizProgressStorageKey(quizId))
+    if (!value) return null
+    const parsed: unknown = JSON.parse(value)
+    if (!isRecord(parsed)) throw new Error('Invalid saved quiz progress')
+    const stored = parsed as Partial<QuizDetailState>
+    return {
+      ...initialState,
+      ...stored,
+      currentQuestionIndex:
+        Number.isInteger(stored.currentQuestionIndex) &&
+        Number(stored.currentQuestionIndex) >= 0
+          ? Number(stored.currentQuestionIndex)
+          : 0,
+      showResults: stored.showResults === true,
+      pendingPracticeRecords: isRecord(stored.pendingPracticeRecords)
+        ? stored.pendingPracticeRecords
+        : {},
+      selectedByQuestionId: isRecord(stored.selectedByQuestionId)
+        ? stored.selectedByQuestionId
+        : {},
+      submittedByQuestionId: isRecord(stored.submittedByQuestionId)
+        ? stored.submittedByQuestionId
+        : {},
+    }
+  } catch {
+    storage.removeItem(quizProgressStorageKey(quizId))
+    return null
+  }
+}
+
+export const persistQuizDetailProgress = (
+  quizId: string,
+  state: QuizDetailState,
+) => {
+  const storage = getQuizProgressStorage()
+  if (!storage) return
+  try {
+    storage.setItem(quizProgressStorageKey(quizId), JSON.stringify(state))
+  } catch {
+    // Losing browser storage must not interrupt an active quiz attempt.
+  }
+}
+
 export const quizDetailStateAtom = Atom.family((quizId: string) =>
   Object.assign(
     Atom.writable(
       (get: Atom.Context) => {
         const result = get.self<QuizDetailState>()
-        if (Option.isNone(result)) return Option.some(initialState)
+        if (Option.isNone(result)) {
+          return Option.some(readQuizDetailProgress(quizId) ?? initialState)
+        }
         const stored = result.value as Partial<QuizDetailState>
         return Option.some({
           ...initialState,
@@ -148,6 +265,7 @@ export const quizDetailStateAtom = Atom.family((quizId: string) =>
           },
         })
 
+        persistQuizDetailProgress(quizId, update)
         ctx.setSelf(Option.some(update))
       },
     ),
@@ -297,20 +415,27 @@ export const submitQuizQuestionAtom = runtime.fn(
     )
     if (!question) return false
 
-    const correctOption = getQuizCorrectOption(question)
-    const correctAnswer = correctOption ?? question.correct_option.trim()
+    const savedVerification = readLearningVerification(input.projectId)
+    const verification =
+      savedVerification?.knowledgePointId === question.knowledge_point_id
+        ? savedVerification
+        : null
+    const practiceRecord = buildQuizPracticeRecord({
+      question,
+      userAnswer,
+      quizId: input.quizId,
+      verification,
+    })
     yield* apiClient.createPracticeRecordApiV1ProjectsProjectIdPracticeRecordsPost(
       input.projectId,
-      {
-        item_type: 'quiz',
-        item_id: question.id,
-        knowledge_point_id: question.knowledge_point_id,
-        topic: extractTopic(question.question_text),
-        user_answer: userAnswer,
-        correct_answer: correctAnswer,
-        was_correct: correctOption === userAnswer,
-      },
+      practiceRecord,
     )
+    if (practiceRecord.is_verification) {
+      consumeLearningVerification(input.projectId, question.knowledge_point_id)
+      registry.refresh(closedLoopOverviewAtom(input.projectId))
+      registry.refresh(latestStudyPlanRemoteAtom(input.projectId))
+      registry.refresh(studyPlansHistoryRemoteAtom(input.projectId))
+    }
 
     registry.set(
       quizDetailStateAtom(input.quizId),

@@ -1,8 +1,12 @@
-import { Atom } from '@effect-atom/atom-react'
+import { Atom, Registry } from '@effect-atom/atom-react'
+import { HttpBody } from '@effect/platform'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Effect, Layer } from 'effect'
 import type { ProjectDto } from '@/integrations/api/client'
-import type { ResourcePackage } from '@/data-acess/resource-package'
+import type {
+  GeneratedResource,
+  ResourcePackage,
+} from '@/data-acess/resource-package'
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
 
@@ -56,7 +60,9 @@ export type CourseResource = {
   course_id: string
   chapter_id: string | null
   document_id: string | null
+  document_project_id: string | null
   generated_resource_id: string | null
+  generated_resource: GeneratedResource | null
   resource_type: string
   title: string
   description: string | null
@@ -87,6 +93,13 @@ export type ProjectCourseOutline = {
   courseId: string | null
   chapters: Array<CourseChapter>
   knowledgePoints: Array<KnowledgePoint>
+}
+
+export type AddGeneratedResourceToCourseInput = {
+  courseId: string
+  chapterId?: string | null
+  knowledgePointIds: Array<string>
+  resource: GeneratedResource
 }
 
 const isSuccessStatus = (status: number) => status >= 200 && status < 300
@@ -275,4 +288,49 @@ export const knowledgePointResourcesAtom = Atom.family(
         ),
       )
       .pipe(Atom.keepAlive),
+)
+
+export const addGeneratedResourceToCourseAtom = runtime.fn(
+  Effect.fn(function* (input: AddGeneratedResourceToCourseInput) {
+    const registry = yield* Registry.AtomRegistry
+    const { httpClient } = yield* ApiClientService
+    const { resource } = input
+    const response = yield* httpClient.post(
+      `/api/v1/courses/${input.courseId}/resources`,
+      {
+        body: HttpBody.unsafeJson({
+          chapter_id: input.chapterId ?? null,
+          document_id: null,
+          generated_resource_id: resource.id,
+          resource_type: resource.resource_type,
+          title: resource.title,
+          description: resource.summary,
+          source_type: 'generated',
+          source_url: null,
+          difficulty_level: resource.difficulty_level,
+          estimated_minutes: resource.estimated_minutes,
+          license_info: 'AI 生成内容，发布前请复核',
+          target_audiences: [resource.difficulty_level],
+          metadata: {
+            project_id: resource.project_id,
+            resource_package_id: resource.resource_package_id,
+            generator_agent: resource.generator_agent,
+            generation_reason: resource.generation_reason,
+          },
+          knowledge_point_ids: input.knowledgePointIds,
+        }),
+      },
+    )
+    if (!isSuccessStatus(response.status)) {
+      return yield* Effect.fail(
+        new Error(`加入课程失败（HTTP ${response.status}）`),
+      )
+    }
+    const courseResource = (yield* response.json) as CourseResource
+    registry.refresh(courseResourcesAtom(input.courseId))
+    for (const knowledgePointId of input.knowledgePointIds) {
+      registry.refresh(knowledgePointResourcesAtom(knowledgePointId))
+    }
+    return courseResource
+  }),
 )

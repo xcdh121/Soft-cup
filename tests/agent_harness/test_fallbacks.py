@@ -187,6 +187,32 @@ class FallbackRulesTest(unittest.IsolatedAsyncioTestCase):
         recommendations = result.result["recommendations"]
         self.assertTrue(all(item["stream_in_package"] for item in recommendations))
 
+    async def test_failed_quiz_generation_removes_empty_quiz_shell(self):
+        quiz_service = MagicMock()
+        quiz_service.create_quiz.return_value = SimpleNamespace(
+            id="quiz_failed", name="巩固选择题：归并排序"
+        )
+        quiz_service.queue_generation.side_effect = RuntimeError("generation failed")
+        context = AgentRunContext(
+            run_id="run_failed_quiz",
+            project_id="project_1",
+            student_id="student_1",
+            goal="recommendations",
+            context=AgentContextData(),
+            meta={
+                "requested_topic": "归并排序",
+                "requested_resource_types": ["quiz"],
+            },
+            artifacts={"diagnosis": {"diagnosis": {}}},
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "generation failed"):
+            await ResourceAgent(quiz_service=quiz_service).run(context)
+
+        quiz_service.delete_quiz.assert_called_once_with(
+            quiz_id="quiz_failed", project_id="project_1"
+        )
+
     async def test_planner_without_llm_uses_rule_fallback(self):
         context = AgentRunContext(
             run_id="run_planner",

@@ -11,7 +11,9 @@ from edu_core.services import (
     DocumentUploadService,
     FlashcardGroupService,
     KnowledgeStateService,
+    KTConfigurationService,
     LearnerProfileService,
+    LearningClosedLoopService,
     MindMapService,
     NoteService,
     PracticeService,
@@ -182,6 +184,16 @@ def get_knowledge_state_service() -> KnowledgeStateService:
     return KnowledgeStateService()
 
 
+def get_learning_closed_loop_service(
+    queue_service: QueueService | ArqQueueService = Depends(get_queue_service),
+) -> LearningClosedLoopService:
+    return LearningClosedLoopService(queue_service=queue_service)
+
+
+def get_kt_configuration_service() -> KTConfigurationService:
+    return KTConfigurationService()
+
+
 def get_agent_orchestration_service(
     settings: Settings = Depends(get_settings_dep),
     queue_service: QueueService | ArqQueueService = Depends(get_queue_service),
@@ -268,6 +280,7 @@ def get_resource_package_service(
         note_streamer=task_runner.stream_note,
         quiz_streamer=task_runner.stream_quiz,
         flashcard_streamer=task_runner.stream_flashcards,
+        mind_map_streamer=task_runner.stream_mind_map,
     )
 
 

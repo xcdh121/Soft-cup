@@ -3,7 +3,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 ResourcePackageStatus = Literal["draft", "generating", "completed", "failed"]
 GeneratedResourceStatus = Literal["pending", "generating", "completed", "failed"]
 GenerationMode = Literal["manual", "recommended", "remedial"]
@@ -74,14 +73,54 @@ class ProgrammingGradeDto(BaseModel):
     )
     summary: str = Field(..., min_length=1, description="Overall grading summary")
     strengths: list[str] = Field(default_factory=list, description="What was done well")
-    issues: list[str] = Field(default_factory=list, description="Problems found in the answer")
+    issues: list[str] = Field(
+        default_factory=list, description="Problems found in the answer"
+    )
     suggestions: list[str] = Field(
         default_factory=list, description="Actionable improvement suggestions"
     )
     complexity_analysis: str | None = Field(
         None, description="Time and space complexity analysis"
     )
-    grading_mode: Literal["ai"] = Field(default="ai", description="Grading mode")
+    grading_mode: Literal["ai", "tests_and_ai"] = Field(
+        default="ai", description="Grading mode"
+    )
+    judge_verdict: Literal["AC", "WA", "TLE", "RE", "CE"] | None = Field(
+        None, description="Online-judge style verdict"
+    )
+    judge_message: str | None = Field(None, description="Localized judge result")
+    passed_cases: int = Field(default=0, ge=0, description="Passed test case count")
+    total_cases: int = Field(default=0, ge=0, description="Total test case count")
+    test_results: list[dict[str, Any]] = Field(
+        default_factory=list, description="Per-case execution results"
+    )
+
+
+class ProgrammingTestResultDto(BaseModel):
+    index: int = Field(..., ge=1, description="One-based test case index")
+    passed: bool = Field(..., description="Whether this test case passed")
+    verdict: Literal["AC", "WA", "TLE", "RE", "CE"] = Field(
+        ..., description="Online-judge verdict for this test case"
+    )
+    input: str | None = Field(None, description="Public input; hidden for private cases")
+    expected_output: str | None = Field(
+        None, description="Public expected output; hidden for private cases"
+    )
+    actual_output: str = Field(default="", description="Submission output")
+    stderr: str = Field(default="", description="Submission standard error")
+    hidden: bool = Field(default=False, description="Whether this is a private case")
+
+
+class ProgrammingSubmissionDto(BaseModel):
+    score: int = Field(..., ge=0, le=100, description="Score derived from tests")
+    passed: bool = Field(..., description="Whether all configured tests passed")
+    judge_verdict: Literal["AC", "WA", "TLE", "RE", "CE"]
+    judge_message: str = Field(..., description="Localized judge result")
+    passed_cases: int = Field(..., ge=0, description="Passed test case count")
+    total_cases: int = Field(..., ge=0, description="Total test case count")
+    test_results: list[ProgrammingTestResultDto] = Field(
+        default_factory=list, description="Per-case execution results"
+    )
 
 
 class ProgrammingRunDto(BaseModel):

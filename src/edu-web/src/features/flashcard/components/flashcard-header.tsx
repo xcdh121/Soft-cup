@@ -66,11 +66,6 @@ export const FlashcardHeader = ({
   flashcardGroupId,
   projectId,
 }: FlashcardHeaderProps) => {
-  const flashcardGroupKey = useMemo(
-    () => `${projectId}:${flashcardGroupId}`,
-    [projectId, flashcardGroupId],
-  )
-  const groupResult = useAtomValue(flashcardGroupAtom(flashcardGroupKey))
   const initializeQueue = useAtomSet(initializeQueueAtom, {
     mode: 'promise',
   })
@@ -86,17 +81,16 @@ export const FlashcardHeader = ({
   return (
     <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b px-2">
       <div className="flex flex-1 items-center gap-2 px-3">
-        {Result.isSuccess(groupResult) && (
-          <>
-            <SidebarTrigger />
-            <Button variant="ghost" size="icon" className="size-7" asChild>
-              <Link to="/dashboard/p/$projectId" params={{ projectId }}>
-                <ArrowLeft className="size-4" />
-                <span className="sr-only">返回项目</span>
-              </Link>
-            </Button>
-          </>
-        )}
+        <SidebarTrigger />
+        <Button variant="ghost" size="icon" className="size-7" asChild>
+          <Link
+            to="/dashboard/p/$projectId/my-resources"
+            params={{ projectId }}
+          >
+            <ArrowLeft className="size-4" />
+            <span className="sr-only">返回我的资源</span>
+          </Link>
+        </Button>
         <Separator
           orientation="vertical"
           className="mr-2 data-[orientation=vertical]:h-4"

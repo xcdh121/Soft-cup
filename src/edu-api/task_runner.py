@@ -237,7 +237,7 @@ Allowed field keys:
 - major_background: academic discipline or professional background
 - education_level: education stage or year
 - learning_goal: an explicit learning objective
-- resource_preference: preferred learning resource formats or methods
+- resource_preference: reusable learning resource formats or methods as a JSON array; never include the current subject or topic in an item
 - cognitive_style: stable learning/cognitive style only when explicitly stated or strongly evidenced
 - available_study_time: stated schedule or available study duration
 
@@ -248,6 +248,7 @@ Rules:
 - Do not infer knowledge mastery, learning progress, practical ability, errors, grades, or learning state.
 - Do not invent missing details. If there are no supported facts, return {{"fields": {{}}}}.
 - Preserve the student's language in values.
+- When the message supports multiple resource preferences, return 2-3 distinct items.
 
 Student message:
 {message_text}

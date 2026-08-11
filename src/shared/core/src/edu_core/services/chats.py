@@ -13,8 +13,7 @@ from uuid import uuid4
 from edu_ai.chatbot.context import ChatbotContext
 from edu_ai.chatbot.factory import make_chatbot
 from edu_ai.chatbot.image_generation_routing import (
-    extract_image_topic,
-    should_force_image_generation,
+    resolve_forced_resource_generation,
 )
 from edu_db.models import (
     Chat,
@@ -41,6 +40,7 @@ from edu_core.schemas.chats import (
     ChatDetailDto,
     ChatDto,
     ChatMessageDto,
+    ChatRuntimeEventDto,
     FilePartDto,
     SourceDocumentPartDto,
     StreamEventDto,
@@ -752,8 +752,7 @@ class ChatService:
                             first_message_text = " ".join(
                                 part.text_content
                                 for part in first_user_message.parts
-                                if part.part_type == PartType.TEXT
-                                and part.text_content
+                                if part.part_type == PartType.TEXT and part.text_content
                             )
                             if first_message_text.strip():
                                 chat.title = self._fallback_chat_title(
@@ -767,7 +766,9 @@ class ChatService:
                     db.commit()
 
                 # Sort by last_message_at
-                result.sort(key=lambda x: x.last_message_at or x.updated_at, reverse=True)
+                result.sort(
+                    key=lambda x: x.last_message_at or x.updated_at, reverse=True
+                )
 
                 return result
             except Exception:
@@ -1307,12 +1308,14 @@ class ChatService:
             status="thinking",
         )
 
-        if should_force_image_generation(llm_chat_history):
-            yield await self._create_direct_image_package_response(
-                messages=llm_chat_history,
+        forced_generation = resolve_forced_resource_generation(llm_chat_history)
+        if forced_generation:
+            yield await self._create_direct_resource_package_response(
                 context=ctx,
                 assistant_message_id=assistant_message_id,
                 chat_id=messages[0].chat_id if messages else "",
+                topic=forced_generation.topic,
+                resource_types=list(forced_generation.resource_types),
             )
             return
 
@@ -1569,45 +1572,50 @@ class ChatService:
             done=True,
         )
 
-    async def _create_direct_image_package_response(
+    async def _create_direct_resource_package_response(
         self,
         *,
-        messages: list[BaseMessage],
         context: ChatbotContext,
         assistant_message_id: str | None,
         chat_id: str,
+        topic: str | None,
+        resource_types: list[str],
     ) -> StreamingChatMessage:
-        """Create an image package without relying on model tool-choice support."""
+        """Create an explicit resource package without relying on model tool choice."""
         from edu_ai.tools.resource_package import generate_resource_package
 
-        topic = extract_image_topic(messages)
         tool_call_id = str(uuid4())
-        tool_input: dict[str, Any] = {"resource_types": ["image"]}
+        tool_input: dict[str, Any] = {"resource_types": resource_types}
         if topic:
             tool_input["topic"] = topic
+
+        primary_type = resource_types[0]
+        resource_label = {
+            "image": "AI 图片",
+            "programming_questions": "编程题",
+        }.get(primary_type, "学习资源")
 
         try:
             output_text = await generate_resource_package.coroutine(
                 runtime=SimpleNamespace(context=context),
                 topic=topic,
-                resource_types=["image"],
+                resource_types=resource_types,
             )
             output = json.loads(output_text)
             resolved_topic = str(output.get("target_topic") or topic or "当前学习主题")
             status = str(output.get("status") or "generating")
-            answer = (
-                f"已为你创建“{resolved_topic}”AI 图片资源包, "
-                + (
-                    "图片正在后台生成, 可通过下方按钮查看进度。"
-                    if status == "generating"
-                    else "图片已生成, 可通过下方按钮查看资源包。"
-                )
+            answer = f"已为你创建“{resolved_topic}”{resource_label}资源包, " + (
+                f"{resource_label}正在后台生成, 可通过下方按钮查看进度。"
+                if status == "generating"
+                else f"{resource_label}已生成, 可通过下方按钮查看资源包。"
             )
             tool_state = ToolState.OUTPUT_AVAILABLE
             tool_output: Any = output_text
         except Exception as exc:
-            logger.exception("Direct image resource-package generation failed")
-            answer = "图片资源包创建失败, 请稍后重试或检查讯飞图片生成配置。"
+            logger.exception(
+                "Direct %s resource-package generation failed", primary_type
+            )
+            answer = f"{resource_label}资源包创建失败, 请稍后重试。"
             tool_state = ToolState.OUTPUT_ERROR
             tool_output = {"error": str(exc)}
 
@@ -1672,9 +1680,7 @@ Only respond with the title, nothing else. Do not use quotes."""
     def _fallback_chat_title(user_message: str) -> str:
         """Extract a compact title from the first user message."""
         compact = " ".join(user_message.strip().split())
-        compact = compact.strip('"\'“”\u2018\u2019').rstrip(
-            "。.!\uFF01?\uFF1F"
-        )
+        compact = compact.strip("\"'“”\u2018\u2019").rstrip("。.!\uff01?\uff1f")
         if not compact:
             return "新聊天"
         if len(compact) <= 30:
@@ -1753,11 +1759,167 @@ Only respond with the title, nothing else. Do not use quotes."""
         tool_call_states: dict[str, dict[str, Any]] = {}
         # Track sent immutable parts to avoid duplicates (files, source docs)
         sent_immutable_part_ids: set[str] = set()
+        runtime_message_id = f"runtime-{uuid4()}"
+        runtime_created_at = datetime.now().isoformat()
+        context_completed = False
+        intent_started = False
+        intent_completed = False
+        retrieval_seen = False
+        tool_seen = False
+        answer_started = False
+
+        def runtime_event(
+            *,
+            event_id: str,
+            actor: str,
+            label: str,
+            status: str,
+            summary: str,
+            sequence: int,
+        ) -> StreamEventDto:
+            return StreamEventDto(
+                message_id=runtime_message_id,
+                chat_id=chat_id,
+                role="runtime",
+                created_at=runtime_created_at,
+                done=False,
+                runtime_event=ChatRuntimeEventDto(
+                    id=event_id,
+                    actor=actor,
+                    label=label,
+                    status=status,
+                    summary=summary,
+                    sequence=sequence,
+                ),
+            )
 
         try:
+            yield runtime_event(
+                event_id="coordinator",
+                actor="Coordinator Agent · 调度智能体",
+                label="接收并调度请求",
+                status="completed",
+                summary="服务端已接收本次 AI 导师请求并启动处理链路。",
+                sequence=0,
+            )
+            yield runtime_event(
+                event_id="context",
+                actor="Learner Context Agent · 学习上下文智能体",
+                label="读取学习上下文",
+                status="running",
+                summary="正在读取学习画像、课程范围与历史学习证据。",
+                sequence=1,
+            )
             async for streaming_msg in self.send_streaming_message(
                 chat_id, user_id, parts
             ):
+                if not context_completed:
+                    context_completed = True
+                    yield runtime_event(
+                        event_id="context",
+                        actor="Learner Context Agent · 学习上下文智能体",
+                        label="读取学习上下文",
+                        status="completed",
+                        summary="学习画像、课程范围与历史学习证据已读取。",
+                        sequence=1,
+                    )
+                if not intent_started:
+                    intent_started = True
+                    yield runtime_event(
+                        event_id="intent",
+                        actor="Intent Router Agent · 意图路由智能体",
+                        label="识别任务意图",
+                        status="running",
+                        summary="正在判断本轮需要直接回答、资料检索还是资源生成。",
+                        sequence=2,
+                    )
+                if (streaming_msg.parts or streaming_msg.done) and not intent_completed:
+                    intent_completed = True
+                    yield runtime_event(
+                        event_id="intent",
+                        actor="Intent Router Agent · 意图路由智能体",
+                        label="识别任务意图",
+                        status="completed",
+                        summary="已确定本轮回答、检索或资源生成路径。",
+                        sequence=2,
+                    )
+
+                for observed_part in streaming_msg.parts:
+                    if observed_part.type == "source-document":
+                        retrieval_seen = True
+                        yield runtime_event(
+                            event_id="retrieval",
+                            actor="Retrieval Agent · 检索智能体",
+                            label="检索课程资料",
+                            status="completed",
+                            summary="服务端已返回与本次问题相关的课程资料证据。",
+                            sequence=3,
+                        )
+                    elif observed_part.type == "tool_call":
+                        tool_seen = True
+                        tool_failed = observed_part.tool_state == ToolState.OUTPUT_ERROR
+                        tool_completed = (
+                            observed_part.tool_state == ToolState.OUTPUT_AVAILABLE
+                        )
+                        yield runtime_event(
+                            event_id="tool",
+                            actor="Tool Agent · 工具智能体",
+                            label=observed_part.tool_name,
+                            status=(
+                                "failed"
+                                if tool_failed
+                                else "completed"
+                                if tool_completed
+                                else "running"
+                            ),
+                            summary=(
+                                "工具执行失败, 导师将根据可用上下文继续回答。"
+                                if tool_failed
+                                else "服务端工具调用已完成。"
+                                if tool_completed
+                                else "服务端工具正在执行。"
+                            ),
+                            sequence=4,
+                        )
+                    elif observed_part.type == "text" and not answer_started:
+                        answer_started = True
+                        yield runtime_event(
+                            event_id="answer",
+                            actor="Tutor Agent · 导师智能体",
+                            label="生成导师回答",
+                            status="running",
+                            summary="正在依据上下文、检索结果和工具输出组织回答。",
+                            sequence=5,
+                        )
+
+                if streaming_msg.done:
+                    if not retrieval_seen:
+                        yield runtime_event(
+                            event_id="retrieval",
+                            actor="Retrieval Agent · 检索智能体",
+                            label="检索课程资料",
+                            status="skipped",
+                            summary="本轮任务不需要检索课程资料。",
+                            sequence=3,
+                        )
+                    if not tool_seen:
+                        yield runtime_event(
+                            event_id="tool",
+                            actor="Tool Agent · 工具智能体",
+                            label="调用学习工具",
+                            status="skipped",
+                            summary="本轮任务无需调用学习工具。",
+                            sequence=4,
+                        )
+                    yield runtime_event(
+                        event_id="answer",
+                        actor="Tutor Agent · 导师智能体",
+                        label="生成导师回答",
+                        status="completed",
+                        summary="回答已生成并保存到当前对话。",
+                        sequence=5,
+                    )
+
                 # Stream each part as a separate SSE event with message ID
                 for part in streaming_msg.parts:
                     # Common fields
@@ -1773,7 +1935,9 @@ Only respond with the title, nothing else. Do not use quotes."""
                         "role": streaming_msg.role,
                         "created_at": created_at,
                         "done": streaming_msg.done,
-                        "status": streaming_msg.status if hasattr(streaming_msg, "status") else None,
+                        "status": streaming_msg.status
+                        if hasattr(streaming_msg, "status")
+                        else None,
                     }
 
                     # For streaming chunks (done=False), send delta only for text parts
@@ -1791,9 +1955,13 @@ Only respond with the title, nothing else. Do not use quotes."""
                         if hasattr(part, "type") and part.type == "text":
                             # For text parts, send only the text content as a string (delta)
                             # Include part_id for tracking (similar to Vercel AI SDK)
-                            part_id = part.id if hasattr(part, "id") and part.id else None
+                            part_id = (
+                                part.id if hasattr(part, "id") and part.id else None
+                            )
                             delta = str(part.text_content)
-                            yield StreamEventDto(**event_data, part_id=part_id, delta=delta)
+                            yield StreamEventDto(
+                                **event_data, part_id=part_id, delta=delta
+                            )
                         else:
                             # For tool_call and source-document parts, send as complete part
                             # Track tool_call states to avoid duplicates
@@ -1818,8 +1986,13 @@ Only respond with the title, nothing else. Do not use quotes."""
                                     }
 
                                     # Only send if something changed
-                                    if current_state["tool_state"] != previous_state.get("tool_state") or \
-                                       current_state["tool_output"] != previous_state.get("tool_output"):
+                                    if current_state[
+                                        "tool_state"
+                                    ] != previous_state.get(
+                                        "tool_state"
+                                    ) or current_state[
+                                        "tool_output"
+                                    ] != previous_state.get("tool_output"):
                                         should_yield = True
                                         tool_call_states[tool_call_id] = current_state
                                 else:
@@ -1838,6 +2011,32 @@ Only respond with the title, nothing else. Do not use quotes."""
                                 yield StreamEventDto(**event_data, part=part_dict)
 
         except Exception as e:
+            if not retrieval_seen:
+                yield runtime_event(
+                    event_id="retrieval",
+                    actor="Retrieval Agent · 检索智能体",
+                    label="检索课程资料",
+                    status="skipped",
+                    summary="请求异常结束前未执行课程资料检索。",
+                    sequence=3,
+                )
+            if not tool_seen:
+                yield runtime_event(
+                    event_id="tool",
+                    actor="Tool Agent · 工具智能体",
+                    label="调用学习工具",
+                    status="skipped",
+                    summary="请求异常结束前未执行学习工具。",
+                    sequence=4,
+                )
+            yield runtime_event(
+                event_id="answer",
+                actor="Tutor Agent · 导师智能体",
+                label="生成导师回答",
+                status="failed",
+                summary="导师回答生成失败。",
+                sequence=5,
+            )
             error_part = TextPartDto(type="text", text_content=f"Error: {e!s}")
             yield StreamEventDto(
                 message_id=str(uuid4()),

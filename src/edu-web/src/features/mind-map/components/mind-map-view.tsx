@@ -12,8 +12,125 @@ export interface MindMapNodeData {
   children?: Array<MindMapNodeData>
 }
 
+type RawMindMapNode = Record<string, unknown>
+type RawMindMapEdge = Record<string, unknown>
+
+export type NormalizedMindMapData = {
+  nodes: Array<{
+    id: string
+    data: { label: string; content?: string; [key: string]: unknown }
+    position: { x: number; y: number }
+  }>
+  edges: Array<{
+    id: string
+    source: string
+    target: string
+    label?: string | null
+  }>
+}
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : {}
+
+const firstText = (...values: Array<unknown>) =>
+  values
+    .find((value): value is string =>
+      Boolean(typeof value === 'string' && value.trim()),
+    )
+    ?.trim()
+
+/** Normalize current, streamed, and legacy mind-map payloads before rendering. */
+export const normalizeMindMapData = (
+  mapData: unknown,
+): NormalizedMindMapData => {
+  const outer = asRecord(mapData)
+  // Resource-package entries persist the graph under `content_json.map_data`,
+  // while standalone and legacy mind maps store `nodes`/`edges` directly.
+  const nestedMapData = asRecord(outer.map_data)
+  const root =
+    Array.isArray(nestedMapData.nodes) || Array.isArray(nestedMapData.edges)
+      ? nestedMapData
+      : outer
+  const rawNodes = Array.isArray(root.nodes)
+    ? (root.nodes as Array<RawMindMapNode>)
+    : []
+  const rawEdges = Array.isArray(root.edges)
+    ? (root.edges as Array<RawMindMapEdge>)
+    : []
+
+  const seenNodeIds = new Set<string>()
+  const nodes = rawNodes.flatMap((rawNode, index) => {
+    const node = asRecord(rawNode)
+    const data = asRecord(node.data)
+    const id = String(node.id ?? '').trim()
+    if (!id || seenNodeIds.has(id)) return []
+    seenNodeIds.add(id)
+
+    const label = firstText(
+      data.label,
+      node.label,
+      data.title,
+      node.title,
+      data.text,
+      node.text,
+      data.name,
+      node.name,
+    )
+    const position = asRecord(node.position)
+
+    return [
+      {
+        id,
+        data: {
+          ...data,
+          label: label ?? `节点 ${index + 1}`,
+          content: firstText(data.content, data.detail, node.content),
+        },
+        position: {
+          x: Number.isFinite(Number(position.x)) ? Number(position.x) : 0,
+          y: Number.isFinite(Number(position.y)) ? Number(position.y) : 0,
+        },
+      },
+    ]
+  })
+
+  const nodeIds = new Set(nodes.map((node) => node.id))
+  const seenEdges = new Set<string>()
+  const edges = rawEdges.flatMap((rawEdge, index) => {
+    const edge = asRecord(rawEdge)
+    const source = String(edge.source ?? '').trim()
+    const target = String(edge.target ?? '').trim()
+    if (
+      !source ||
+      !target ||
+      source === target ||
+      !nodeIds.has(source) ||
+      !nodeIds.has(target)
+    ) {
+      return []
+    }
+
+    const relationship = `${source}\u0000${target}`
+    if (seenEdges.has(relationship)) return []
+    seenEdges.add(relationship)
+
+    return [
+      {
+        id: String(edge.id ?? `edge-${index + 1}`),
+        source,
+        target,
+        label: firstText(edge.label) ?? null,
+      },
+    ]
+  })
+
+  return { nodes, edges }
+}
+
 // Helper function to convert nodes/edges format to hierarchical tree
-function convertToTree(
+export function convertMindMapToTree(
   nodes: Array<{
     id: string
     data: { label: string; [key: string]: unknown }
@@ -30,7 +147,7 @@ function convertToTree(
     return null
   }
 
-  // Build a map of node ID to node data
+  // Build a map of node ID to node data.
   const nodeMap = new Map<string, MindMapNodeData>()
   const childrenMap = new Map<string, Array<string>>()
 
@@ -52,41 +169,52 @@ function convertToTree(
     childrenMap.set(edge.source, children)
   })
 
-  // Build the tree structure
-  const buildNode = (nodeId: string): MindMapNodeData | null => {
+  // Build a safe spanning tree. AI output can contain cross-links or cycles;
+  // those relationships should not make the entire view recurse forever.
+  const attachedNodeIds = new Set<string>()
+  const buildNode = (
+    nodeId: string,
+    ancestors = new Set<string>(),
+  ): MindMapNodeData | null => {
     const node = nodeMap.get(nodeId)
-    if (!node) return null
+    if (!node || ancestors.has(nodeId) || attachedNodeIds.has(nodeId))
+      return null
+
+    attachedNodeIds.add(nodeId)
+    const nextAncestors = new Set(ancestors)
+    nextAncestors.add(nodeId)
 
     const childIds = childrenMap.get(nodeId) || []
-    node.children = childIds
-      .map((childId) => buildNode(childId))
-      .filter((child): child is MindMapNodeData => child !== null)
-
-    return node
+    return {
+      ...node,
+      children: childIds
+        .map((childId) => buildNode(childId, nextAncestors))
+        .filter((child): child is MindMapNodeData => child !== null),
+    }
   }
 
   // Find root nodes (nodes that are not targets of any edge)
   const targetIds = new Set(edges.map((e) => e.target))
   const rootNodes = nodes.filter((node) => !targetIds.has(node.id))
 
-  if (rootNodes.length === 0) {
-    // If no clear root, use the first node
-    return buildNode(nodes[0].id)
-  }
+  const orderedRoots = [
+    ...rootNodes,
+    ...nodes.filter((node) => targetIds.has(node.id)),
+  ]
+  const forest = orderedRoots
+    .map((node) => buildNode(node.id))
+    .filter((node): node is MindMapNodeData => node !== null)
 
-  // If multiple roots, create a synthetic root
-  if (rootNodes.length > 1) {
+  if (forest.length > 1) {
     const syntheticRoot: MindMapNodeData = {
       id: 'root',
-      label: '根节点',
-      children: rootNodes
-        .map((node) => buildNode(node.id))
-        .filter((node): node is MindMapNodeData => node !== null),
+      label: '思维导图',
+      children: forest,
     }
     return syntheticRoot
   }
 
-  return buildNode(rootNodes[0].id)
+  return forest[0] ?? null
 }
 
 // --- Recursive Node Component ---
@@ -195,28 +323,20 @@ const MindMapNode = ({
 // --- Main Container Component ---
 
 type MindMapViewProps = {
-  mapData: {
-    nodes: Array<{
-      id: string
-      type?: string
-      position: { x: number; y: number }
-      data: { label: string; [key: string]: unknown }
-    }>
-    edges: Array<{
-      id: string
-      source: string
-      target: string
-      label?: string | null
-      type?: string
-    }>
-  }
+  mapData: unknown
 }
 
 export const MindMapView = ({ mapData }: MindMapViewProps) => {
-  // Convert nodes/edges to hierarchical tree
+  const normalizedMapData = useMemo(
+    () => normalizeMindMapData(mapData),
+    [mapData],
+  )
   const rootNode = useMemo(() => {
-    return convertToTree(mapData.nodes, mapData.edges)
-  }, [mapData.nodes, mapData.edges])
+    return convertMindMapToTree(
+      normalizedMapData.nodes,
+      normalizedMapData.edges,
+    )
+  }, [normalizedMapData])
 
   if (!rootNode) {
     return (

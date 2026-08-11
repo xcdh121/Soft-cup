@@ -293,9 +293,9 @@ export const QuizQuestionCard = ({
                 />
               </button>
               {explanationOpen ? (
-                <p className="mt-3 text-sm leading-7 text-muted-foreground">
+                <Response className="mt-3 text-sm leading-7 text-muted-foreground">
                   {currentQuestion.explanation}
-                </p>
+                </Response>
               ) : null}
             </div>
           ) : null}

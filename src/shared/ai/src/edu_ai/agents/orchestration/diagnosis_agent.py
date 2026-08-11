@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from edu_core.schemas.agent_orchestration import (
     AgentEvidence,
     AgentName,
@@ -118,12 +120,79 @@ class DiagnosisAgent(BaseOrchestrationAgent):
                     }
                 )
 
+            prerequisite_relations = []
+            for point in context.context.knowledge_points:
+                if point.get("id") == point_id:
+                    prerequisite_relations = (
+                        point.get("prerequisite_relations", []) or []
+                    )
+                    if not prerequisite_relations:
+                        prerequisite_relations = [
+                            {
+                                "id": None,
+                                "source_knowledge_point_id": prerequisite_id,
+                                "strength": 1.0,
+                            }
+                            for prerequisite_id in (
+                                point.get("prerequisite_ids", []) or []
+                            )
+                        ]
+                    break
+            state_by_id = {
+                str(item.get("knowledge_point_id")): item
+                for item in context.context.knowledge_states
+            }
+            prerequisite_causes = []
+            for relation in prerequisite_relations:
+                prerequisite_id = str(
+                    relation.get("source_knowledge_point_id", "")
+                )
+                prerequisite_state = state_by_id.get(str(prerequisite_id), {})
+                mastery = float(prerequisite_state.get("mastery_score", 0)) / 100
+                evidence = float(prerequisite_state.get("confidence", 0.4))
+                strength = float(relation.get("strength", 1.0))
+                freshness = self._freshness_factor(
+                    prerequisite_state.get("last_practiced_at")
+                )
+                cause_score = (
+                    (1 - mastery) * strength * evidence * freshness
+                )
+                if mastery < 0.70:
+                    prerequisite_causes.append(
+                        {
+                            "type": "weak_prerequisite",
+                            "knowledge_point_id": prerequisite_id,
+                            "relation_id": relation.get("id"),
+                            "confidence": round(min(0.85, cause_score), 3),
+                            "evidence_refs": [
+                                {
+                                    "source_type": "knowledge_state",
+                                    "source_id": prerequisite_id,
+                                }
+                            ],
+                            "reason_text": (
+                                f"Prerequisite {prerequisite_id} has mastery "
+                                f"{mastery:.0%} with relation strength {strength:.0%}; "
+                                "it may be contributing to the current weakness."
+                            ),
+                            "requires_more_evidence": evidence < 0.7,
+                        }
+                    )
+            prerequisite_causes.sort(
+                key=lambda item: item["confidence"], reverse=True
+            )
+            root_causes = [
+                *prerequisite_causes[:2],
+                *ranked_causes,
+            ][:3]
+            for rank, cause in enumerate(root_causes, start=1):
+                cause.setdefault("claim_id", f"{context.run_id}_claim_{rank:02d}")
             diagnosis = {
                 "summary": (
                     "The current primary weak point is "
                     f"{detail.get('topic', point_id)}. Prioritize concept repair and practice feedback."
                 ),
-                "root_causes": ranked_causes,
+                "root_causes": root_causes,
                 "related_knowledge_points": [
                     {
                         "id": point["knowledge_point_id"],
@@ -135,6 +204,14 @@ class DiagnosisAgent(BaseOrchestrationAgent):
                 "explanation": self._build_explanation(
                     primary, detail, matched_patterns
                 ),
+                "evidences": [
+                    {
+                        "source_type": "knowledge_state",
+                        "source_id": point_id,
+                        "knowledge_point_id": point_id,
+                        "contribution_score": confidence,
+                    }
+                ],
             }
             reason_codes = ["weak_mastery"]
             evidences = list({(item.source_type, item.source_id): item for item in [
@@ -196,6 +273,23 @@ class DiagnosisAgent(BaseOrchestrationAgent):
             output_artifact_keys=[self.artifact_key],
             tool_call_audits=tool_runner.audits,
         )
+
+    @staticmethod
+    def _freshness_factor(last_practiced_at: object) -> float:
+        if not last_practiced_at:
+            return 0.5
+        try:
+            practiced = datetime.fromisoformat(str(last_practiced_at))
+            if practiced.tzinfo is None:
+                practiced = practiced.replace(tzinfo=timezone.utc)
+            age_days = max(
+                0.0,
+                (datetime.now(timezone.utc) - practiced).total_seconds()
+                / 86400.0,
+            )
+            return 1 / (1 + age_days / 30)
+        except ValueError:
+            return 0.5
 
     def _build_explanation(
         self, primary: dict, detail: dict, matched_patterns: list[dict]

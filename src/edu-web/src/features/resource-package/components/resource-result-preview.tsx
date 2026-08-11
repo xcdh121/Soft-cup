@@ -1,12 +1,19 @@
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { Link } from '@tanstack/react-router'
 import { ExternalLinkIcon, Loader2Icon, PlayCircleIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { GeneratedResource } from '@/data-acess/resource-package'
+import { Response } from '@/components/ai-elements/response'
+import { Button } from '@/components/ui/button'
 import { env } from '@/env'
 import { flashcardsAtom } from '@/data-acess/flashcard'
 import { mindMapAtom, refreshMindMapAtom } from '@/data-acess/mind-map'
 import { quizQuestionsAtom } from '@/data-acess/quiz'
 import { NoteContent } from '@/features/note/components/note-content'
+import {
+  MindMapView,
+  normalizeMindMapData,
+} from '@/features/mind-map/components/mind-map-view'
 import { authClient } from '@/lib/auth-client'
 
 type ResourceReference = {
@@ -48,7 +55,11 @@ const resolveGeneratedFileUrl = (fileUrl: string) => {
   return `${baseUrl}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`
 }
 
-const GeneratedImagePreview = ({ resource }: { resource: GeneratedResource }) => {
+const GeneratedImagePreview = ({
+  resource,
+}: {
+  resource: GeneratedResource
+}) => {
   const fileUrl = resource.preview_url ?? resource.file_url
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
@@ -76,7 +87,8 @@ const GeneratedImagePreview = ({ resource }: { resource: GeneratedResource }) =>
           headers,
           signal: controller.signal,
         })
-        if (!response.ok) throw new Error(`Image request failed: ${response.status}`)
+        if (!response.ok)
+          throw new Error(`Image request failed: ${response.status}`)
         objectUrl = URL.createObjectURL(await response.blob())
         if (!controller.signal.aborted) setImageUrl(objectUrl)
       } catch (error) {
@@ -180,7 +192,7 @@ const ProgrammingQuestionsPreview = ({
             ) : null}
           </div>
           <div className="mt-2 line-clamp-3 text-muted-foreground">
-            {question.description}
+            <Response className="text-sm">{question.description}</Response>
           </div>
           {question.examples[0] ? (
             <div className="mt-3 grid gap-2 rounded-md bg-muted/50 p-2 text-xs sm:grid-cols-2">
@@ -287,7 +299,7 @@ const VideoRecommendationsPreview = ({
             </div>
             {video.summary ? (
               <div className="line-clamp-2 text-xs text-muted-foreground">
-                {video.summary}
+                <Response className="text-xs">{video.summary}</Response>
               </div>
             ) : null}
             <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -395,7 +407,9 @@ const IncrementalFlashcardsPreview = ({
             >
               <div className="font-medium">{card.question}</div>
               <div className="mt-2 text-muted-foreground">
-                {String(card.answer ?? '')}
+                <Response className="text-sm">
+                  {String(card.answer ?? '')}
+                </Response>
               </div>
             </div>,
           ]
@@ -464,7 +478,9 @@ const FlashcardsPreview = ({
           className="rounded-lg border bg-card p-3 text-sm text-card-foreground"
         >
           <div className="font-medium">{card.question}</div>
-          <div className="mt-2 text-muted-foreground">{card.answer}</div>
+          <div className="mt-2 text-muted-foreground">
+            <Response className="text-sm">{card.answer}</Response>
+          </div>
         </div>
       ))}
     </div>
@@ -480,10 +496,9 @@ const MindMapPreview = ({
 }) => {
   const result = useAtomValue(mindMapAtom(`${projectId}:${mindMapId}`))
   const refresh = useAtomSet(refreshMindMapAtom, { mode: 'promise' })
-  const nodeCount =
-    Result.isSuccess(result) && Array.isArray(result.value.map_data.nodes)
-      ? result.value.map_data.nodes.length
-      : 0
+  const nodeCount = Result.isSuccess(result)
+    ? normalizeMindMapData(result.value.map_data).nodes.length
+    : 0
   useEffect(() => {
     if (nodeCount > 0) return
     const id = window.setInterval(
@@ -494,32 +509,61 @@ const MindMapPreview = ({
   }, [mindMapId, nodeCount, projectId, refresh])
   if (result.waiting) return <Loading label="正在生成思维导图..." />
   if (!Result.isSuccess(result)) return <Empty label="思维导图暂时无法加载。" />
-  const nodes = Array.isArray(result.value.map_data.nodes)
-    ? (result.value.map_data.nodes as Array<Record<string, unknown>>)
-    : []
-  if (nodes.length === 0) return <Loading label="思维导图正在生成，请稍候..." />
+  if (nodeCount === 0) return <Loading label="思维导图正在生成，请稍候..." />
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {nodes.slice(0, 12).map((node, index) => (
-        <span
-          key={String(node.id ?? index)}
-          className="rounded-full border bg-background px-3 py-1 text-sm"
-        >
-          {String(node.label ?? node.title ?? node.text ?? `节点 ${index + 1}`)}
-        </span>
-      ))}
+    <div className="h-[32rem] min-h-[24rem] overflow-hidden rounded-xl border bg-background">
+      <MindMapView mapData={result.value.map_data} />
     </div>
   )
 }
 
-export const ResourceResultPreview = ({
+const MindMapResourcePreview = ({
   projectId,
   resource,
 }: {
   projectId: string
   resource: GeneratedResource
 }) => {
+  // Prefer the snapshot stored with the generated resource. It is available
+  // even when an older resource has no target_id or its standalone MindMap
+  // record has not caught up yet.
+  const embeddedMapData = normalizeMindMapData(resource.content_json)
+  if (embeddedMapData.nodes.length > 0) {
+    return (
+      <div className="h-[32rem] min-h-[24rem] overflow-hidden rounded-xl border bg-background">
+        <MindMapView mapData={embeddedMapData} />
+      </div>
+    )
+  }
+
+  const reference = getReference(resource)
+  if (reference?.target_type === 'mind_map') {
+    return (
+      <MindMapPreview projectId={projectId} mindMapId={reference.target_id} />
+    )
+  }
+
+  return resource.status === 'pending' || resource.status === 'generating' ? (
+    <Loading label="思维导图正在生成，请稍候..." />
+  ) : (
+    <Empty label="该思维导图没有可显示的节点，请重新生成。" />
+  )
+}
+
+export const ResourceResultPreview = ({
+  projectId,
+  resource,
+  truncateText = true,
+}: {
+  projectId: string
+  resource: GeneratedResource
+  truncateText?: boolean
+}) => {
+  if (resource.resource_type === 'mind_map') {
+    return <MindMapResourcePreview projectId={projectId} resource={resource} />
+  }
+
   if (
     resource.resource_type === 'practice_set' &&
     Array.isArray(resource.content_json?.questions) &&
@@ -537,10 +581,23 @@ export const ResourceResultPreview = ({
   }
 
   if (resource.resource_type === 'programming_questions') {
+    const questions = getProgrammingQuestions(resource)
+
     return (
-      <ProgrammingQuestionsPreview
-        questions={getProgrammingQuestions(resource)}
-      />
+      <div className="space-y-3">
+        {questions.length > 0 && (
+          <Button variant="outline" size="sm" asChild>
+            <Link
+              to="/dashboard/p/$projectId/programming/$resourceId"
+              params={{ projectId, resourceId: resource.id }}
+            >
+              进入编程练习
+              <ExternalLinkIcon className="ml-2 size-3.5" />
+            </Link>
+          </Button>
+        )}
+        <ProgrammingQuestionsPreview questions={questions} />
+      </div>
     )
   }
 
@@ -555,12 +612,12 @@ export const ResourceResultPreview = ({
   }
 
   if (resource.content_text) {
-    return (
-      <div className="whitespace-pre-wrap text-sm">
-        {resource.content_text.slice(0, 1200)}
-        {resource.content_text.length > 1200 ? '...' : ''}
-      </div>
-    )
+    const previewText = truncateText
+      ? `${resource.content_text.slice(0, 1200)}${
+          resource.content_text.length > 1200 ? '...' : ''
+        }`
+      : resource.content_text
+    return <Response className="text-sm">{previewText}</Response>
   }
 
   const reference = getReference(resource)

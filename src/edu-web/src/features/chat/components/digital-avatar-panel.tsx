@@ -22,6 +22,7 @@ import {
 } from './digital-avatar-event'
 import type { Recorder } from '../../../../avatar-sdk-web_3.2.3.1002/esm/index.js'
 import type { PointerEvent as ReactPointerEvent } from 'react'
+import { Response } from '@/components/ai-elements/response'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { env } from '@/env'
@@ -673,9 +674,15 @@ export const DigitalAvatarPanel = () => {
                       >
                         {message.role === 'user' ? '我' : '数字人导师'}
                       </div>
-                      <p className="whitespace-pre-wrap text-sm leading-6">
-                        {message.content}
-                      </p>
+                      {message.role === 'assistant' ? (
+                        <Response className="text-sm leading-6">
+                          {message.content}
+                        </Response>
+                      ) : (
+                        <p className="whitespace-pre-wrap text-sm leading-6">
+                          {message.content}
+                        </p>
+                      )}
                     </article>
                   ))}
 

@@ -180,8 +180,8 @@ const QuizQuestionListItem = ({
             )}
           </div>
           {question.explanation && (
-            <div className="text-xs text-muted-foreground italic leading-relaxed">
-              {question.explanation}
+            <div className="text-xs text-muted-foreground leading-relaxed">
+              <Response className="text-xs">{question.explanation}</Response>
             </div>
           )}
         </div>
@@ -270,7 +270,7 @@ const CompletionActions = ({ quizId, projectId }: CompletionActionsProps) => {
   const handleSubmit = async () => {
     await submitPendingPracticeRecords({ quizId, projectId })
     navigate({
-      to: '/dashboard/p/$projectId',
+      to: '/dashboard/p/$projectId/learning-evaluation/practice',
       params: { projectId },
     })
   }
@@ -281,7 +281,7 @@ const CompletionActions = ({ quizId, projectId }: CompletionActionsProps) => {
 
   const handleClose = () => {
     navigate({
-      to: '/dashboard/p/$projectId',
+      to: '/dashboard/p/$projectId/learning-evaluation/practice',
       params: { projectId },
     })
   }

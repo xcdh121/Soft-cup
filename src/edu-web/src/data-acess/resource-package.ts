@@ -403,6 +403,36 @@ export const generatedResourcesAtom = Atom.family((input: string) => {
   )
 })
 
+export const generatedResourceAtom = Atom.family((input: string) => {
+  const [projectId, resourceId] = input.split(':')
+
+  return runtime.atom(
+    Effect.gen(function* () {
+      const { httpClient } = yield* ApiClientService
+      const response = yield* httpClient.get(
+        `/api/v1/projects/${projectId}/generated-resources/${resourceId}`,
+      )
+      return (yield* response.json) as GeneratedResource
+    }),
+  )
+})
+
+export const reconcileResourcePackagesAtom = runtime.fn(
+  Effect.fn(function* (projectId: string) {
+    const registry = yield* Registry.AtomRegistry
+    const { httpClient } = yield* ApiClientService
+    const response = yield* httpClient.post(
+      `/api/v1/projects/${projectId}/resource-packages/reconcile`,
+    )
+    const result = (yield* response.json) as {
+      repaired: number
+      deleted: number
+    }
+    registry.refresh(resourcePackagesAtom(projectId))
+    return result
+  }),
+)
+
 export const generateResourcePackageAtom = runtime.fn(
   Effect.fn(function* (input: GenerateResourcePackageInput) {
     const registry = yield* Registry.AtomRegistry

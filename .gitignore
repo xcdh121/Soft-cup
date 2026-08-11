@@ -25,3 +25,7 @@ EduAgent项目技术文档-已完成.docx
 outputs/
 tools/
 docs/
+.tmp/
+.tmp_ppt_rebuild/
+.cache/
+.tmp_ppt_two_stages/

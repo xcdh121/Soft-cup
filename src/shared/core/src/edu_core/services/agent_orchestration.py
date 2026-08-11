@@ -40,13 +40,18 @@ from edu_db.models import (
     AgentToolCall,
     CollectiveInsight,
     Diagnosis,
+    DiagnosisCause,
     Document,
+    Explanation,
+    ExplanationEvidence,
     GeneratedResource,
     KnowledgePoint,
     KnowledgePointRelation,
+    KnowledgeStateEvent,
     LearnerProfile,
     LearningPath,
     LearningEvidenceEvent,
+    LearningPathStep,
     PracticeRecord,
     Project,
     Recommendation,
@@ -618,8 +623,29 @@ class DatabaseOrchestrationStore:
                 db.query(Diagnosis).filter(Diagnosis.id == diagnosis.diagnosis_id).first()
             )
             if not existing:
-                db.add(
-                    Diagnosis(
+                payload = diagnosis.diagnosis or {}
+                related_points = payload.get("related_knowledge_points", [])
+                primary_id = (
+                    related_points[0].get("id")
+                    if related_points
+                    else payload.get("primary_knowledge_point_id")
+                )
+                state = None
+                if primary_id:
+                    state = (
+                        db.query(StudentKnowledgeState)
+                        .filter(
+                            StudentKnowledgeState.user_id == diagnosis.student_id,
+                            StudentKnowledgeState.knowledge_point_id == primary_id,
+                        )
+                        .first()
+                    )
+                root_causes = payload.get("root_causes", [])
+                confidence = max(
+                    [float(item.get("confidence", 0)) for item in root_causes],
+                    default=0.2,
+                )
+                row = Diagnosis(
                         id=diagnosis.diagnosis_id,
                         run_id=diagnosis.run_id,
                         project_id=diagnosis.project_id,
@@ -627,9 +653,66 @@ class DatabaseOrchestrationStore:
                         status=diagnosis.status.value,
                         diagnosis=self._to_json(diagnosis.diagnosis),
                         next_actions=self._to_json(diagnosis.next_actions),
+                        trigger_type="agent_run",
+                        trigger_id=diagnosis.run_id,
+                        primary_knowledge_point_id=primary_id,
+                        state_version=state.state_version if state else None,
+                        confidence=confidence,
+                        diagnosis_version="diagnosis-rule-v1",
                         created_at=diagnosis.created_at,
                     )
+                db.add(row)
+                db.flush()
+                explanation = Explanation(
+                    id=str(uuid4()),
+                    project_id=diagnosis.project_id,
+                    user_id=diagnosis.student_id,
+                    object_type="diagnosis",
+                    object_id=row.id,
+                    summary=payload.get("summary", "已生成学习根因诊断。"),
+                    reason_codes=[
+                        item.get("type", "insufficient_evidence")
+                        for item in root_causes
+                    ],
+                    model_version=row.diagnosis_version,
+                    confidence=confidence,
                 )
+                db.add(explanation)
+                db.flush()
+                row.explanation_id = explanation.id
+                for rank, cause in enumerate(root_causes[:3], start=1):
+                    cause_point_id = cause.get("knowledge_point_id") or primary_id
+                    db.add(
+                        DiagnosisCause(
+                            id=str(uuid4()),
+                            diagnosis_id=row.id,
+                            cause_type=cause.get("type", "weak_mastery"),
+                            knowledge_point_id=cause_point_id,
+                            relation_id=cause.get("relation_id"),
+                            confidence=float(cause.get("confidence", 0.2)),
+                            rank=rank,
+                            reason_text=cause.get("reason_text")
+                            or cause.get("label")
+                            or "可能与当前学习证据有关。",
+                        )
+                    )
+                for order, evidence in enumerate(payload.get("evidences", [])[:10]):
+                    db.add(
+                        ExplanationEvidence(
+                            id=str(uuid4()),
+                            explanation_id=explanation.id,
+                            source_type=evidence.get("source_type", "diagnosis"),
+                            source_id=str(evidence.get("source_id", row.id)),
+                            knowledge_point_id=evidence.get("knowledge_point_id")
+                            or primary_id,
+                            contribution_direction="supporting",
+                            contribution_score=float(
+                                evidence.get("contribution_score", confidence)
+                            ),
+                            snapshot=self._to_json(evidence),
+                            display_order=order,
+                        )
+                    )
             db.commit()
 
     def get_diagnosis(self, diagnosis_id: str) -> DiagnosisResponse | None:
@@ -743,8 +826,19 @@ class DatabaseOrchestrationStore:
                 )
                 if existing:
                     continue
-                db.add(
-                    Recommendation(
+                primary_id = diagnosis.primary_knowledge_point_id if diagnosis else None
+                source_event = None
+                if primary_id:
+                    source_event = (
+                        db.query(KnowledgeStateEvent)
+                        .filter(
+                            KnowledgeStateEvent.user_id == user_id,
+                            KnowledgeStateEvent.knowledge_point_id == primary_id,
+                        )
+                        .order_by(KnowledgeStateEvent.occurred_at.desc())
+                        .first()
+                    )
+                row = Recommendation(
                         id=recommendation_id,
                         run_id=response.run_id,
                         diagnosis_id=diagnosis.id if diagnosis else None,
@@ -764,9 +858,45 @@ class DatabaseOrchestrationStore:
                         score=recommendation.get("score"),
                         recommended_by=recommendation.get("recommended_by"),
                         feedback=recommendation.get("feedback"),
+                        source_state_event_id=source_event.id if source_event else None,
+                        expected_outcome=self._to_json(
+                            recommendation.get(
+                                "expected_outcome",
+                                {
+                                    "knowledge_point_id": primary_id,
+                                    "target_mastery": 0.8,
+                                },
+                            )
+                        ),
+                        verification_plan=self._to_json(
+                            recommendation.get(
+                                "verification_plan",
+                                {
+                                    "strategy": "existing_item_bank",
+                                    "knowledge_point_id": primary_id,
+                                    "within_hours": 72,
+                                },
+                            )
+                        ),
+                        status=recommendation.get("status", "active"),
                         created_at=response.created_at,
                     )
+                db.add(row)
+                db.flush()
+                explanation = Explanation(
+                    id=str(uuid4()),
+                    project_id=response.project_id,
+                    user_id=user_id,
+                    object_type="recommendation",
+                    object_id=row.id,
+                    summary=" ".join(row.reason_text or []) or f"建议：{row.title}",
+                    reason_codes=row.reason_codes or [],
+                    model_version="recommendation-rule-v1",
+                    confidence=float(row.score or 0.5),
                 )
+                db.add(explanation)
+                db.flush()
+                row.explanation_id = explanation.id
             db.commit()
 
     def list_recommendations(self, project_id: str) -> list[dict]:
@@ -805,8 +935,8 @@ class DatabaseOrchestrationStore:
             if user_id is None:
                 return
 
-            db.add(
-                LearningPath(
+            now = response.created_at
+            row = LearningPath(
                     id=response.path_id,
                     run_id=response.run_id,
                     diagnosis_id=response.based_on_diagnosis_id,
@@ -816,10 +946,37 @@ class DatabaseOrchestrationStore:
                     based_on_recommendation_ids=self._to_json(
                         response.based_on_recommendation_ids
                     ),
+                    version=1,
+                    status="active",
+                    activated_at=now,
                     created_at=response.created_at,
                     updated_at=response.created_at,
                 )
-            )
+            db.add(row)
+            db.flush()
+            for index, step in enumerate(
+                response.learning_path.get("path_steps", []), start=1
+            ):
+                acceptance = step.get("acceptance_condition") or {
+                    "target_mastery": 0.8
+                }
+                if isinstance(acceptance, str):
+                    acceptance = {"description": acceptance}
+                db.add(
+                    LearningPathStep(
+                        id=str(uuid4()),
+                        learning_path_id=row.id,
+                        step_no=index,
+                        step_type=step.get("type", "resource"),
+                        target_id=step.get("target_id"),
+                        knowledge_point_id=step.get("knowledge_point_id"),
+                        recommendation_id=step.get("recommendation_id"),
+                        objective=step.get("objective") or step.get("title"),
+                        acceptance_condition=self._to_json(acceptance),
+                        target_mastery=float(acceptance.get("target_mastery", 0.8)),
+                        status="pending",
+                    )
+                )
             db.commit()
 
     def get_latest_learning_path(self, project_id: str) -> LearningPathResponse | None:
@@ -852,12 +1009,53 @@ class DatabaseOrchestrationStore:
             "reason_text": recommendation.reason_text,
             "score": recommendation.score,
             "recommended_by": recommendation.recommended_by,
+            "explanation_id": recommendation.explanation_id,
+            "source_state_event_id": recommendation.source_state_event_id,
+            "expected_outcome": recommendation.expected_outcome or {},
+            "verification_plan": recommendation.verification_plan or {},
+            "status": recommendation.status,
+            "valid_until": recommendation.valid_until,
         }
 
     def _learning_path_to_response(
         self, path: LearningPath, db=None
     ) -> LearningPathResponse:
         content = self._resolve_knowledge_point_labels(path.content, db)
+        if db is not None:
+            persisted_steps = (
+                db.query(LearningPathStep)
+                .filter(LearningPathStep.learning_path_id == path.id)
+                .order_by(LearningPathStep.step_no)
+                .all()
+            )
+            if persisted_steps:
+                content["path_steps"] = [
+                    {
+                        "id": step.id,
+                        "step_no": step.step_no,
+                        "type": step.step_type,
+                        "target_id": step.target_id,
+                        "knowledge_point_id": step.knowledge_point_id,
+                        "recommendation_id": step.recommendation_id,
+                        "title": step.objective,
+                        "objective": step.objective,
+                        "acceptance_condition": step.acceptance_condition or {},
+                        "baseline_mastery": step.baseline_mastery,
+                        "target_mastery": step.target_mastery,
+                        "status": step.status,
+                    }
+                    for step in persisted_steps
+                ]
+        content = {
+            **content,
+            "version": path.version,
+            "previous_path_id": path.previous_path_id,
+            "status": path.status,
+            "adjust_trigger_type": path.adjust_trigger_type,
+            "adjust_trigger_id": path.adjust_trigger_id,
+            "adjust_trigger_ids": path.adjust_trigger_ids or [],
+            "explanation_id": path.explanation_id,
+        }
         return LearningPathResponse(
             path_id=path.id,
             run_id=path.run_id,
@@ -1539,6 +1737,8 @@ class AgentOrchestrationService:
             error = result.final_result.get("error", "Planner returned no learning path")
             raise RuntimeError(f"Learning path generation failed: {error}")
 
+        generated_recommendations = result.final_result.get("recommendations", [])
+
         if diagnosis is None:
             diagnosis = DiagnosisResponse(
                 diagnosis_id=f"diag_{uuid4().hex}",
@@ -1547,15 +1747,32 @@ class AgentOrchestrationService:
                 student_id=user_id,
                 status=result.status,
                 diagnosis=result.final_result.get("diagnosis", {}),
-                recommendations=result.final_result.get("recommendations", []),
+                recommendations=generated_recommendations,
                 learning_path=learning_path,
                 next_actions=[],
                 created_at=self._now(),
             )
             self.store.save_diagnosis(diagnosis)
 
+        recommendations = generated_recommendations or diagnosis.recommendations
+        if recommendations:
+            self.store.save_recommendations(
+                RecommendationsResponse(
+                    run_id=result.run_id,
+                    project_id=project_id,
+                    recommendations=recommendations,
+                    based_on_diagnosis_id=diagnosis.diagnosis_id,
+                    created_at=self._now(),
+                )
+            )
+
+        learning_path = self._link_learning_path_steps(
+            learning_path,
+            recommendations,
+            diagnosis.diagnosis,
+        )
         recommendation_ids = [
-            recommendation["id"] for recommendation in diagnosis.recommendations
+            recommendation["id"] for recommendation in recommendations
             if recommendation.get("id")
         ]
         response = LearningPathResponse(
@@ -1569,6 +1786,43 @@ class AgentOrchestrationService:
         )
         self.store.save_learning_path(response)
         return response
+
+    @staticmethod
+    def _link_learning_path_steps(
+        learning_path: dict,
+        recommendations: list[dict],
+        diagnosis: dict,
+    ) -> dict:
+        """Attach persisted recommendation and knowledge-point IDs to plan steps."""
+        linked_path = dict(learning_path)
+        related_points = diagnosis.get("related_knowledge_points", [])
+        primary_knowledge_point_id = diagnosis.get("primary_knowledge_point_id")
+        if not primary_knowledge_point_id and related_points:
+            primary_knowledge_point_id = related_points[0].get("id")
+
+        linked_steps = []
+        for index, raw_step in enumerate(linked_path.get("path_steps", [])):
+            step = dict(raw_step)
+            recommendation = (
+                recommendations[index] if index < len(recommendations) else None
+            )
+            if recommendation:
+                if not step.get("recommendation_id"):
+                    step["recommendation_id"] = recommendation.get("id")
+                expected_outcome = recommendation.get("expected_outcome") or {}
+                verification_plan = recommendation.get("verification_plan") or {}
+                knowledge_point_id = (
+                    recommendation.get("knowledge_point_id")
+                    or expected_outcome.get("knowledge_point_id")
+                    or verification_plan.get("knowledge_point_id")
+                    or primary_knowledge_point_id
+                )
+                if not step.get("knowledge_point_id") and knowledge_point_id:
+                    step["knowledge_point_id"] = knowledge_point_id
+            linked_steps.append(step)
+
+        linked_path["path_steps"] = linked_steps
+        return linked_path
 
     def get_latest_learning_path(
         self, user_id: str, project_id: str
@@ -1689,11 +1943,23 @@ class AgentOrchestrationService:
                     .all()
                 )
                 prerequisites: dict[str, list[str]] = {}
+                prerequisite_relations: dict[str, list[dict]] = {}
                 for relation in relations:
                     if relation.relation_type == "prerequisite":
                         prerequisites.setdefault(
                             relation.target_knowledge_point_id, []
                         ).append(relation.source_knowledge_point_id)
+                        prerequisite_relations.setdefault(
+                            relation.target_knowledge_point_id, []
+                        ).append(
+                            {
+                                "id": relation.id,
+                                "source_knowledge_point_id": (
+                                    relation.source_knowledge_point_id
+                                ),
+                                "strength": float(relation.strength),
+                            }
+                        )
                 state_by_point = {
                     state.knowledge_point_id: state
                     for state in db.query(StudentKnowledgeState)
@@ -1715,6 +1981,9 @@ class AgentOrchestrationService:
                             "difficulty_level": point.difficulty_level,
                             "tags": point.tags or [],
                             "prerequisite_ids": prerequisites.get(point.id, []),
+                            "prerequisite_relations": (
+                                prerequisite_relations.get(point.id, [])
+                            ),
                         }
                     )
                     knowledge_states.append(

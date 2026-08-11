@@ -45,13 +45,7 @@ async def create_practice_record(
         created_record = service.create_practice_record(
             user_id=current_user.id,
             project_id=project_id,
-            item_type=record.item_type,
-            item_id=record.item_id,
-            knowledge_point_id=record.knowledge_point_id,
-            topic=record.topic,
-            user_answer=record.user_answer,
-            correct_answer=record.correct_answer,
-            was_correct=record.was_correct,
+            **record.model_dump(),
         )
         try:
             knowledge_state_service.refresh_states(project_id, current_user.id)
@@ -77,18 +71,7 @@ async def create_practice_records_batch(
 ):
     """Create multiple practice records."""
     try:
-        records_data = [
-            {
-                "item_type": r.item_type,
-                "item_id": r.item_id,
-                "knowledge_point_id": r.knowledge_point_id,
-                "topic": r.topic,
-                "user_answer": r.user_answer,
-                "correct_answer": r.correct_answer,
-                "was_correct": r.was_correct,
-            }
-            for r in batch.practice_records
-        ]
+        records_data = [r.model_dump() for r in batch.practice_records]
         created_records = service.create_practice_records_batch(
             user_id=current_user.id,
             project_id=project_id,

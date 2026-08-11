@@ -24,7 +24,6 @@ import {
   coursesAtom,
   knowledgePointResourcesAtom,
 } from '@/data-acess/course-library'
-import { projectsAtom } from '@/data-acess/project'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -43,11 +42,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-
-type MarkdownSection = {
-  title: string
-  body: Array<string>
-}
+import { Response } from '@/components/ai-elements/response'
+import { ResourceResultPreview } from '@/features/resource-package/components/resource-result-preview'
 
 const difficultyLabel: Partial<Record<string, string>> = {
   beginner: '入门',
@@ -62,50 +58,14 @@ const resourceTypeLabel: Partial<Record<string, string>> = {
   code: '代码',
   problem: '题目',
   visualization: '可视化',
-}
-
-const parseMarkdownSections = (markdown?: string | null) => {
-  if (!markdown) return []
-
-  return markdown
-    .split('\n')
-    .reduce<Array<MarkdownSection>>((sections, line) => {
-      if (line.startsWith('## ')) {
-        sections.push({ title: line.replace(/^##\s+/, ''), body: [] })
-        return sections
-      }
-
-      const current = sections.at(-1)
-      if (current && line.trim()) {
-        current.body.push(line.trim())
-      }
-      return sections
-    }, [])
-}
-
-const renderMarkdownLine = (line: string) => {
-  if (line.startsWith('- ')) {
-    return (
-      <li key={line} className="ml-5 list-disc">
-        {line.slice(2)}
-      </li>
-    )
-  }
-
-  const numbered = line.match(/^\d+\.\s+(.*)$/)
-  if (numbered) {
-    return (
-      <li key={line} className="ml-5 list-decimal">
-        {numbered[1]}
-      </li>
-    )
-  }
-
-  return (
-    <p key={line} className="leading-7">
-      {line}
-    </p>
-  )
+  lecture_note: '讲解笔记',
+  mind_map: '思维导图',
+  practice_set: '分层练习',
+  flashcards: '闪卡',
+  ppt_outline: 'PPT 大纲',
+  pptx: 'PPT',
+  programming_questions: '编程练习',
+  video_recommendations: '精准视频',
 }
 
 const LoadingCard = ({ text }: { text: string }) => (
@@ -130,47 +90,66 @@ const ResourceList = ({ knowledgePointId }: { knowledgePointId: string }) => {
             当前知识点还没有关联资料。
           </div>
         ) : (
-          resources.map((resource) => (
-            <div
-              key={resource.id}
-              className="rounded-2xl border bg-card p-4 text-card-foreground shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary">
-                      {resourceTypeLabel[resource.resource_type] ??
-                        resource.resource_type}
-                    </Badge>
-                    <span className="font-medium">{resource.title}</span>
+          [...resources]
+            .sort(
+              (left, right) =>
+                Number(Boolean(right.generated_resource)) -
+                Number(Boolean(left.generated_resource)),
+            )
+            .map((resource) => (
+              <div
+                key={resource.id}
+                className="rounded-2xl border bg-card p-4 text-card-foreground shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary">
+                        {resourceTypeLabel[resource.resource_type] ??
+                          resource.resource_type}
+                      </Badge>
+                      {resource.generated_resource ? (
+                        <Badge variant="outline">站内学习</Badge>
+                      ) : null}
+                      <span className="font-medium">{resource.title}</span>
+                    </div>
+                    {resource.description ? (
+                      <Response className="text-sm leading-6 text-muted-foreground">
+                        {resource.description}
+                      </Response>
+                    ) : null}
+                    {resource.estimated_minutes ? (
+                      <p className="text-xs text-muted-foreground">
+                        预计 {resource.estimated_minutes} 分钟
+                      </p>
+                    ) : null}
                   </div>
-                  {resource.description ? (
-                    <p className="text-sm leading-6 text-muted-foreground">
-                      {resource.description}
-                    </p>
-                  ) : null}
-                  {resource.estimated_minutes ? (
-                    <p className="text-xs text-muted-foreground">
-                      预计 {resource.estimated_minutes} 分钟
-                    </p>
+
+                  {resource.source_url ? (
+                    <Button variant="outline" size="sm" asChild>
+                      <a
+                        href={resource.source_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        延伸阅读
+                        <ExternalLinkIcon className="ml-2 size-3" />
+                      </a>
+                    </Button>
                   ) : null}
                 </div>
-
-                {resource.source_url ? (
-                  <Button variant="outline" size="sm" asChild>
-                    <a
-                      href={resource.source_url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      打开
-                      <ExternalLinkIcon className="ml-2 size-3" />
-                    </a>
-                  </Button>
+                {resource.generated_resource &&
+                resource.generated_resource.resource_type !== 'image' ? (
+                  <div className="mt-4 border-t pt-4">
+                    <ResourceResultPreview
+                      projectId={resource.generated_resource.project_id}
+                      resource={resource.generated_resource}
+                      truncateText={false}
+                    />
+                  </div>
                 ) : null}
               </div>
-            </div>
-          ))
+            ))
         )}
       </div>
     ))
@@ -282,10 +261,6 @@ const ChapterPdfList = ({
   chapterId: string | null
 }) => {
   const resourcesResult = useAtomValue(courseResourcesAtom(courseId))
-  const projectsResult = useAtomValue(projectsAtom)
-  const project = Result.isSuccess(projectsResult)
-    ? projectsResult.value.find((item) => item.course_id === courseId)
-    : null
 
   return Result.builder(resourcesResult)
     .onSuccess((resources) => {
@@ -320,18 +295,18 @@ const ChapterPdfList = ({
                     </span>
                   </div>
                   {resource.description ? (
-                    <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+                    <Response className="line-clamp-2 text-xs leading-5 text-muted-foreground">
                       {resource.description}
-                    </p>
+                    </Response>
                   ) : null}
                 </div>
 
-                {project && resource.document_id ? (
+                {resource.document_project_id && resource.document_id ? (
                   <Button variant="outline" size="sm" asChild>
                     <Link
                       to="/dashboard/p/$projectId/d/$documentId"
                       params={{
-                        projectId: project.id,
+                        projectId: resource.document_project_id,
                         documentId: resource.document_id,
                       }}
                     >
@@ -339,7 +314,7 @@ const ChapterPdfList = ({
                     </Link>
                   </Button>
                 ) : (
-                  <Badge variant="outline">无项目入口</Badge>
+                  <Badge variant="outline">PDF 暂不可用</Badge>
                 )}
               </div>
             </div>
@@ -418,8 +393,6 @@ const CourseBrowser = ({
       </div>
     )
   }
-
-  const markdownSections = parseMarkdownSections(selectedPoint?.description)
 
   return (
     <>
@@ -515,20 +488,12 @@ const CourseBrowser = ({
           ) : null}
         </CardHeader>
         <CardContent className="min-h-0 flex-1 space-y-8 overflow-y-auto">
-          {markdownSections.length > 0 ? (
-            <div className="space-y-5">
-              {markdownSections.map((section) => (
-                <section
-                  key={section.title}
-                  className="rounded-2xl bg-muted/30 p-4"
-                >
-                  <h3 className="mb-3 font-semibold">{section.title}</h3>
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    {section.body.map(renderMarkdownLine)}
-                  </div>
-                </section>
-              ))}
-            </div>
+          {selectedPoint?.description ? (
+            <section className="rounded-2xl bg-muted/30 p-4">
+              <Response className="text-sm text-muted-foreground">
+                {selectedPoint.description}
+              </Response>
+            </section>
           ) : (
             <div className="rounded-2xl bg-muted/40 p-5 text-sm text-muted-foreground">
               当前知识点还没有正文。初始化脚本会写入包含 5 个区块的 Markdown

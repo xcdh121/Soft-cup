@@ -122,6 +122,9 @@ const SOURCE_LABELS: Record<string, string> = {
   student_knowledge_states: '知识状态',
   chat_message: '学习对话',
   user_input: '学生填写',
+  user_confirmation: '学生确认',
+  auto_refresh: '系统自动更新',
+  revision_revert: '撤销变更',
   manual: '手动编辑',
 }
 
@@ -162,6 +165,40 @@ const stringifyValue = (value: unknown): string => {
   }
 
   return String(value)
+}
+
+const unwrapProfileFieldValue = (raw: unknown): unknown => {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return raw
+
+  const field = raw as Record<string, unknown>
+  return 'value' in field ? field.value : raw
+}
+
+const isEmptyProfileValue = (value: unknown) =>
+  value === null ||
+  value === undefined ||
+  value === '' ||
+  (Array.isArray(value) && value.length === 0) ||
+  (typeof value === 'object' && Object.keys(value).length === 0)
+
+const describeRevision = (oldRaw: unknown, newRaw: unknown) => {
+  const oldValue = unwrapProfileFieldValue(oldRaw)
+  const newValue = unwrapProfileFieldValue(newRaw)
+  const hasOldValue = !isEmptyProfileValue(oldValue)
+  const hasNewValue = !isEmptyProfileValue(newValue)
+  const oldText = stringifyValue(oldValue)
+  const newText = stringifyValue(newValue)
+
+  if (!hasOldValue && hasNewValue) {
+    return { kind: 'added' as const, oldText, newText }
+  }
+  if (hasOldValue && !hasNewValue) {
+    return { kind: 'removed' as const, oldText, newText }
+  }
+  if (oldText === newText) {
+    return { kind: 'evidence' as const, oldText, newText }
+  }
+  return { kind: 'updated' as const, oldText, newText }
 }
 
 const normalizeField = (key: string, raw: unknown): ProfileFieldView => {
@@ -959,37 +996,68 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                 </div>
                 {revisions.length ? (
                   <div className="relative ml-2 space-y-5 border-l pl-6">
-                    {revisions.slice(0, 8).map((revision) => (
-                      <div key={revision.id} className="relative">
-                        <span className="absolute -left-[31px] top-1 size-3 rounded-full border-2 border-background bg-primary" />
-                        <div className="flex flex-col gap-2 rounded-2xl bg-muted/35 p-4 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium">
-                                {FIELD_LABELS[revision.field_key] ??
-                                  revision.field_key}
-                              </span>
-                              <Badge variant="secondary">
-                                {SOURCE_LABELS[revision.source_type] ??
-                                  revision.source_type}
-                              </Badge>
+                    {revisions.slice(0, 8).map((revision) => {
+                      const change = describeRevision(
+                        revision.old_value,
+                        revision.new_value,
+                      )
+                      return (
+                        <div key={revision.id} className="relative">
+                          <span className="absolute -left-[31px] top-1 size-3 rounded-full border-2 border-background bg-primary" />
+                          <div className="flex flex-col gap-2 rounded-2xl bg-muted/35 p-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium">
+                                  {FIELD_LABELS[revision.field_key] ??
+                                    '其他画像信息'}
+                                </span>
+                                <Badge variant="secondary">
+                                  {SOURCE_LABELS[revision.source_type] ??
+                                    '系统更新'}
+                                </Badge>
+                              </div>
+                              <div className="mt-2 text-sm text-muted-foreground">
+                                {change.kind === 'added' ? (
+                                  <>
+                                    新增为：
+                                    <span className="font-medium text-foreground">
+                                      {change.newText}
+                                    </span>
+                                  </>
+                                ) : change.kind === 'removed' ? (
+                                  <>
+                                    已移除，原内容：
+                                    <span className="line-through opacity-70">
+                                      {change.oldText}
+                                    </span>
+                                  </>
+                                ) : change.kind === 'evidence' ? (
+                                  <>
+                                    画像依据已更新，当前内容：
+                                    <span className="font-medium text-foreground">
+                                      {change.newText}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="line-through opacity-70">
+                                      {change.oldText}
+                                    </span>
+                                    <span className="mx-2">→</span>
+                                    <span className="font-medium text-foreground">
+                                      {change.newText}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
                             </div>
-                            <div className="mt-2 text-sm text-muted-foreground">
-                              <span className="line-through opacity-70">
-                                {stringifyValue(revision.old_value)}
-                              </span>
-                              <span className="mx-2">→</span>
-                              <span className="font-medium text-foreground">
-                                {stringifyValue(revision.new_value)}
-                              </span>
+                            <div className="shrink-0 text-xs text-muted-foreground">
+                              {formatDateTime(revision.created_at)}
                             </div>
-                          </div>
-                          <div className="shrink-0 text-xs text-muted-foreground">
-                            {formatDateTime(revision.created_at)}
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 ) : (
                   <ChartEmpty>暂无画像变更记录。</ChartEmpty>

@@ -1,3 +1,6 @@
+import { Result, useAtomValue } from '@effect-atom/atom-react'
+import { Link } from '@tanstack/react-router'
+import { ArrowLeft } from 'lucide-react'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -9,9 +12,6 @@ import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { quizAtom } from '@/data-acess/quiz'
-import { Result, useAtomValue } from '@effect-atom/atom-react'
-import { Link } from '@tanstack/react-router'
-import { ArrowLeft } from 'lucide-react'
 
 const QuizHeaderContent = ({
   quizId,
@@ -28,7 +28,7 @@ const QuizHeaderContent = ({
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbPage className="line-clamp-1 font-medium">
-              {quiz.name ?? '测验'}
+              {quiz.name}
             </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
@@ -55,22 +55,19 @@ type QuizHeaderProps = {
 }
 
 export const QuizHeader = ({ quizId, projectId }: QuizHeaderProps) => {
-  const quizResult = useAtomValue(quizAtom(`${projectId}:${quizId}`))
-
   return (
     <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-2">
       <div className="flex flex-1 items-center gap-2 px-3">
-        {Result.isSuccess(quizResult) && (
-          <>
-            <SidebarTrigger />
-            <Button variant="ghost" size="icon" className="size-7" asChild>
-              <Link to="/dashboard/p/$projectId" params={{ projectId }}>
-                <ArrowLeft className="size-4" />
-                <span className="sr-only">返回项目</span>
-              </Link>
-            </Button>
-          </>
-        )}
+        <SidebarTrigger />
+        <Button variant="ghost" size="icon" className="size-7" asChild>
+          <Link
+            to="/dashboard/p/$projectId/learning-evaluation/practice"
+            params={{ projectId }}
+          >
+            <ArrowLeft className="size-4" />
+            <span className="sr-only">返回题目练习</span>
+          </Link>
+        </Button>
         <Separator
           orientation="vertical"
           className="mr-2 data-[orientation=vertical]:h-4"

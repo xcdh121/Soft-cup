@@ -6,6 +6,51 @@ from edu_core.services.resource_packages import ResourcePackageService
 
 
 class ResourcePackageNoteStreamingTest(unittest.IsolatedAsyncioTestCase):
+    async def test_mind_map_is_forwarded_and_reaches_completed(self):
+        async def mind_map_streamer(payload):
+            self.assertEqual(payload["mind_map_id"], "map_1")
+            self.assertEqual(payload["user_id"], "user_1")
+            yield {
+                "event": "mind_map_batch",
+                "mind_map_id": "map_1",
+                "nodes": [{"id": "root", "data": {"label": "Lists"}}],
+                "edges": [],
+            }
+            yield {
+                "event": "mind_map_completed",
+                "mind_map_id": "map_1",
+                "title": "Lists map",
+                "description": "A generated mind map",
+                "map_data": {
+                    "nodes": [{"id": "root", "data": {"label": "Lists"}}],
+                    "edges": [],
+                },
+            }
+
+        service = ResourcePackageService(mind_map_streamer=mind_map_streamer)
+        service._update_partial_generated_resource = MagicMock()
+        events = []
+
+        async def event_sink(event):
+            events.append(event)
+
+        generated = await service._stream_recommended_mind_map(
+            generated={
+                "title": "Queued map",
+                "content_json": {"target_id": "map_1"},
+            },
+            recommendation={"target_id": "map_1", "topic": "lists"},
+            user_id="user_1",
+            project_id="project_1",
+            package_id="package_1",
+            resource_id="resource_1",
+            event_sink=event_sink,
+        )
+
+        self.assertEqual(generated["title"], "Lists map")
+        self.assertFalse(generated["content_json"]["stream_on_client"])
+        self.assertTrue(events[-1].payload["completed"])
+
     async def test_quiz_questions_are_forwarded_one_at_a_time(self):
         async def quiz_streamer(payload):
             self.assertEqual(payload["quiz_id"], "quiz_1")

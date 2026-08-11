@@ -1,8 +1,13 @@
 import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from code_execution import CodeExecutionError, execute_code
+from code_execution import (
+    CodeExecutionError,
+    CodeExecutionResult,
+    execute_code,
+    judge_code,
+)
 
 
 class _FakeResponse:
@@ -97,6 +102,53 @@ class CodeExecutionTest(unittest.IsolatedAsyncioTestCase):
                 stdin="",
                 timeout_seconds=3,
             )
+
+    async def test_judge_code_returns_wrong_answer_and_partial_score_data(self):
+        executions = [
+            CodeExecutionResult("python", "3.12", "3\n", "", "3\n", 0, None),
+            CodeExecutionResult("python", "3.12", "9\n", "", "9\n", 0, None),
+        ]
+        with patch(
+            "code_execution.execute_code",
+            new=AsyncMock(side_effect=executions),
+        ):
+            result = await judge_code(
+                api_url="http://sandbox.test/api/v2/execute",
+                api_token="",
+                language="python",
+                code="print(1)",
+                test_cases=[
+                    {"input": "1 2\n", "expected_output": "3\n", "hidden": False},
+                    {"input": "4 4\n", "expected_output": "8\n", "hidden": True},
+                ],
+                timeout_seconds=3,
+            )
+
+        self.assertEqual(result.verdict, "WA")
+        self.assertEqual(result.passed_cases, 1)
+        self.assertEqual(result.total_cases, 2)
+        self.assertIsNone(result.test_results[1].input)
+        self.assertIsNone(result.test_results[1].expected_output)
+
+    async def test_judge_code_distinguishes_compile_error_and_timeout(self):
+        compile_error = CodeExecutionResult(
+            "c++", "17", "", "syntax error", "syntax error", 1, None, 1
+        )
+        timed_out = CodeExecutionResult("python", "3.12", "", "", "", None, "SIGKILL")
+        for execution, expected in ((compile_error, "CE"), (timed_out, "TLE")):
+            with patch(
+                "code_execution.execute_code",
+                new=AsyncMock(return_value=execution),
+            ):
+                result = await judge_code(
+                    api_url="http://sandbox.test/api/v2/execute",
+                    api_token="",
+                    language="python",
+                    code="broken",
+                    test_cases=[{"input": "", "expected_output": ""}],
+                    timeout_seconds=3,
+                )
+            self.assertEqual(result.verdict, expected)
 
 
 if __name__ == "__main__":

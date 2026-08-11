@@ -18,7 +18,8 @@ class MindMapNodeData(BaseModel):
     id: str = Field(..., description="Unique identifier for the node")
     label: str = Field(..., description="Text label for the node")
     position: dict[str, float] = Field(
-        ..., description="Position coordinates {x, y} for the node"
+        default_factory=lambda: {"x": 0.0, "y": 0.0},
+        description="Position coordinates {x, y} for the node",
     )
     data: dict = Field(default_factory=dict, description="Additional data for the node")
 
@@ -199,11 +200,15 @@ class MindMapAgent:
             raise ValueError("mind_map_id and user_id are required")
 
         with get_db_session() as db:
-            mind_map = db.query(MindMap).filter(
-                MindMap.id == mind_map_id,
-                MindMap.project_id == project_id,
-                MindMap.user_id == user_id,
-            ).first()
+            mind_map = (
+                db.query(MindMap)
+                .filter(
+                    MindMap.id == mind_map_id,
+                    MindMap.project_id == project_id,
+                    MindMap.user_id == user_id,
+                )
+                .first()
+            )
             if not mind_map:
                 raise NotFoundError(f"Mind map {mind_map_id} not found")
             project = db.query(Project).filter(Project.id == project_id).first()

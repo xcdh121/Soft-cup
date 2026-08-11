@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
+  BookPlusIcon,
+  CheckCircle2Icon,
   ExternalLinkIcon,
   Loader2Icon,
   TagsIcon,
@@ -13,7 +15,9 @@ import type {
   ResourcePackage,
   ResourceType,
 } from '@/data-acess/resource-package'
+import type { ProjectCourseOutline } from '@/data-acess/course-library'
 import { Badge } from '@/components/ui/badge'
+import { Response } from '@/components/ai-elements/response'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -25,7 +29,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { projectCourseOutlineAtom } from '@/data-acess/course-library'
+import {
+  addGeneratedResourceToCourseAtom,
+  projectCourseOutlineAtom,
+} from '@/data-acess/course-library'
 import {
   generateResourcePackageAtom,
   generatedResourcesAtom,
@@ -141,6 +148,115 @@ const statusToneMap: Record<
   completed: 'default',
   failed: 'destructive',
   pending: 'outline',
+}
+
+const CourseResourceLinker = ({
+  resource,
+  courseOutline,
+}: {
+  resource: GeneratedResource
+  courseOutline: ProjectCourseOutline | null
+}) => {
+  const addToCourse = useAtomSet(addGeneratedResourceToCourseAtom, {
+    mode: 'promise',
+  })
+  const inferredPointId =
+    courseOutline?.knowledgePoints.find((point) =>
+      resource.knowledge_point_ids.includes(point.id),
+    )?.id ?? ''
+  const [knowledgePointId, setKnowledgePointId] = useState(inferredPointId)
+  const [isAdding, setIsAdding] = useState(false)
+  const [added, setAdded] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setKnowledgePointId(inferredPointId)
+    setAdded(false)
+    setError(null)
+  }, [inferredPointId, resource.id])
+
+  if (
+    !courseOutline?.courseId ||
+    resource.resource_type === 'image' ||
+    resource.status !== 'completed'
+  ) {
+    return null
+  }
+
+  const courseId = courseOutline.courseId
+  const selectedPoint = courseOutline.knowledgePoints.find(
+    (point) => point.id === knowledgePointId,
+  )
+
+  const handleAdd = async () => {
+    if (!selectedPoint) return
+    setIsAdding(true)
+    setError(null)
+    try {
+      await addToCourse({
+        courseId,
+        chapterId: selectedPoint.chapter_id,
+        knowledgePointIds: [selectedPoint.id],
+        resource,
+      })
+      setAdded(true)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '加入课程失败')
+    } finally {
+      setIsAdding(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border bg-background p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <Select
+          value={knowledgePointId || undefined}
+          onValueChange={(value) => {
+            setKnowledgePointId(value)
+            setAdded(false)
+          }}
+        >
+          <SelectTrigger className="min-w-0 flex-1" aria-label="关联知识点">
+            <SelectValue placeholder="选择要加入的课程知识点" />
+          </SelectTrigger>
+          <SelectContent>
+            {courseOutline.knowledgePoints.map((point) => {
+              const chapter = courseOutline.chapters.find(
+                (item) => item.id === point.chapter_id,
+              )
+              return (
+                <SelectItem key={point.id} value={point.id}>
+                  {chapter ? `${chapter.title} · ` : ''}
+                  {point.name}
+                </SelectItem>
+              )
+            })}
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          variant={added ? 'secondary' : 'outline'}
+          size="sm"
+          disabled={!selectedPoint || isAdding || added}
+          onClick={() => void handleAdd()}
+        >
+          {isAdding ? (
+            <Loader2Icon className="size-4 animate-spin" />
+          ) : added ? (
+            <CheckCircle2Icon className="size-4" />
+          ) : (
+            <BookPlusIcon className="size-4" />
+          )}
+          {added ? '已加入课程' : '加入课程'}
+        </Button>
+      </div>
+      {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
+      <p className="mt-2 text-xs text-muted-foreground">
+        只新增课程资源关联，不会修改课程、章节或知识点的原有描述。
+      </p>
+    </div>
+  )
 }
 
 const ResourcePackageSelector = ({
@@ -270,9 +386,11 @@ const ResourcePackageSelector = ({
 const ResourcePreview = ({
   projectId,
   resourcePackage,
+  courseOutline,
 }: {
   projectId: string
   resourcePackage: ResourcePackage
+  courseOutline: ProjectCourseOutline | null
 }) => {
   const resourcesResult = useAtomValue(
     generatedResourcesAtom(`${projectId}:${resourcePackage.id}`),
@@ -350,7 +468,11 @@ const ResourcePreview = ({
             <div>
               <div className="font-medium">{resource.title}</div>
               <div className="mt-1 text-sm text-muted-foreground">
-                {resource.summary ?? '暂无摘要'}
+                {resource.summary ? (
+                  <Response className="text-sm">{resource.summary}</Response>
+                ) : (
+                  '暂无摘要'
+                )}
               </div>
             </div>
             <Badge variant={statusToneMap[resource.status]}>
@@ -394,6 +516,10 @@ const ResourcePreview = ({
           <div className="mt-3 rounded-lg bg-muted/40 p-3">
             <ResourceResultPreview projectId={projectId} resource={resource} />
           </div>
+          <CourseResourceLinker
+            resource={resource}
+            courseOutline={courseOutline}
+          />
         </div>
       ))}
     </div>
@@ -405,11 +531,13 @@ const ResourcePreviewPanel = ({
   resourcePackage,
   streamingResources,
   streamingStatuses,
+  courseOutline,
 }: {
   projectId: string
   resourcePackage: ResourcePackage | null
   streamingResources: Array<GeneratedResource>
   streamingStatuses: Partial<Record<ResourceType, GeneratedResourceStatus>>
+  courseOutline: ProjectCourseOutline | null
 }) => {
   const hasStreamingResources = Object.values(streamingStatuses).some(
     (status) => status === 'pending' || status === 'generating',
@@ -461,6 +589,10 @@ const ResourcePreviewPanel = ({
                 resource={resource}
               />
             </div>
+            <CourseResourceLinker
+              resource={resource}
+              courseOutline={courseOutline}
+            />
           </div>
         ))}
       </div>
@@ -475,7 +607,11 @@ const ResourcePreviewPanel = ({
   }
 
   return (
-    <ResourcePreview projectId={projectId} resourcePackage={resourcePackage} />
+    <ResourcePreview
+      projectId={projectId}
+      resourcePackage={resourcePackage}
+      courseOutline={courseOutline}
+    />
   )
 }
 
@@ -913,6 +1049,7 @@ export const ResourcePackagePage = ({
                     resourcePackage={selectedPackage}
                     streamingResources={packageProgress?.resources ?? []}
                     streamingStatuses={packageProgress?.resourceStatuses ?? {}}
+                    courseOutline={courseOutline}
                   />
                 </div>
               </div>

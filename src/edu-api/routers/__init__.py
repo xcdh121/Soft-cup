@@ -12,10 +12,12 @@ from .documents import course_books_router
 from .documents import router as documents_router
 from .flashcard_groups import router as flashcard_groups_router
 from .handwriting import router as handwriting_router
+from .intervention_outcomes import router as intervention_outcomes_router
 from .knowledge_states import knowledge_graph_router
 from .knowledge_states import router as knowledge_states_router
 from .learner_profiles import router as learner_profiles_router
 from .learning_paths import router as learning_paths_router
+from .kt_parameters import router as kt_parameters_router
 from .mind_maps import router as mind_maps_router
 from .notes import router as notes_router
 from .pdf_ocr import router as pdf_ocr_router
@@ -48,9 +50,11 @@ __all__ = [
     "flashcard_groups_router",
     "generated_resources_router",
     "handwriting_router",
+    "intervention_outcomes_router",
     "knowledge_graph_router",
     "knowledge_points_router",
     "knowledge_states_router",
+    "kt_parameters_router",
     "learner_profiles_router",
     "learning_paths_router",
     "mind_maps_router",
