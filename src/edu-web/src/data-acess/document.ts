@@ -11,7 +11,7 @@ import { withToast } from '@/lib/with-toast'
 import { HttpBody } from '@effect/platform'
 import { Atom, Registry, Result } from '@effect-atom/atom-react'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
-import { Data, Effect, Layer, Schema } from 'effect'
+import { Data, Effect, Layer, Schema, Stream } from 'effect'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -87,6 +87,17 @@ export type AskDocumentQuestionInput = {
   pageNumber?: number
   chapterId?: string | null
   topK?: number
+}
+
+type DocumentQuestionStreamEvent =
+  | { type: 'delta'; content: string }
+  | { type: 'citations'; citations: Array<DocumentCitation> }
+  | { type: 'error'; message: string }
+  | { type: 'done' }
+
+export type StreamDocumentQuestionInput = AskDocumentQuestionInput & {
+  onDelta: (content: string) => void
+  onCitations: (citations: Array<DocumentCitation>) => void
 }
 
 export type BindCourseBookInput = {
@@ -462,6 +473,93 @@ export const askDocumentQuestionAtom = runtime.fn(
     }
     return (yield* response.json) as DocumentQuestionResponse
   }),
+)
+
+export const streamDocumentQuestionAtom = Atom.family((_documentId: string) =>
+  runtime
+    .fn(
+      Effect.fn(function* (input: StreamDocumentQuestionInput) {
+        const { httpClient } = yield* ApiClientService
+        const parsed = yield* Schema.decode(
+          Schema.Struct({
+            projectId: ProjectIdSchema,
+            documentId: DocumentIdSchema,
+          }),
+        )({
+          projectId: input.projectId,
+          documentId: input.documentId,
+        })
+
+        const response = yield* httpClient.post(
+          `/api/v1/projects/${parsed.projectId}/documents/${parsed.documentId}/ask/stream`,
+          {
+            body: HttpBody.unsafeJson({
+              question: input.question,
+              selected_text: input.selectedText,
+              page_number: input.pageNumber,
+              chapter_id: input.chapterId,
+              top_k: input.topK ?? 5,
+            }),
+          },
+        )
+        if (!isSuccessStatus(response.status)) {
+          const payload = yield* response.json.pipe(
+            Effect.catchAll(() => Effect.succeed(null)),
+          )
+          const detail = getResponseErrorDetail(payload)
+          return yield* Effect.fail(
+            new Error(
+              detail
+                ? `Document AI request failed with status ${response.status}: ${detail}`
+                : `Document AI request failed with status ${response.status}`,
+            ),
+          )
+        }
+
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let answer = ''
+        let citations: Array<DocumentCitation> = []
+        const streamState: { error?: string } = {}
+
+        const processEvent = (block: string) => {
+          const data = block
+            .split('\n')
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart())
+            .join('\n')
+          if (!data) return
+
+          const event = JSON.parse(data) as DocumentQuestionStreamEvent
+          if (event.type === 'delta') {
+            answer += event.content
+            input.onDelta(event.content)
+          }
+          if (event.type === 'citations') {
+            citations = event.citations
+            input.onCitations(event.citations)
+          }
+          if (event.type === 'error') streamState.error = event.message
+        }
+
+        yield* response.stream.pipe(
+          Stream.runForEach((bytes) =>
+            Effect.sync(() => {
+              buffer += decoder.decode(bytes, { stream: true })
+              const blocks = buffer.split(/\r?\n\r?\n/)
+              buffer = blocks.pop() ?? ''
+              blocks.forEach(processEvent)
+            }),
+          ),
+        )
+        buffer += decoder.decode()
+        if (buffer.trim()) processEvent(buffer)
+        if (streamState.error) throw new Error(streamState.error)
+
+        return { answer, citations } satisfies DocumentQuestionResponse
+      }),
+    )
+    .pipe(Atom.keepAlive),
 )
 
 export const documentPreviewAtom = Atom.family((input: string) => {

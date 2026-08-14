@@ -42,6 +42,10 @@ import {
 } from '@/data-acess/resource-package'
 import { ProjectHeader } from '@/features/project/components/project-header'
 import { ResourceResultPreview } from '@/features/resource-package/components/resource-result-preview'
+import {
+  getPublishableCourseResources,
+  resolveCoursePublishTarget,
+} from '@/features/resource-package/course-resource-publishing'
 import { cn } from '@/lib/utils'
 import { useResourcePackageStream } from '@/hooks/use-resource-package-stream'
 
@@ -161,9 +165,9 @@ const CourseResourceLinker = ({
     mode: 'promise',
   })
   const inferredPointId =
-    courseOutline?.knowledgePoints.find((point) =>
-      resource.knowledge_point_ids.includes(point.id),
-    )?.id ?? ''
+    (courseOutline
+      ? resolveCoursePublishTarget(resource, courseOutline)?.id
+      : null) ?? ''
   const [knowledgePointId, setKnowledgePointId] = useState(inferredPointId)
   const [isAdding, setIsAdding] = useState(false)
   const [added, setAdded] = useState(false)
@@ -175,11 +179,7 @@ const CourseResourceLinker = ({
     setError(null)
   }, [inferredPointId, resource.id])
 
-  if (
-    !courseOutline?.courseId ||
-    resource.resource_type === 'image' ||
-    resource.status !== 'completed'
-  ) {
+  if (!courseOutline?.courseId || resource.status !== 'completed') {
     return null
   }
 
@@ -255,6 +255,125 @@ const CourseResourceLinker = ({
       <p className="mt-2 text-xs text-muted-foreground">
         只新增课程资源关联，不会修改课程、章节或知识点的原有描述。
       </p>
+    </div>
+  )
+}
+
+const CoursePackagePublisher = ({
+  resources,
+  courseOutline,
+}: {
+  resources: Array<GeneratedResource>
+  courseOutline: ProjectCourseOutline | null
+}) => {
+  const addToCourse = useAtomSet(addGeneratedResourceToCourseAtom, {
+    mode: 'promise',
+  })
+  const [isPublishing, setIsPublishing] = useState(false)
+  const [publishedCount, setPublishedCount] = useState<number | null>(null)
+  const [failedCount, setFailedCount] = useState(0)
+  const [progress, setProgress] = useState(0)
+  const publishTargets = useMemo(
+    () => getPublishableCourseResources(resources, courseOutline),
+    [courseOutline, resources],
+  )
+  const matchedTargets = publishTargets.filter(
+    (
+      target,
+    ): target is typeof target & {
+      point: NonNullable<(typeof target)['point']>
+    } => Boolean(target.point),
+  )
+  const unmatchedCount = publishTargets.length - matchedTargets.length
+
+  useEffect(() => {
+    setPublishedCount(null)
+    setFailedCount(0)
+    setProgress(0)
+  }, [resources])
+
+  if (!courseOutline?.courseId || publishTargets.length === 0) return null
+
+  const handlePublishAll = async () => {
+    setIsPublishing(true)
+    setPublishedCount(null)
+    setFailedCount(0)
+    setProgress(0)
+    let succeeded = 0
+    let failed = 0
+
+    // A small batch keeps publishing responsive without opening dozens of
+    // simultaneous authenticated requests for a large resource package.
+    for (let index = 0; index < matchedTargets.length; index += 5) {
+      const batch = matchedTargets.slice(index, index + 5)
+      const results = await Promise.allSettled(
+        batch.map(({ resource, point }) =>
+          addToCourse({
+            courseId: courseOutline.courseId as string,
+            chapterId: point.chapter_id,
+            knowledgePointIds: [point.id],
+            resource,
+          }),
+        ),
+      )
+      succeeded += results.filter(
+        (result) => result.status === 'fulfilled',
+      ).length
+      failed += results.filter((result) => result.status === 'rejected').length
+      setProgress(Math.min(index + batch.length, matchedTargets.length))
+    }
+
+    setPublishedCount(succeeded)
+    setFailedCount(failed)
+    setIsPublishing(false)
+  }
+
+  return (
+    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="font-medium">把学习内容发布到课程</div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            已自动匹配 {matchedTargets.length}{' '}
+            份资料到主知识点，发布后会直接在课程页完整渲染。
+          </p>
+        </div>
+        <Button
+          type="button"
+          disabled={isPublishing || matchedTargets.length === 0}
+          onClick={() => void handlePublishAll()}
+        >
+          {isPublishing ? (
+            <Loader2Icon className="size-4 animate-spin" />
+          ) : (
+            <BookPlusIcon className="size-4" />
+          )}
+          {isPublishing
+            ? `正在发布 ${progress}/${matchedTargets.length}`
+            : '全部发布到课程'}
+        </Button>
+      </div>
+      {unmatchedCount > 0 ? (
+        <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+          另有 {unmatchedCount}{' '}
+          份资料无法可靠判断主知识点，请在对应资料下方手动选择。
+        </p>
+      ) : null}
+      {publishedCount !== null ? (
+        <p
+          className={cn(
+            'mt-2 text-sm',
+            failedCount > 0
+              ? 'text-amber-700 dark:text-amber-300'
+              : 'text-emerald-700 dark:text-emerald-300',
+          )}
+        >
+          已发布 {publishedCount} 份学习内容
+          {failedCount > 0
+            ? `，${failedCount} 份发布失败，可再次重试`
+            : '，现在可在课程资料库中学习。'}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -462,6 +581,10 @@ const ResourcePreview = ({
 
   return (
     <div className="space-y-3">
+      <CoursePackagePublisher
+        resources={resources}
+        courseOutline={courseOutline}
+      />
       {resources.map((resource) => (
         <div key={resource.id} className="rounded-xl border p-4">
           <div className="flex items-start justify-between gap-3">
@@ -548,6 +671,10 @@ const ResourcePreviewPanel = ({
   ) {
     return (
       <div className="space-y-3">
+        <CoursePackagePublisher
+          resources={streamingResources}
+          courseOutline={courseOutline}
+        />
         {Object.entries(streamingStatuses)
           .filter(
             ([type]) =>

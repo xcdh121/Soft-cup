@@ -11,9 +11,9 @@ import {
   PlayIcon,
   RefreshCwIcon,
   RotateCcwIcon,
-  ShieldCheckIcon,
   WifiIcon,
 } from 'lucide-react'
+import { getPlannerExecution } from './planner-execution'
 import type { AgentRunStatus } from '@/data-acess/agent-runs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,20 @@ import { SidebarTrigger } from '@/components/ui/sidebar'
 import { agentRunsApi } from '@/data-acess/agent-runs'
 import { projectsAtom } from '@/data-acess/project'
 import { useAgentRun } from '@/hooks/use-agent-run'
+
+const lastProjectStorageKey = 'agent-runtime:last-project-id'
+
+const replaceRunSearch = (projectId: string, runId: string | null) => {
+  const search = new URLSearchParams(window.location.search)
+  search.set('projectId', projectId)
+  if (runId) search.set('runId', runId)
+  else search.delete('runId')
+  window.history.replaceState(
+    null,
+    '',
+    `${window.location.pathname}?${search.toString()}`,
+  )
+}
 
 const labels: Record<AgentRunStatus | 'skipped', string> = {
   queued: '排队中',
@@ -49,16 +63,55 @@ export function AgentRuntimePage() {
   const [runId, setRunId] = useState<string | null>(params.get('runId'))
   const [goal, setGoal] = useState('diagnosis')
   const [busy, setBusy] = useState(false)
+  const [restoringLatest, setRestoringLatest] = useState(false)
   const [startError, setStartError] = useState<string | null>(null)
   const projectsResult = useAtomValue(projectsAtom)
   const projects = Result.isSuccess(projectsResult) ? projectsResult.value : []
   const { run, steps, events, error, connection, refresh } = useAgentRun(runId)
+  const activeRun = run?.project_id === projectId ? run : null
 
   useEffect(() => {
     if (!projectId && projects.length > 0) {
-      setProjectId(projects[0].id)
+      const storedProjectId = window.localStorage.getItem(lastProjectStorageKey)
+      const nextProjectId =
+        projects.find((project) => project.id === storedProjectId)?.id ??
+        projects[0].id
+      setProjectId(nextProjectId)
     }
   }, [projectId, projects])
+
+  useEffect(() => {
+    if (!projectId) return
+    window.localStorage.setItem(lastProjectStorageKey, projectId)
+  }, [projectId])
+
+  useEffect(() => {
+    if (!projectId || runId || demoMode) return
+    let active = true
+    setRestoringLatest(true)
+    setStartError(null)
+    void agentRunsApi
+      .latest(projectId)
+      .then((latest) => {
+        if (!active || !latest) return
+        setRunId(latest.run_id)
+        replaceRunSearch(projectId, latest.run_id)
+      })
+      .catch((cause: unknown) => {
+        if (!active) return
+        setStartError(
+          cause instanceof Error
+            ? cause.message
+            : '恢复最近一次运行失败，请稍后重试。',
+        )
+      })
+      .finally(() => {
+        if (active) setRestoringLatest(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [demoMode, projectId, runId])
 
   const completed = steps.filter((step) =>
     ['completed', 'skipped'].includes(step.status),
@@ -74,19 +127,17 @@ export function AgentRuntimePage() {
       ),
     [events],
   )
-  const totalTokens = (run?.input_tokens ?? 0) + (run?.output_tokens ?? 0)
+  const totalTokens =
+    (activeRun?.input_tokens ?? 0) + (activeRun?.output_tokens ?? 0)
   const tokenDisplay = totalTokens
     ? totalTokens.toLocaleString('zh-CN')
-    : run?.model_name
+    : activeRun?.model_name
       ? '未采集'
       : '未调用模型'
-  const costDisplay = !run?.model_name
-    ? '—'
-    : !totalTokens
-      ? '未采集'
-      : run.estimated_cost_micros > 0
-        ? `¥${(run.estimated_cost_micros / 1_000_000).toFixed(4)}`
-        : '未配置价格'
+  const plannerExecution = useMemo(
+    () => getPlannerExecution(activeRun, events),
+    [activeRun, events],
+  )
 
   const start = async () => {
     if (!projectId.trim()) return
@@ -95,11 +146,7 @@ export function AgentRuntimePage() {
     try {
       const created = await agentRunsApi.create(projectId.trim(), goal)
       setRunId(created.run_id)
-      window.history.replaceState(
-        null,
-        '',
-        `?projectId=${encodeURIComponent(projectId.trim())}&runId=${encodeURIComponent(created.run_id)}`,
-      )
+      replaceRunSearch(projectId.trim(), created.run_id)
     } catch (cause) {
       setStartError(
         cause instanceof Error ? cause.message : '创建智能体运行失败，请稍后重试。',
@@ -119,11 +166,7 @@ export function AgentRuntimePage() {
     if (!runId) return
     const created = await agentRunsApi.retry(runId)
     setRunId(created.run_id)
-    window.history.replaceState(
-      null,
-      '',
-      `?projectId=${projectId}&runId=${created.run_id}`,
-    )
+    replaceRunSearch(projectId, created.run_id)
   }
 
   return (
@@ -174,7 +217,12 @@ export function AgentRuntimePage() {
                 data-testid="project-id-input"
                 className="h-10 w-full rounded-md border bg-background px-3"
                 value={projectId}
-                onChange={(event) => setProjectId(event.target.value)}
+                onChange={(event) => {
+                  const nextProjectId = event.target.value
+                  setProjectId(nextProjectId)
+                  setRunId(null)
+                  replaceRunSearch(nextProjectId, null)
+                }}
                 disabled={projects.length === 0}
               >
                 {projects.length === 0 && (
@@ -224,7 +272,7 @@ export function AgentRuntimePage() {
           )}
         </section>
 
-        {!run && !demoMode && (
+        {!activeRun && !demoMode && !restoringLatest && (
           <section className="rounded-2xl border border-dashed bg-card p-10 text-center">
             <DatabaseIcon className="mx-auto size-9 text-muted-foreground" />
             <h2 className="mt-3 font-semibold">尚未选择真实运行</h2>
@@ -242,7 +290,7 @@ export function AgentRuntimePage() {
           </div>
         )}
 
-        {run && (
+        {activeRun && (
           <>
             <section
               className="rounded-2xl border bg-card p-5 shadow-sm"
@@ -251,23 +299,25 @@ export function AgentRuntimePage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="font-semibold">运行 {run.run_id}</h2>
-                    <Badge>{labels[run.status]}</Badge>
-                    <Badge variant="outline">{run.orchestration_version}</Badge>
+                    <h2 className="font-semibold">运行 {activeRun.run_id}</h2>
+                    <Badge>{labels[activeRun.status]}</Badge>
+                    <Badge variant="outline">
+                      {activeRun.orchestration_version}
+                    </Badge>
                   </div>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    当前节点：{run.current_agent_name ?? '无'} · Trace：
-                    {run.trace_id ?? '—'}
+                    当前节点：{activeRun.current_agent_name ?? '无'} · Trace：
+                    {activeRun.trace_id ?? '—'}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  {!terminal.has(run.status) && (
+                  {!terminal.has(activeRun.status) && (
                     <Button variant="outline" onClick={() => void cancel()}>
                       <BanIcon /> 取消
                     </Button>
                   )}
                   {['failed', 'cancelled', 'partially_completed'].includes(
-                    run.status,
+                    activeRun.status,
                   ) && (
                     <Button onClick={() => void retry()}>
                       <RotateCcwIcon /> 从失败节点重试
@@ -284,24 +334,17 @@ export function AgentRuntimePage() {
                   <WifiIcon className="size-3" /> {connection}
                 </span>
               </div>
-              <div className="mt-5 grid gap-3 sm:grid-cols-4">
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 {[
                   [
                     Clock3Icon,
                     '耗时',
-                    run.duration_ms ? `${run.duration_ms} ms` : '进行中',
+                    activeRun.duration_ms
+                      ? `${activeRun.duration_ms} ms`
+                      : '进行中',
                   ],
                   [ActivityIcon, '证据', `${evidenceCount} 条`],
-                  [
-                    CoinsIcon,
-                    'Token',
-                    tokenDisplay,
-                  ],
-                  [
-                    ShieldCheckIcon,
-                    '估算成本',
-                    costDisplay,
-                  ],
+                  [CoinsIcon, 'Token', tokenDisplay],
                 ].map(([Icon, label, value]) => {
                   const MetricIcon = Icon as typeof Clock3Icon
                   return (
@@ -357,6 +400,42 @@ export function AgentRuntimePage() {
                           </span>
                           {step.error_code && <span>{step.error_code}</span>}
                         </div>
+                        {step.agent_name === 'PlannerAgent' && (
+                          <div
+                            className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-xs"
+                            data-testid="planner-model-usage"
+                          >
+                            <Badge
+                              variant={
+                                plannerExecution.mode === 'llm'
+                                  ? 'default'
+                                  : 'secondary'
+                              }
+                            >
+                              {plannerExecution.mode === 'llm'
+                                ? '模型生成'
+                                : plannerExecution.mode === 'rule_fallback'
+                                  ? '规则降级'
+                                  : step.status === 'running'
+                                    ? '正在执行'
+                                    : '等待执行'}
+                            </Badge>
+                            <span>
+                              模型：{plannerExecution.modelName ?? '—'}
+                            </span>
+                            <span>
+                              Token：
+                              {plannerExecution.inputTokens +
+                                plannerExecution.outputTokens >
+                              0
+                                ? `${(
+                                    plannerExecution.inputTokens +
+                                    plannerExecution.outputTokens
+                                  ).toLocaleString('zh-CN')}（输入 ${plannerExecution.inputTokens.toLocaleString('zh-CN')} / 输出 ${plannerExecution.outputTokens.toLocaleString('zh-CN')}）`
+                                : '—'}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       {step.status === 'completed' && (
                         <CheckCircle2Icon className="size-5 text-emerald-600" />

@@ -200,6 +200,11 @@ export const chatAtom = Atom.family((input: string) =>
 
         ctx.setSelf(Result.success(update))
       },
+    ).pipe(
+      // A chat can keep streaming while its page is unmounted. Preserve its
+      // optimistic user message, history, and accumulated assistant deltas so
+      // switching away and back cannot replace them with a partial snapshot.
+      Atom.keepAlive,
     ),
     {
       remote: chatRemoteAtom(input),
@@ -209,7 +214,7 @@ export const chatAtom = Atom.family((input: string) =>
 
 // Atom to track current streaming status for a chat
 export const chatStreamStatusAtom = Atom.family((_chatId: string) =>
-  Atom.make<string | null>(null),
+  Atom.make<string | null>(null).pipe(Atom.keepAlive),
 )
 
 export type ChatRuntimeEvent = {
@@ -222,7 +227,7 @@ export type ChatRuntimeEvent = {
 }
 
 export const chatRuntimeEventsAtom = Atom.family((_chatId: string) =>
-  Atom.make<Array<ChatRuntimeEvent>>([]),
+  Atom.make<Array<ChatRuntimeEvent>>([]).pipe(Atom.keepAlive),
 )
 
 const upsertChatRuntimeEvent = (
@@ -418,117 +423,124 @@ const handleStreamPart = (
     }
   })
 
-export const streamMessageAtom = runtime
-  .fn(
-    Effect.fn(function* (
-      input: {
-        message: ChatMessageDto
-        projectId: string
-        chatId: string
-      },
-      get: Atom.FnContext,
-    ) {
-      const registry = yield* Registry.AtomRegistry
+// Each chat owns its stream executor. A single shared function atom would be
+// refreshed by the next submission and close the previous request's scoped
+// SSE response, even when the function atom is configured for concurrency.
+export const streamMessageAtom = Atom.family((_chatId: string) =>
+  runtime
+    .fn(
+      Effect.fn(function* (
+        input: {
+          message: ChatMessageDto
+          projectId: string
+          chatId: string
+        },
+        get: Atom.FnContext,
+      ) {
+        const registry = yield* Registry.AtomRegistry
 
-      // Start the UI lifecycle before waiting for the first SSE event. The
-      // chat stream does not guarantee that every event carries a status.
-      get.set(chatStreamStatusAtom(input.chatId), 'thinking')
-      get.set(chatRuntimeEventsAtom(input.chatId), [])
+        // Start the UI lifecycle before waiting for the first SSE event. The
+        // chat stream does not guarantee that every event carries a status.
+        get.set(chatStreamStatusAtom(input.chatId), 'thinking')
+        get.set(chatRuntimeEventsAtom(input.chatId), [])
 
-      // Add user message using the new action pattern
-      const chatKey = `${input.projectId}:${input.chatId}`
-      get.set(
-        chatAtom(chatKey),
-        ChatMessagesAction.Append({
-          chatId: input.chatId,
-          message: {
-            ...input.message,
-            id: 'temporary-message-id', // Mark as temporary until actual ID is received from backend
-          },
-        }),
-      )
-
-      const { httpClient } = yield* ApiClientService
-
-      // Transform ChatMessageDto parts to API format (TextPart/FilePart)
-      const apiParts = (input.message.parts || []).map((part) => {
-        if (part.type === 'text') {
-          return {
-            type: 'text' as const,
-            text: part.text_content,
-          }
-        } else if (part.type === 'file') {
-          return {
-            type: 'file' as const,
-            mediaType: part.file_type,
-            filename: part.file_name,
-            url: part.file_url,
-          }
-        }
-        // Fallback for other part types (shouldn't happen for user messages)
-        return part
-      })
-
-      const body = HttpBody.unsafeJson({ parts: apiParts })
-      const resp = yield* httpClient
-        .post(
-          `/api/v1/projects/${input.projectId}/chats/${input.chatId}/messages/stream`,
-          {
-            body,
-          },
+        // Add user message using the new action pattern
+        const chatKey = `${input.projectId}:${input.chatId}`
+        get.set(
+          chatAtom(chatKey),
+          ChatMessagesAction.Append({
+            chatId: input.chatId,
+            message: {
+              ...input.message,
+              id: 'temporary-message-id', // Mark as temporary until actual ID is received from backend
+            },
+          }),
         )
-        .pipe(
-          // If the request fails, remove the temporary message
-          Effect.tapError(() =>
-            Effect.sync(() => {
-              get.set(
-                chatAtom(chatKey),
-                ChatMessagesAction.RemoveTemporaryMessage(),
-              )
-              get.set(chatStreamStatusAtom(input.chatId), null)
-            }),
+
+        const { httpClient } = yield* ApiClientService
+
+        // Transform ChatMessageDto parts to API format (TextPart/FilePart)
+        const apiParts = (input.message.parts || []).map((part) => {
+          if (part.type === 'text') {
+            return {
+              type: 'text' as const,
+              text: part.text_content,
+            }
+          } else if (part.type === 'file') {
+            return {
+              type: 'file' as const,
+              mediaType: part.file_type,
+              filename: part.file_name,
+              url: part.file_url,
+            }
+          }
+          // Fallback for other part types (shouldn't happen for user messages)
+          return part
+        })
+
+        const body = HttpBody.unsafeJson({ parts: apiParts })
+        const resp = yield* httpClient
+          .post(
+            `/api/v1/projects/${input.projectId}/chats/${input.chatId}/messages/stream`,
+            {
+              body,
+            },
+          )
+          .pipe(
+            // If the request fails, remove the temporary message
+            Effect.tapError(() =>
+              Effect.sync(() => {
+                get.set(
+                  chatAtom(chatKey),
+                  ChatMessagesAction.RemoveTemporaryMessage(),
+                )
+                get.set(chatStreamStatusAtom(input.chatId), null)
+              }),
+            ),
+          )
+
+        if (resp.status === 429) {
+          get.set(chatStreamStatusAtom(input.chatId), null)
+          registry.set(
+            chatAtom(chatKey),
+            ChatMessagesAction.RemoveTemporaryMessage(),
+          )
+          registry.refresh(usageAtom)
+          return yield* new UsageLimitExceededError({
+            message: '已超出使用限制',
+          })
+        }
+
+        yield* resp.stream.pipe(
+          Stream.decodeText(),
+          Stream.splitLines,
+          Stream.filter((line) => line.startsWith('data: ')),
+          Stream.map((line) => line.slice(6)),
+          Stream.filter((line) => line.length > 0),
+          Stream.mapEffect((line) =>
+            Schema.decodeUnknown(Schema.parseJson(StreamEventSchema))(line),
+          ),
+          Stream.tap(handleStreamPart(input, get, registry)),
+          Stream.runCollect,
+          Effect.ensuring(
+            Effect.sync(() =>
+              get.set(chatStreamStatusAtom(input.chatId), null),
+            ),
           ),
         )
 
-      if (resp.status === 429) {
-        get.set(chatStreamStatusAtom(input.chatId), null)
-        registry.set(
-          chatAtom(chatKey),
-          ChatMessagesAction.RemoveTemporaryMessage(),
-        )
-        registry.refresh(usageAtom)
-        return yield* new UsageLimitExceededError({
-          message: '已超出使用限制',
-        })
-      }
-
-      yield* resp.stream.pipe(
-        Stream.decodeText(),
-        Stream.splitLines,
-        Stream.filter((line) => line.startsWith('data: ')),
-        Stream.map((line) => line.slice(6)),
-        Stream.filter((line) => line.length > 0),
-        Stream.mapEffect((line) =>
-          Schema.decodeUnknown(Schema.parseJson(StreamEventSchema))(line),
-        ),
-        Stream.tap(handleStreamPart(input, get, registry)),
-        Stream.runCollect,
-        Effect.ensuring(
-          Effect.sync(() => get.set(chatStreamStatusAtom(input.chatId), null)),
-        ),
-      )
-
-      // The backend may have extracted stable profile facts from this chat.
-      // Invalidate both views so navigating to the profile does not show a
-      // permanently cached pre-chat snapshot.
-      registry.refresh(learnerProfileAtom(input.projectId))
-      registry.refresh(learnerProfileRevisionsAtom(input.projectId))
-      registry.refresh(chatRemoteAtom(chatKey))
-      registry.refresh(chatsRemoteAtom(input.projectId))
-      get.refresh(usageAtom)
-    }),
-  )
-  .pipe(Atom.keepAlive)
+        // The backend may have extracted stable profile facts from this chat.
+        // Invalidate both views so navigating to the profile does not show a
+        // permanently cached pre-chat snapshot.
+        registry.refresh(learnerProfileAtom(input.projectId))
+        registry.refresh(learnerProfileRevisionsAtom(input.projectId))
+        registry.refresh(chatRemoteAtom(chatKey))
+        registry.refresh(chatsRemoteAtom(input.projectId))
+        get.refresh(usageAtom)
+      }),
+    )
+    .pipe(Atom.keepAlive),
+)
 
 export const createChatAtom = runtime.fn(
   Effect.fn(function* (

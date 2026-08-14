@@ -14,10 +14,14 @@ import type {
   Course,
   CourseChapter,
   CourseQuestionLink,
+  CourseResource,
   KnowledgePoint,
+  ProjectCourseOutline,
 } from '@/data-acess/course-library'
+import type { GeneratedResource } from '@/data-acess/resource-package'
 import {
   courseChaptersAtom,
+  courseGeneratedResourcesAtom,
   courseKnowledgePointsAtom,
   courseQuestionsAtom,
   courseResourcesAtom,
@@ -44,6 +48,7 @@ import {
 } from '@/components/ui/select'
 import { Response } from '@/components/ai-elements/response'
 import { ResourceResultPreview } from '@/features/resource-package/components/resource-result-preview'
+import { resolveCoursePublishTarget } from '@/features/resource-package/course-resource-publishing'
 
 const difficultyLabel: Partial<Record<string, string>> = {
   beginner: '入门',
@@ -77,82 +82,277 @@ const LoadingCard = ({ text }: { text: string }) => (
   </Card>
 )
 
-const ResourceList = ({ knowledgePointId }: { knowledgePointId: string }) => {
+type LearningSectionKey =
+  | 'core'
+  | 'structure'
+  | 'practice'
+  | 'review'
+  | 'media'
+  | 'materials'
+  | 'extension'
+
+const learningSectionOrder: Array<LearningSectionKey> = [
+  'core',
+  'structure',
+  'practice',
+  'review',
+  'media',
+  'materials',
+  'extension',
+]
+
+const learningSectionMeta: Record<
+  LearningSectionKey,
+  { title: string; description: string }
+> = {
+  core: {
+    title: '核心讲义',
+    description: '本知识点需要掌握的完整学习正文',
+  },
+  structure: {
+    title: '知识结构',
+    description: '用思维导图建立概念之间的联系',
+  },
+  practice: {
+    title: '练习与实战',
+    description: '通过题目和编程任务检验掌握情况',
+  },
+  review: {
+    title: '复习闪卡',
+    description: '快速回忆关键概念与结论',
+  },
+  media: {
+    title: '视频与可视化',
+    description: '结合视频、图片和动态材料辅助理解',
+  },
+  materials: {
+    title: '课堂材料',
+    description: '课程演示、讲解大纲和补充文件',
+  },
+  extension: {
+    title: '拓展资料',
+    description: '继续阅读的外部文章、代码和参考内容',
+  },
+}
+
+const getLearningSection = (resource: CourseResource): LearningSectionKey => {
+  switch (resource.resource_type) {
+    case 'lecture_note':
+    case 'reading_material':
+    case 'code_lab':
+      return 'core'
+    case 'mind_map':
+      return 'structure'
+    case 'practice_set':
+    case 'programming_questions':
+    case 'problem':
+      return 'practice'
+    case 'flashcards':
+      return 'review'
+    case 'video':
+    case 'video_script':
+    case 'video_recommendations':
+    case 'image':
+    case 'visualization':
+      return 'media'
+    case 'ppt_outline':
+    case 'pptx':
+      return 'materials'
+    default:
+      return resource.generated_resource ? 'core' : 'extension'
+  }
+}
+
+export const LearningResourceCard = ({
+  resource,
+}: {
+  resource: CourseResource
+}) => (
+  <article className="overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm">
+    <div className="flex flex-col gap-3 border-b bg-muted/20 p-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            variant={resource.generated_resource ? 'default' : 'secondary'}
+          >
+            {resourceTypeLabel[resource.resource_type] ??
+              resource.resource_type}
+          </Badge>
+          {resource.generated_resource ? (
+            <Badge variant="outline">课程内学习</Badge>
+          ) : null}
+          <h3 className="font-medium">{resource.title}</h3>
+        </div>
+        {resource.description ? (
+          <Response className="text-sm leading-6 text-muted-foreground">
+            {resource.description}
+          </Response>
+        ) : null}
+        {resource.estimated_minutes ? (
+          <p className="text-xs text-muted-foreground">
+            预计学习 {resource.estimated_minutes} 分钟
+          </p>
+        ) : null}
+      </div>
+
+      {!resource.generated_resource && resource.source_url ? (
+        <Button variant="outline" size="sm" className="shrink-0" asChild>
+          <a href={resource.source_url} target="_blank" rel="noreferrer">
+            查看原始资料
+            <ExternalLinkIcon className="ml-2 size-3" />
+          </a>
+        </Button>
+      ) : null}
+    </div>
+
+    {resource.generated_resource ? (
+      <div className="p-4 sm:p-5">
+        <ResourceResultPreview
+          projectId={resource.generated_resource.project_id}
+          resource={resource.generated_resource}
+          truncateText={false}
+        />
+        {resource.generated_resource.file_url &&
+        ['pptx'].includes(resource.generated_resource.resource_type) ? (
+          <Button variant="outline" size="sm" className="mt-4" asChild>
+            <a
+              href={resource.generated_resource.file_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              下载配套课件
+              <ExternalLinkIcon className="ml-2 size-3" />
+            </a>
+          </Button>
+        ) : null}
+      </div>
+    ) : null}
+  </article>
+)
+
+const toAutomaticCourseResource = (
+  resource: GeneratedResource,
+  courseId: string,
+  point: KnowledgePoint,
+): CourseResource => ({
+  id: `resource-package:${resource.id}`,
+  course_id: courseId,
+  chapter_id: point.chapter_id,
+  document_id: null,
+  document_project_id: null,
+  generated_resource_id: resource.id,
+  generated_resource: resource,
+  resource_type: resource.resource_type,
+  title: resource.title,
+  description: resource.summary,
+  source_type: 'resource_package',
+  source_url: null,
+  difficulty_level: resource.difficulty_level,
+  estimated_minutes: resource.estimated_minutes,
+  license_info: null,
+  target_audiences: [resource.difficulty_level],
+  metadata: {
+    resource_package_id: resource.resource_package_id,
+    automatic_course_aggregation: true,
+  },
+  knowledge_point_ids: [point.id],
+  created_at: resource.created_at,
+  updated_at: resource.updated_at,
+})
+
+const ResourceList = ({
+  courseId,
+  knowledgePointId,
+  courseOutline,
+}: {
+  courseId: string
+  knowledgePointId: string
+  courseOutline: ProjectCourseOutline
+}) => {
   const resourcesResult = useAtomValue(
     knowledgePointResourcesAtom(knowledgePointId),
   )
+  const generatedResourcesResult = useAtomValue(
+    courseGeneratedResourcesAtom(courseId),
+  )
 
   return Result.builder(resourcesResult)
-    .onSuccess((resources) => (
-      <div className="space-y-3">
-        {resources.length === 0 ? (
-          <div className="rounded-2xl bg-muted/40 p-4 text-sm text-muted-foreground">
-            当前知识点还没有关联资料。
-          </div>
-        ) : (
-          [...resources]
-            .sort(
-              (left, right) =>
-                Number(Boolean(right.generated_resource)) -
-                Number(Boolean(left.generated_resource)),
-            )
-            .map((resource) => (
-              <div
-                key={resource.id}
-                className="rounded-2xl border bg-card p-4 text-card-foreground shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="secondary">
-                        {resourceTypeLabel[resource.resource_type] ??
-                          resource.resource_type}
-                      </Badge>
-                      {resource.generated_resource ? (
-                        <Badge variant="outline">站内学习</Badge>
-                      ) : null}
-                      <span className="font-medium">{resource.title}</span>
-                    </div>
-                    {resource.description ? (
-                      <Response className="text-sm leading-6 text-muted-foreground">
-                        {resource.description}
-                      </Response>
-                    ) : null}
-                    {resource.estimated_minutes ? (
-                      <p className="text-xs text-muted-foreground">
-                        预计 {resource.estimated_minutes} 分钟
-                      </p>
-                    ) : null}
-                  </div>
+    .onSuccess((linkedResources) => {
+      const linkedGeneratedIds = new Set(
+        linkedResources.flatMap((resource) =>
+          resource.generated_resource_id
+            ? [resource.generated_resource_id]
+            : [],
+        ),
+      )
+      const automaticResources = Result.isSuccess(generatedResourcesResult)
+        ? generatedResourcesResult.value.flatMap((resource) => {
+            if (linkedGeneratedIds.has(resource.id)) return []
+            const target = resolveCoursePublishTarget(resource, courseOutline)
+            return target?.id === knowledgePointId
+              ? [toAutomaticCourseResource(resource, courseId, target)]
+              : []
+          })
+        : []
+      const resources = [...linkedResources, ...automaticResources]
 
-                  {resource.source_url ? (
-                    <Button variant="outline" size="sm" asChild>
-                      <a
-                        href={resource.source_url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        延伸阅读
-                        <ExternalLinkIcon className="ml-2 size-3" />
-                      </a>
-                    </Button>
-                  ) : null}
-                </div>
-                {resource.generated_resource &&
-                resource.generated_resource.resource_type !== 'image' ? (
-                  <div className="mt-4 border-t pt-4">
-                    <ResourceResultPreview
-                      projectId={resource.generated_resource.project_id}
-                      resource={resource.generated_resource}
-                      truncateText={false}
-                    />
+      if (generatedResourcesResult.waiting && resources.length === 0) {
+        return <LoadingCard text="正在聚合课程资源包内容..." />
+      }
+
+      if (resources.length === 0) {
+        return (
+          <div className="rounded-2xl border border-dashed bg-muted/20 p-6 text-sm text-muted-foreground">
+            当前知识点还没有匹配到学习内容。新生成的资源包会按主知识点自动聚合到这里。
+          </div>
+        )
+      }
+
+      const sections = resources.reduce<
+        Partial<Record<LearningSectionKey, Array<CourseResource>>>
+      >((result, resource) => {
+        const section = getLearningSection(resource)
+        result[section] = [...(result[section] ?? []), resource]
+        return result
+      }, {})
+
+      return (
+        <div className="space-y-8">
+          {Result.isFailure(generatedResourcesResult) ? (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">
+              历史资源包加载失败，当前仅显示已经发布到课程的内容。
+            </div>
+          ) : null}
+          {learningSectionOrder.flatMap((section) => {
+            const sectionResources = sections[section]
+            if (!sectionResources?.length) return []
+            const meta = learningSectionMeta[section]
+
+            return [
+              <section key={section} className="space-y-3">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <h2 className="font-semibold">{meta.title}</h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {meta.description}
+                    </p>
                   </div>
-                ) : null}
-              </div>
-            ))
-        )}
-      </div>
-    ))
+                  <Badge variant="outline">{sectionResources.length} 份</Badge>
+                </div>
+                <div className="space-y-4">
+                  {sectionResources.map((resource) => (
+                    <LearningResourceCard
+                      key={resource.id}
+                      resource={resource}
+                    />
+                  ))}
+                </div>
+              </section>,
+            ]
+          })}
+        </div>
+      )
+    })
     .onInitialOrWaiting(() => <LoadingCard text="正在加载知识点资源..." />)
     .onFailure(() => (
       <Card>
@@ -167,7 +367,7 @@ const ResourceList = ({ knowledgePointId }: { knowledgePointId: string }) => {
 const RelatedQuestionLink = ({ item }: { item: CourseQuestionLink }) => {
   const content = (
     <>
-      去做题
+      整组练习
       <ExternalLinkIcon className="ml-2 size-3" />
     </>
   )
@@ -208,8 +408,10 @@ const RelatedQuestionList = ({
 
   return Result.builder(questionsResult)
     .onSuccess((courseQuestions) => {
-      const questions = courseQuestions.filter((question) =>
-        question.knowledgePointIds.includes(knowledgePointId),
+      const questions = courseQuestions.filter(
+        (question) =>
+          question.type === 'quiz' &&
+          question.knowledgePointIds.includes(knowledgePointId),
       )
 
       return questions.length === 0 ? (
@@ -226,12 +428,12 @@ const RelatedQuestionList = ({
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="secondary">
-                    {item.type === 'quiz' ? '选择题' : '编程题'}
+                    {item.type === 'quiz' ? '选择题包' : '编程题包'}
                   </Badge>
                   <span className="font-medium">{item.title}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  来自项目：{item.projectName} · 题目组：{item.resourceName}
+                  共 {item.questionCount} 道题 · 来自项目：{item.projectName}
                 </p>
               </div>
               <div className="shrink-0">
@@ -351,6 +553,10 @@ const CourseBrowser = ({
 
   const chapters = Result.isSuccess(chaptersResult) ? chaptersResult.value : []
   const points = Result.isSuccess(pointsResult) ? pointsResult.value : []
+  const courseOutline = useMemo<ProjectCourseOutline>(
+    () => ({ courseId: course.id, chapters, knowledgePoints: points }),
+    [chapters, course.id, points],
+  )
   const selectedPoint =
     points.find((point) => point.id === selectedPointId) ?? points.at(0) ?? null
 
@@ -484,12 +690,18 @@ const CourseBrowser = ({
                   {tag}
                 </Badge>
               ))}
+              {selectedChapter?.estimated_minutes ? (
+                <Badge variant="outline">
+                  本章约 {selectedChapter.estimated_minutes} 分钟
+                </Badge>
+              ) : null}
             </CardDescription>
           ) : null}
         </CardHeader>
         <CardContent className="min-h-0 flex-1 space-y-8 overflow-y-auto">
           {selectedPoint?.description ? (
-            <section className="rounded-2xl bg-muted/30 p-4">
+            <section className="rounded-2xl border bg-muted/20 p-5">
+              <div className="mb-3 text-sm font-semibold">知识点导读</div>
               <Response className="text-sm text-muted-foreground">
                 {selectedPoint.description}
               </Response>
@@ -501,14 +713,48 @@ const CourseBrowser = ({
             </div>
           )}
 
+          {selectedChapter &&
+          (selectedChapter.description ||
+            selectedChapter.learning_objectives.length > 0) ? (
+            <section className="rounded-2xl border border-primary/15 bg-primary/5 p-5">
+              <div className="text-sm font-semibold">
+                本章目标 · {selectedChapter.title}
+              </div>
+              {selectedChapter.description ? (
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {selectedChapter.description}
+                </p>
+              ) : null}
+              {selectedChapter.learning_objectives.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedChapter.learning_objectives.map((objective) => (
+                    <Badge key={objective} variant="secondary">
+                      {objective}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
           {selectedPoint ? (
             <section className="space-y-5 border-t pt-6">
               <div>
-                <h2 className="font-semibold">相关资料/题目</h2>
+                <h2 className="text-base font-semibold">完整学习内容</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  资源包中的讲义、导图、练习和复习材料会直接显示在课程中。
+                </p>
               </div>
+
+              <ResourceList
+                courseId={course.id}
+                knowledgePointId={selectedPoint.id}
+                courseOutline={courseOutline}
+              />
+
               <section className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium">章节 PDF</div>
+                  <div className="text-sm font-medium">章节参考 PDF</div>
                   {selectedChapter ? (
                     <Badge variant="outline">{selectedChapter.title}</Badge>
                   ) : null}
@@ -520,14 +766,9 @@ const CourseBrowser = ({
               </section>
 
               <section className="space-y-3">
-                <div className="text-sm font-medium">相关资料</div>
-                <ResourceList knowledgePointId={selectedPoint.id} />
-              </section>
-
-              <section className="space-y-3">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <ListChecksIcon className="size-4" />
-                  相关题目
+                  更多关联测验
                 </div>
                 <RelatedQuestionList
                   courseId={course.id}

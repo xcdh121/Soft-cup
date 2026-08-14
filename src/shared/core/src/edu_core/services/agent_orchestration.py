@@ -1726,6 +1726,7 @@ class AgentOrchestrationService:
                 input_tokens=run.input_tokens or 0,
                 output_tokens=run.output_tokens or 0,
                 estimated_cost_micros=run.estimated_cost_micros or 0,
+                usage=run.usage or {},
                 trace_id=run.trace_id,
                 retry_of_run_id=run.retry_of_run_id,
                 orchestration_version=run.orchestration_version,
@@ -1736,6 +1737,25 @@ class AgentOrchestrationService:
                 completed_at=run.completed_at,
                 created_at=run.created_at,
             )
+
+    def get_latest_agent_run(
+        self, user_id: str, project_id: str
+    ) -> AgentRunDetail | None:
+        """Return the user's most recently created run for a project."""
+
+        self._ensure_project_access(user_id, project_id)
+        with self._get_db_session() as db:
+            run_id = (
+                db.query(AgentRun.id)
+                .filter(
+                    AgentRun.user_id == user_id,
+                    AgentRun.project_id == project_id,
+                )
+                .order_by(AgentRun.created_at.desc())
+                .limit(1)
+                .scalar()
+            )
+        return self.get_agent_run(user_id, run_id) if run_id else None
 
     def get_agent_run_events(
         self, user_id: str, run_id: str, after_sequence: int = 0

@@ -55,6 +55,18 @@ def create_run(
     return detail
 
 
+@router.get(
+    "/projects/{project_id}/agent-runs/latest",
+    response_model=AgentRunDetail | None,
+)
+def get_latest_run(
+    project_id: str,
+    current_user: UserDto = Depends(get_current_user),
+    service: AgentOrchestrationService = Depends(get_agent_orchestration_service),
+):
+    return service.get_latest_agent_run(current_user.id, project_id)
+
+
 @router.get("/agent-runs/{run_id}", response_model=AgentRunDetail)
 def get_run(
     run_id: str,

@@ -373,7 +373,7 @@ const IncrementalQuizPreview = ({
       {resource.status === 'generating' ? (
         <Loading label={`已生成 ${questions.length} 道题，后续题目正在生成…`} />
       ) : null}
-      {questions.slice(0, 5).flatMap((item, index) => {
+      {questions.slice(0, 10).flatMap((item, index) => {
         if (!item || typeof item !== 'object') return []
         const question = item as Record<string, unknown>
         if (typeof question.question_text !== 'string') return []
@@ -450,7 +450,7 @@ const QuizPreview = ({
 
   return (
     <div className="space-y-3">
-      {result.value.slice(0, 5).map((question, index) => (
+      {result.value.slice(0, 10).map((question, index) => (
         <div
           key={question.id}
           className="rounded-lg border bg-card p-3 text-sm text-card-foreground"

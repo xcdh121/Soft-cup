@@ -11,13 +11,13 @@ import {
 } from '@/components/ui/select'
 import { projectCourseOutlineAtom } from '@/data-acess/course-library'
 import {
-  askDocumentQuestionAtom,
   bindCourseBookAtom,
   courseBooksAtom,
   documentAtom,
   documentFileBufferAtom,
   documentPreviewAtom,
   reprocessDocumentAtom,
+  streamDocumentQuestionAtom,
   type CourseBook,
   type DocumentCitation,
 } from '@/data-acess/document'
@@ -740,9 +740,20 @@ const AiSidebar = ({
                     </blockquote>
                   ) : null}
                   {message.role === 'assistant' ? (
-                    <Response className="text-sm leading-6">
-                      {message.content}
-                    </Response>
+                    message.content ? (
+                      <Response className="text-sm leading-6">
+                        {message.content}
+                      </Response>
+                    ) : sending ? (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2Icon className="size-4 animate-spin" />
+                        正在结合选中文本分析...
+                      </div>
+                    ) : (
+                      <div className="text-muted-foreground">
+                        AI 暂时没有返回内容，请稍后重试。
+                      </div>
+                    )
                   ) : (
                     <div className="whitespace-pre-wrap">{message.content}</div>
                   )}
@@ -764,18 +775,6 @@ const AiSidebar = ({
               ))
             )}
 
-            {sending ? (
-              <div className="rounded-md border bg-card p-3 text-sm leading-6 text-card-foreground">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <BotIcon className="size-3.5" />
-                  AI 助手
-                </div>
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2Icon className="size-4 animate-spin" />
-                  正在结合选中文本分析...
-                </div>
-              </div>
-            ) : null}
             <div ref={messagesEndRef} />
           </div>
 
@@ -822,7 +821,9 @@ const PdfReader = ({
   fileSource: PdfFileSource
   projectId: string
 }) => {
-  const askQuestion = useAtomSet(askDocumentQuestionAtom, { mode: 'promise' })
+  const streamQuestion = useAtomSet(streamDocumentQuestionAtom(document.id), {
+    mode: 'promise',
+  })
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const pagesLayerRef = useRef<HTMLDivElement | null>(null)
   const pageRefs = useRef(new Map<number, HTMLDivElement>())
@@ -1089,50 +1090,71 @@ const PdfReader = ({
         content: finalQuestion,
         selectedText: normalizedSelection || undefined,
       }
+      const assistantMessageId = crypto.randomUUID()
 
-      setMessages((current) => [...current, userMessage])
+      setMessages((current) => [
+        ...current,
+        userMessage,
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: '',
+        },
+      ])
       setQuestion('')
       setAiOpen(true)
       setSending(true)
 
       try {
-        const response = await askQuestion({
+        await streamQuestion({
           projectId,
           documentId: document.id,
           question: finalQuestion,
           selectedText: normalizedSelection || undefined,
           pageNumber: pageNumber ?? currentPage,
           topK: 5,
-        })
-
-        setMessages((current) => [
-          ...current,
-          {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: response.answer,
-            citations: response.citations,
+          onDelta: (content) => {
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === assistantMessageId
+                  ? { ...message, content: message.content + content }
+                  : message,
+              ),
+            )
           },
-        ])
+          onCitations: (citations) => {
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === assistantMessageId
+                  ? { ...message, citations }
+                  : message,
+              ),
+            )
+          },
+        })
       } catch (error) {
         const message =
           error instanceof Error && error.message
             ? `AI 暂时没有返回结果：${error.message}`
             : 'AI 暂时没有返回结果，请检查模型配置或稍后重试。'
-        setMessages((current) => [
-          ...current,
-          {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: message,
-          },
-        ])
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === assistantMessageId
+              ? {
+                  ...item,
+                  content: item.content
+                    ? `${item.content}\n\n> 流式输出中断：${message}`
+                    : message,
+                }
+              : item,
+          ),
+        )
         toast.error(message)
       } finally {
         setSending(false)
       }
     },
-    [askQuestion, currentPage, document.id, projectId],
+    [currentPage, document.id, projectId, streamQuestion],
   )
 
   const handleSelection = useCallback(

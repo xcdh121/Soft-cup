@@ -87,7 +87,36 @@ export type CourseQuestionLink = {
   resourceName: string
   type: 'quiz' | 'programming_questions'
   title: string
+  questionCount: number
   knowledgePointIds: Array<string>
+}
+
+export const createCourseQuizQuestionGroup = (input: {
+  quizId: string
+  quizName: string
+  projectId: string
+  projectName: string
+  questions: ReadonlyArray<{ knowledge_point_id?: string | null }>
+}): CourseQuestionLink | null => {
+  if (input.questions.length === 0) return null
+
+  return {
+    id: input.quizId,
+    projectId: input.projectId,
+    projectName: input.projectName,
+    resourceId: input.quizId,
+    resourceName: input.quizName,
+    type: 'quiz',
+    title: input.quizName,
+    questionCount: input.questions.length,
+    knowledgePointIds: Array.from(
+      new Set(
+        input.questions.flatMap((question) =>
+          question.knowledge_point_id ? [question.knowledge_point_id] : [],
+        ),
+      ),
+    ),
+  }
 }
 
 export type ProjectCourseOutline = {
@@ -198,6 +227,36 @@ export const courseResourcesAtom = Atom.family((courseId: string) =>
     .pipe(Atom.keepAlive),
 )
 
+export const courseGeneratedResourcesAtom = Atom.family((courseId: string) =>
+  runtime
+    .atom(
+      Effect.gen(function* () {
+        const { apiClient } = yield* ApiClientService
+        const projects =
+          (yield* apiClient.listProjectsApiV1ProjectsGet()).filter(
+            (project) => project.course_id === courseId,
+          )
+        const packagesByProject = yield* Effect.all(
+          projects.map((project) =>
+            getJson<Array<ResourcePackage>>(
+              `/api/v1/projects/${project.id}/resource-packages`,
+            ),
+          ),
+          { concurrency: 'unbounded' },
+        )
+
+        return packagesByProject
+          .flatMap((resourcePackages) =>
+            resourcePackages.flatMap(
+              (resourcePackage) => resourcePackage.resources,
+            ),
+          )
+          .filter((resource) => resource.status === 'completed')
+      }),
+    )
+    .pipe(Atom.keepAlive),
+)
+
 export const courseQuestionsAtom = Atom.family((courseId: string) =>
   runtime
     .atom(
@@ -219,28 +278,23 @@ export const courseQuestionsAtom = Atom.family((courseId: string) =>
                   `/api/v1/projects/${project.id}/resource-packages`,
                 ),
               ])
-              const quizQuestions = yield* Effect.all(
+              const quizQuestionGroups = yield* Effect.all(
                 quizzes.map((quiz) =>
                   Effect.map(
                     apiClient.listQuizQuestionsApiV1ProjectsProjectIdQuizzesQuizIdQuestionsGet(
                       project.id,
                       quiz.id,
                     ),
-                    (questions) =>
-                      questions.map(
-                        (question): CourseQuestionLink => ({
-                          id: question.id,
-                          projectId: project.id,
-                          projectName: project.name,
-                          resourceId: quiz.id,
-                          resourceName: quiz.name,
-                          type: 'quiz',
-                          title: question.question_text,
-                          knowledgePointIds: question.knowledge_point_id
-                            ? [question.knowledge_point_id]
-                            : [],
-                        }),
-                      ),
+                    (questions): Array<CourseQuestionLink> => {
+                      const group = createCourseQuizQuestionGroup({
+                        quizId: quiz.id,
+                        quizName: quiz.name,
+                        projectId: project.id,
+                        projectName: project.name,
+                        questions,
+                      })
+                      return group ? [group] : []
+                    },
                   ),
                 ),
                 { concurrency: 'unbounded' },
@@ -256,30 +310,23 @@ export const courseQuestionsAtom = Atom.family((courseId: string) =>
                       return []
                     }
 
-                    return resource.content_json.questions.flatMap(
-                      (question, index): Array<CourseQuestionLink> => {
-                        if (!question || typeof question !== 'object') return []
-                        const candidate = question as Record<string, unknown>
-                        if (typeof candidate.title !== 'string') return []
-
-                        return [
-                          {
-                            id: String(candidate.id ?? `q${index + 1}`),
-                            projectId: project.id,
-                            projectName: project.name,
-                            resourceId: resource.id,
-                            resourceName: resource.title,
-                            type: 'programming_questions',
-                            title: candidate.title,
-                            knowledgePointIds: resource.knowledge_point_ids,
-                          },
-                        ]
+                    return [
+                      {
+                        id: resource.id,
+                        projectId: project.id,
+                        projectName: project.name,
+                        resourceId: resource.id,
+                        resourceName: resource.title,
+                        type: 'programming_questions' as const,
+                        title: resource.title,
+                        questionCount: resource.content_json.questions.length,
+                        knowledgePointIds: resource.knowledge_point_ids,
                       },
-                    )
+                    ]
                   }),
               )
 
-              return [...quizQuestions.flat(), ...programmingQuestions]
+              return [...quizQuestionGroups.flat(), ...programmingQuestions]
             }),
           ),
           { concurrency: 'unbounded' },

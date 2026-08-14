@@ -170,7 +170,17 @@ class OrchestrationExecutor:
                     node.agent_name,
                     RunStatus.COMPLETED,
                     result.summary,
-                    {"node_id": node.node_id, "attempt": attempt, "phase": "completed"},
+                    {
+                        "node_id": node.node_id,
+                        "attempt": attempt,
+                        "phase": "completed",
+                        "reason_codes": result.reason_codes,
+                        "fallback_used": result.fallback_used,
+                        "fallback_reason": result.fallback_reason,
+                        "model_name": result.model_name,
+                        "input_tokens": result.input_tokens,
+                        "output_tokens": result.output_tokens,
+                    },
                 )
                 return result
             except asyncio.CancelledError:

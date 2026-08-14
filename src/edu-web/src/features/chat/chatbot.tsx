@@ -14,6 +14,10 @@ import { ChatImageAttachment } from './components/chat-image-attachment'
 import { ChatPdfAttachment } from './components/chat-pdf-attachment'
 import { PdfUploadProgress } from './components/pdf-upload-progress'
 import type { PdfUploadProgressValue } from './components/pdf-upload-progress'
+import {
+  shouldShowSourceReadingStatus,
+  SourceReadingStatus,
+} from './components/source-reading-status'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import type {
   ChatMessageDto,
@@ -385,7 +389,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
   const chatResult = useAtomValue(chatAtom(chatKey))
   const streamStatus = useAtomValue(chatStreamStatusAtom(chatId))
   const runtimeEvents = useAtomValue(chatRuntimeEventsAtom(chatId))
-  const streamMessage = useAtomSet(streamMessageAtom, {
+  const streamMessage = useAtomSet(streamMessageAtom(chatId), {
     mode: 'promise',
   })
 
@@ -751,6 +755,17 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                         </Sources>
                       ) : null
                     })()}
+
+                  {shouldShowSourceReadingStatus(
+                    message,
+                    streamingAssistantMessageId,
+                  ) && (
+                    <Message from="assistant">
+                      <MessageContent>
+                        <SourceReadingStatus />
+                      </MessageContent>
+                    </Message>
+                  )}
 
                   {message.parts &&
                     message.parts

@@ -97,6 +97,47 @@ class ExecutorV2Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(RunStatus.CANCELLED, outcome.status)
         self.assertEqual(0, agent.calls)
 
+    async def test_completed_event_exposes_model_usage_and_fallback_mode(self):
+        agent = StubAgent(AgentName.PLANNER)
+
+        async def run_with_model_usage(context):
+            return AgentResult(
+                agent_name=AgentName.PLANNER,
+                status=RunStatus.COMPLETED,
+                summary="generated",
+                reason_codes=["learning_path_generated", "llm"],
+                model_name="model-a",
+                input_tokens=120,
+                output_tokens=45,
+            )
+
+        agent.run = run_with_model_usage
+        events = []
+
+        async def collect(event):
+            events.append(event)
+
+        await OrchestrationExecutor().execute(
+            ExecutionPlan(
+                nodes=[PlanNode(node_id="planner", agent_name=AgentName.PLANNER)]
+            ),
+            self.context(),
+            {AgentName.PLANNER: agent},
+            event_sink=collect,
+        )
+
+        completed = next(
+            event for event in events if event.event_type.value == "step_completed"
+        )
+        self.assertEqual("model-a", completed.payload["model_name"])
+        self.assertEqual(120, completed.payload["input_tokens"])
+        self.assertEqual(45, completed.payload["output_tokens"])
+        self.assertEqual(
+            ["learning_path_generated", "llm"],
+            completed.payload["reason_codes"],
+        )
+        self.assertFalse(completed.payload["fallback_used"])
+
 
 if __name__ == "__main__":
     unittest.main()

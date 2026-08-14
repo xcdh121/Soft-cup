@@ -1,7 +1,10 @@
 """Router for document CRUD operations."""
 
 import asyncio
+import json
 import logging
+import mimetypes
+from collections.abc import AsyncGenerator
 
 from auth import get_current_user
 from dependencies import (
@@ -22,7 +25,6 @@ from edu_core.schemas.documents import (
     DocumentQuestionResponseDto,
     DocumentStatus,
 )
-import mimetypes
 from edu_core.schemas.users import UserDto
 from edu_core.services import (
     DocumentService,
@@ -33,13 +35,13 @@ from edu_core.services import (
 from edu_queue.schemas import DocumentProcessingData, QueueTaskMessage, TaskType
 from edu_queue.service import QueueService
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from routers.schemas import (
     DocumentCreate,
+    DocumentPreviewDto,
     DocumentQuestionRequest,
     DocumentUpdate,
-    DocumentPreviewDto,
 )
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/documents", tags=["documents"])
@@ -502,6 +504,143 @@ async def ask_document_question(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{document_id}/ask/stream")
+async def stream_document_question(
+    project_id: str,
+    document_id: str,
+    request: DocumentQuestionRequest,
+    current_user: UserDto = Depends(get_current_user),
+    service: DocumentService = Depends(get_document_service),
+    search_service: SearchService = Depends(get_search_service),
+    settings=Depends(get_settings_dep),
+):
+    """Stream a grounded PDF answer and finish with its citations."""
+    try:
+        document = service.get_document(
+            document_id=document_id,
+            owner_id=current_user.id,
+            project_id=project_id,
+        )
+        page_context = None
+        if request.page_number:
+            page_context = service.get_page_context(
+                document_id=document_id,
+                owner_id=current_user.id,
+                project_id=project_id,
+                page_number=request.page_number,
+            )
+
+        search_query = "\n".join(
+            part
+            for part in (request.selected_text, request.question)
+            if part and part.strip()
+        )
+        search_results = []
+        if search_query.strip():
+            try:
+                search_results = await search_service.search_documents(
+                    query=search_query,
+                    project_id=project_id,
+                    top_k=request.top_k,
+                )
+            except Exception:
+                logger.exception(
+                    "Document question RAG search failed for document %s",
+                    document_id,
+                )
+
+        if not settings.llm_api_key:
+            raise HTTPException(
+                status_code=503,
+                detail="未配置 LLM_API_KEY, 无法使用 PDF AI 问答。",
+            )
+
+        prompt = _build_question_prompt(
+            document=document,
+            request=request,
+            page_context=page_context,
+            search_results=search_results,
+        )
+        citations = _build_citations(
+            document=document,
+            request=request,
+            page_context=page_context,
+            search_results=search_results,
+        )
+        model = create_chat_model(
+            LlmProviderConfig(
+                model=settings.llm_model,
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_base_url,
+                temperature=0.2,
+            ),
+            streaming=True,
+        )
+
+        async def answer_stream() -> AsyncGenerator[bytes]:
+            try:
+                async for chunk in model.astream(prompt):
+                    content = getattr(chunk, "content", chunk)
+                    if isinstance(content, str):
+                        text = content
+                    else:
+                        text = "".join(
+                            str(item.get("text", ""))
+                            if isinstance(item, dict)
+                            else str(item)
+                            for item in content
+                        )
+                    if text:
+                        payload = json.dumps(
+                            {"type": "delta", "content": text},
+                            ensure_ascii=False,
+                        )
+                        yield f"data: {payload}\n\n".encode()
+
+                citation_payload = json.dumps(
+                    {
+                        "type": "citations",
+                        "citations": [
+                            citation.model_dump(mode="json")
+                            for citation in citations
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+                yield f"data: {citation_payload}\n\n".encode()
+                yield b'data: {"type":"done"}\n\n'
+            except Exception as exc:
+                logger.exception(
+                    "Streaming document question failed for document %s",
+                    document_id,
+                )
+                payload = json.dumps(
+                    {"type": "error", "message": str(exc)},
+                    ensure_ascii=False,
+                )
+                yield f"data: {payload}\n\n".encode()
+
+        return StreamingResponse(
+            answer_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            "Could not start document question stream for document %s",
+            document_id,
+        )
+        raise HTTPException(status_code=502, detail="AI 问答暂时不可用") from e
 
 
 @router.patch("/{document_id}", response_model=DocumentDto)

@@ -331,6 +331,7 @@ class AgentRunDetail(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
     estimated_cost_micros: int = 0
+    usage: dict[str, Any] = Field(default_factory=dict)
     trace_id: str | None = None
     retry_of_run_id: str | None = None
     orchestration_version: str = "orchestration-v1"

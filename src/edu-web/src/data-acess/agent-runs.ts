@@ -24,6 +24,17 @@ export type AgentRun = {
   input_tokens: number
   output_tokens: number
   estimated_cost_micros: number
+  usage?: {
+    model_name?: string | null
+    input_tokens?: number
+    output_tokens?: number
+    agents?: Array<{
+      agent_name: string
+      model_name: string | null
+      input_tokens: number
+      output_tokens: number
+    }>
+  }
   trace_id: string | null
   retry_of_run_id: string | null
   orchestration_version: string
@@ -104,6 +115,10 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
 }
 
 export const agentRunsApi = {
+  latest: (projectId: string) =>
+    request<AgentRun | null>(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/agent-runs/latest`,
+    ),
   get: (runId: string) =>
     request<AgentRun>(`/api/v1/agent-runs/${encodeURIComponent(runId)}`),
   steps: (runId: string) =>
