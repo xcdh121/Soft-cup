@@ -80,8 +80,25 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as {
       detail?: string
+      error?: {
+        message?: string
+        usage_type?: string
+        current_count?: number
+        limit?: number
+      }
     } | null
-    throw new Error(payload?.detail || `请求失败（${response.status}）`)
+    if (payload?.error?.usage_type === 'agent_run') {
+      const current = payload.error.current_count ?? 0
+      const limit = payload.error.limit ?? 0
+      throw new Error(
+        `多智能体完整运行额度不足（当前占用 ${current}/${limit} 次），请等待运行结束或前往“套餐与额度”升级。`,
+      )
+    }
+    throw new Error(
+      payload?.error?.message ||
+        payload?.detail ||
+        `请求失败（${response.status}）`,
+    )
   }
   return (await response.json()) as T
 }

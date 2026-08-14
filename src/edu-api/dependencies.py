@@ -26,6 +26,7 @@ from edu_core.services import (
     UserService,
 )
 from edu_core.services.baidu_search import BaiduSearchClient, BaiduSearchConfig
+from edu_core.services.quota import QuotaService
 from edu_core.services.xfyun_image_generation import (
     XfyunImageGenerationClient,
     XfyunImageGenerationConfig,
@@ -72,6 +73,8 @@ def get_task_runner(
         llm_model=settings.llm_model,
         llm_api_key=settings.llm_api_key,
         llm_base_url=settings.llm_base_url,
+        llm_input_cost_per_million_cny=settings.llm_input_cost_per_million_cny,
+        llm_output_cost_per_million_cny=settings.llm_output_cost_per_million_cny,
         embedding_provider=settings.embedding_provider,
         embedding_model=settings.embedding_model,
         embedding_api_key=settings.embedding_api_key,
@@ -205,11 +208,14 @@ def get_agent_orchestration_service(
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
             temperature=0.3,
+            input_cost_per_million_cny=settings.llm_input_cost_per_million_cny,
+            output_cost_per_million_cny=settings.llm_output_cost_per_million_cny,
         ),
         flashcard_group_service=FlashcardGroupService(queue_service=queue_service),
         quiz_service=QuizService(queue_service=queue_service),
         note_service=NoteService(queue_service=queue_service),
         mind_map_service=MindMapService(queue_service=queue_service),
+        quota_service=QuotaService(),
     )
 
 

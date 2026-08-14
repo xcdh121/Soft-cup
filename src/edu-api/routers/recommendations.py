@@ -3,7 +3,7 @@ from dependencies import (
     get_agent_orchestration_service,
     get_learning_closed_loop_service,
 )
-from edu_core.exceptions import NotFoundError
+from edu_core.exceptions import NotFoundError, UsageLimitExceededError
 from edu_core.schemas.agent_orchestration import (
     RecommendationGenerateRequest,
     RecommendationsResponse,
@@ -53,6 +53,8 @@ async def generate_recommendations(
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except UsageLimitExceededError:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

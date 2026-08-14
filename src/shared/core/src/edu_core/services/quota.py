@@ -11,6 +11,9 @@ from sqlalchemy import func
 from edu_core.exceptions import UsageLimitExceededError
 
 
+UNLIMITED_RESOURCE_TYPES = frozenset({"agent_run"})
+
+
 class QuotaService:
     def has_active_entitlement(self, user_id: str) -> bool:
         with self._session() as db:
@@ -38,6 +41,17 @@ class QuotaService:
     ) -> dict:
         if quantity <= 0:
             raise ValueError("Reservation quantity must be positive")
+        if resource_type in UNLIMITED_RESOURCE_TYPES:
+            return {
+                "id": None,
+                "resource_type": resource_type,
+                "granted": -1,
+                "used": 0,
+                "reserved": 0,
+                "remaining": -1,
+                "expires_at": None,
+                "unlimited": True,
+            }
         with self._session() as db:
             duplicate = (
                 db.query(QuotaLedger)
@@ -82,7 +96,12 @@ class QuotaService:
                 )
                 raise UsageLimitExceededError(
                     usage_type=resource_type,
-                    current_count=int(used),
+                    # Reserved work also occupies the available quota. Reporting
+                    # only committed usage produced misleading messages such as
+                    # "used 0 of 2" while two runs were already reserved.
+                    current_count=int(used) + sum(
+                        bucket.reserved for bucket in buckets
+                    ),
                     limit=int(granted),
                 )
             bucket = next(
@@ -122,7 +141,7 @@ class QuotaService:
         business_type: str,
         business_id: str,
     ) -> dict:
-        self.reserve(
+        reservation = self.reserve(
             user_id=user_id,
             resource_type=resource_type,
             quantity=1,
@@ -130,6 +149,8 @@ class QuotaService:
             business_type=business_type,
             business_id=business_id,
         )
+        if reservation.get("unlimited"):
+            return reservation
         return self.commit(idempotency_key=idempotency_key)
 
     def _finish(self, *, idempotency_key: str, operation: str) -> dict:

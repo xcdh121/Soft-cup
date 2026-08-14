@@ -1,6 +1,7 @@
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from edu_db.session import get_session_factory
@@ -18,6 +19,46 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
+
+
+@dataclass
+class ModelUsage:
+    """Provider-neutral token usage captured from a model response."""
+
+    model_name: str | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+def _as_non_negative_int(value: Any) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _usage_from_chunk(chunk: Any) -> ModelUsage | None:
+    usage = getattr(chunk, "usage_metadata", None) or {}
+    response = getattr(chunk, "response_metadata", None) or {}
+    provider_usage = response.get("token_usage") or response.get("usage") or {}
+    input_tokens = _as_non_negative_int(
+        usage.get("input_tokens")
+        or provider_usage.get("prompt_tokens")
+        or provider_usage.get("input_tokens")
+    )
+    output_tokens = _as_non_negative_int(
+        usage.get("output_tokens")
+        or provider_usage.get("completion_tokens")
+        or provider_usage.get("output_tokens")
+    )
+    model_name = response.get("model_name") or response.get("model")
+    if not model_name and not input_tokens and not output_tokens:
+        return None
+    return ModelUsage(
+        model_name=str(model_name) if model_name else None,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
 
 
 class ContentAgentConfig(BaseModel):
@@ -150,6 +191,7 @@ async def generate_stream[T](
     language_code: str,
     custom_instructions: str | None = None,
     document_content: str | None = None,
+    usage_sink: Callable[[ModelUsage], None] | None = None,
     **kwargs: Any,
 ) -> AsyncGenerator[dict[str, Any]]:
     """Stream partially parsed structured JSON from a chat model.
@@ -177,6 +219,10 @@ async def generate_stream[T](
     accumulated = ""
     last_partial: dict[str, Any] | None = None
     async for chunk in llm.astream(prompt_input):
+        if usage_sink:
+            usage = _usage_from_chunk(chunk)
+            if usage:
+                usage_sink(usage)
         content = chunk.content
         if isinstance(content, str):
             accumulated += content

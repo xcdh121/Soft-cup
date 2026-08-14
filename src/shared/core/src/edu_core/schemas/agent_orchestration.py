@@ -218,6 +218,10 @@ class AgentResult(BaseModel):
     input_artifact_keys: list[str] = Field(default_factory=list)
     output_artifact_keys: list[str] = Field(default_factory=list)
     tool_call_audits: list[Any] = Field(default_factory=list, exclude=True)
+    model_name: str | None = None
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    estimated_cost_micros: int = Field(default=0, ge=0)
 
 
 class SupervisorPreflight(BaseModel):

@@ -28,6 +28,9 @@ COPY src/edu-web/package.json src/edu-web/package-lock.json ./
 # Copy source code and install deps
 COPY src/edu-web .
 COPY src/source /source
+# Payment QR images are private deployment assets kept outside the public
+# source directory. Copy them into Vite's public tree only inside the build.
+COPY payment-codes /app/public/payment-codes
 RUN npm ci
 
 # Build the Vite SPA (static output in /dist)

@@ -7,7 +7,7 @@ from edu_ai.agents.note_agent import NoteAgent
 from edu_ai.agents.orchestration.base import BaseOrchestrationAgent
 from edu_ai.agents.orchestration.supervisor import SupervisorAgent
 from edu_ai.agents.quiz_agent import QuizAgent
-from edu_ai.agents.utils import generate_stream
+from edu_ai.agents.utils import ModelUsage, generate_stream
 from edu_core.schemas.agent_orchestration import (
     AgentName,
     AgentResult,
@@ -42,12 +42,21 @@ class _SearchService:
 
 class _StreamingLlm:
     async def astream(self, _prompt):
-        for content in (
+        contents = (
             '{"title":"Transactions","content":"# Atomicity',
             "\\n\\nA transaction",
             ' is all-or-nothing."}',
-        ):
-            yield SimpleNamespace(content=content)
+        )
+        for index, content in enumerate(contents):
+            yield SimpleNamespace(
+                content=content,
+                usage_metadata={"input_tokens": 120, "output_tokens": 45}
+                if index == len(contents) - 1
+                else None,
+                response_metadata={"model_name": "test-model"}
+                if index == len(contents) - 1
+                else None,
+            )
 
 
 class _Agent(BaseOrchestrationAgent):
@@ -344,6 +353,26 @@ class StructuredStreamingTests(unittest.IsolatedAsyncioTestCase):
                 "content": "# Atomicity\n\nA transaction is all-or-nothing.",
             },
         )
+
+    async def test_stream_reports_terminal_model_usage(self):
+        usages: list[ModelUsage] = []
+
+        async for _ in generate_stream(
+            llm=_StreamingLlm(),
+            search_service=_SearchService(),
+            output_model=_Output,
+            prompt_template="note_prompt",
+            project_id="project-1",
+            topic="transactions",
+            language_code="en",
+            usage_sink=usages.append,
+        ):
+            pass
+
+        self.assertEqual(len(usages), 1)
+        self.assertEqual(usages[0].model_name, "test-model")
+        self.assertEqual(usages[0].input_tokens, 120)
+        self.assertEqual(usages[0].output_tokens, 45)
 
     async def test_supervisor_publishes_agent_start_and_completion(self):
         events = []

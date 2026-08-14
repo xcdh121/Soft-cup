@@ -272,18 +272,10 @@ const VideoRecommendationsPreview = ({
           className="group overflow-hidden rounded-xl border bg-card text-card-foreground transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-sm"
         >
           <div className="relative aspect-video overflow-hidden bg-muted">
-            {video.thumbnail_url ? (
-              <img
-                src={video.thumbnail_url}
-                alt=""
-                referrerPolicy="no-referrer"
-                className="size-full object-cover transition group-hover:scale-[1.02]"
-              />
-            ) : (
-              <div className="flex size-full items-center justify-center">
-                <PlayCircleIcon className="size-10 text-muted-foreground" />
-              </div>
-            )}
+            <VideoThumbnail
+              key={video.thumbnail_url ?? 'no-thumbnail'}
+              video={video}
+            />
             <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/15">
               <PlayCircleIcon className="size-11 text-white opacity-0 drop-shadow transition group-hover:opacity-100" />
             </div>
@@ -310,6 +302,30 @@ const VideoRecommendationsPreview = ({
         </a>
       ))}
     </div>
+  )
+}
+
+const VideoThumbnail = ({ video }: { video: VideoRecommendation }) => {
+  const [failed, setFailed] = useState(false)
+
+  if (!video.thumbnail_url || failed) {
+    return (
+      <div className="flex size-full items-center justify-center bg-muted">
+        <PlayCircleIcon className="size-10 text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={video.thumbnail_url}
+      alt={`${video.title} 视频封面`}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="size-full bg-muted object-contain"
+    />
   )
 }
 

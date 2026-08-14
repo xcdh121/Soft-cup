@@ -76,6 +76,38 @@ ARTIFACT_AGENT_NAMES = {
 }
 
 
+def _aggregate_model_usage(result: SupervisorRunResult) -> dict:
+    measured = [
+        item
+        for item in result.agent_results
+        if item.model_name
+        or item.input_tokens
+        or item.output_tokens
+        or item.estimated_cost_micros
+    ]
+    models = list(dict.fromkeys(item.model_name for item in measured if item.model_name))
+    input_tokens = sum(item.input_tokens for item in measured)
+    output_tokens = sum(item.output_tokens for item in measured)
+    estimated_cost_micros = sum(item.estimated_cost_micros for item in measured)
+    return {
+        "model_name": ", ".join(models) if models else None,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "estimated_cost_micros": estimated_cost_micros,
+        "token_usage_captured": bool(input_tokens or output_tokens),
+        "agents": [
+            {
+                "agent_name": item.agent_name.value,
+                "model_name": item.model_name,
+                "input_tokens": item.input_tokens,
+                "output_tokens": item.output_tokens,
+                "estimated_cost_micros": item.estimated_cost_micros,
+            }
+            for item in measured
+        ],
+    }
+
+
 class InMemoryOrchestrationStore:
     def __init__(self) -> None:
         self.diagnoses: dict[str, DiagnosisResponse] = {}
@@ -313,6 +345,7 @@ class DatabaseOrchestrationStore:
             if not run:
                 raise NotFoundError(f"Agent run {result.run_id} not found")
             completed_at = self._now()
+            model_usage = _aggregate_model_usage(result)
             run.status = result.status.value
             run.final_result = self._to_json(result.final_result)
             run.error_message = result.final_result.get("error")
@@ -324,6 +357,11 @@ class DatabaseOrchestrationStore:
             run.completed_at = completed_at
             run.heartbeat_at = completed_at
             run.current_agent_name = None
+            run.model_name = model_usage["model_name"]
+            run.input_tokens = model_usage["input_tokens"]
+            run.output_tokens = model_usage["output_tokens"]
+            run.estimated_cost_micros = model_usage["estimated_cost_micros"]
+            run.usage = model_usage
             if run.started_at:
                 run.duration_ms = max(
                     0, int((completed_at - run.started_at).total_seconds() * 1000)
@@ -503,26 +541,39 @@ class DatabaseOrchestrationStore:
     def save_run_events(self, result: SupervisorRunResult) -> None:
         with self._get_db_session() as db:
             existing = db.query(AgentRun).filter(AgentRun.id == result.run_id).first()
+            model_usage = _aggregate_model_usage(result)
             if not existing:
-                db.add(
-                    AgentRun(
-                        id=result.run_id,
-                        project_id=result.context.project_id,
-                        user_id=result.context.student_id,
-                        goal=result.context.goal,
-                        status=result.status.value,
-                        trigger=self._to_json(result.context.trigger),
-                        context_snapshot=self._to_json(result.context.context),
-                        final_result=self._to_json(result.final_result),
-                        error_message=result.final_result.get("error"),
-                        started_at=result.events[0].timestamp
-                        if result.events
-                        else self._now(),
-                        completed_at=result.events[-1].timestamp
-                        if result.events
-                        else None,
-                    )
+                existing = AgentRun(
+                    id=result.run_id,
+                    project_id=result.context.project_id,
+                    user_id=result.context.student_id,
+                    goal=result.context.goal,
+                    status=result.status.value,
+                    trigger=self._to_json(result.context.trigger),
+                    context_snapshot=self._to_json(result.context.context),
+                    final_result=self._to_json(result.final_result),
+                    error_message=result.final_result.get("error"),
+                    started_at=result.events[0].timestamp
+                    if result.events
+                    else self._now(),
+                    completed_at=result.events[-1].timestamp
+                    if result.events
+                    else None,
+                    model_name=model_usage["model_name"],
+                    input_tokens=model_usage["input_tokens"],
+                    output_tokens=model_usage["output_tokens"],
+                    estimated_cost_micros=model_usage["estimated_cost_micros"],
+                    usage=model_usage,
                 )
+                db.add(existing)
+            else:
+                existing.model_name = model_usage["model_name"]
+                existing.input_tokens = model_usage["input_tokens"]
+                existing.output_tokens = model_usage["output_tokens"]
+                existing.estimated_cost_micros = model_usage[
+                    "estimated_cost_micros"
+                ]
+                existing.usage = model_usage
 
             next_sequence = int(existing.last_event_sequence or 0) if existing else 0
             for event in result.events:
@@ -1126,6 +1177,7 @@ class AgentOrchestrationService:
         quiz_service=None,
         note_service=None,
         mind_map_service=None,
+        quota_service=None,
     ) -> None:
         self.supervisor = supervisor or SupervisorAgent(
             llm_config=llm_config,
@@ -1137,6 +1189,43 @@ class AgentOrchestrationService:
             )
         )
         self.store = store or DatabaseOrchestrationStore()
+        self.quota_service = quota_service
+
+    def _reserve_agent_run_quota(
+        self,
+        *,
+        user_id: str,
+        run_id: str,
+        idempotency_key: str | None = None,
+    ) -> str | None:
+        if not self.quota_service:
+            return None
+        reservation_key = (
+            f"agent_run:{user_id}:{idempotency_key}"
+            if idempotency_key
+            else f"agent_run:{user_id}:{run_id}"
+        )
+        reservation = self.quota_service.reserve(
+            user_id=user_id,
+            resource_type="agent_run",
+            quantity=1,
+            idempotency_key=reservation_key,
+            business_type="agent_run",
+            business_id=run_id,
+        )
+        if reservation.get("unlimited"):
+            return None
+        return reservation_key
+
+    def _settle_agent_run_quota(
+        self, reservation_key: str | None, *, succeeded: bool
+    ) -> None:
+        if not self.quota_service or not reservation_key:
+            return
+        if succeeded:
+            self.quota_service.commit(idempotency_key=reservation_key)
+        else:
+            self.quota_service.release(idempotency_key=reservation_key)
 
     async def generate_diagnosis(
         self,
@@ -1213,7 +1302,28 @@ class AgentOrchestrationService:
         plan = self.supervisor.build_execution_plan(hydrated)
         if not isinstance(self.store, DatabaseOrchestrationStore):
             raise RuntimeError("persistent agent runs require the database store")
-        persisted_id = self.store.create_run(hydrated, plan)
+        reservation_key = self._reserve_agent_run_quota(
+            user_id=user_id,
+            run_id=run_id,
+            idempotency_key=request.idempotency_key,
+        )
+        if reservation_key:
+            hydrated = hydrated.model_copy(
+                update={
+                    "meta": {
+                        **hydrated.meta,
+                        "_quota_reservation_key": reservation_key,
+                    }
+                }
+            )
+        try:
+            persisted_id = self.store.create_run(hydrated, plan)
+        except asyncio.CancelledError:
+            self._settle_agent_run_quota(reservation_key, succeeded=False)
+            raise
+        except Exception:
+            self._settle_agent_run_quota(reservation_key, succeeded=False)
+            raise
         return self.get_agent_run(user_id, persisted_id)
 
     async def execute_agent_run(self, user_id: str, run_id: str) -> None:
@@ -1221,6 +1331,7 @@ class AgentOrchestrationService:
 
         if not isinstance(self.store, DatabaseOrchestrationStore):
             raise RuntimeError("persistent agent runs require the database store")
+        reservation_key: str | None = None
         with self._get_db_session() as db:
             run = (
                 db.query(AgentRun)
@@ -1274,6 +1385,9 @@ class AgentOrchestrationService:
                 },
                 budget=run.budget or {},
             )
+            reservation_key = str(
+                request.meta.get("_quota_reservation_key") or ""
+            ) or None
             db.commit()
 
         async def persist_event(event: AgentEvent) -> None:
@@ -1369,6 +1483,11 @@ class AgentOrchestrationService:
                 final_result=self.supervisor._build_final_result(context),
             )
             self.store.complete_run(result)
+            self._settle_agent_run_quota(
+                reservation_key,
+                succeeded=outcome.status
+                in {RunStatus.COMPLETED, RunStatus.PARTIALLY_COMPLETED},
+            )
         except asyncio.CancelledError:
             cancelled_event = AgentEvent(
                 event_type=AgentEventType.RUN_CANCELLED,
@@ -1381,6 +1500,7 @@ class AgentOrchestrationService:
             )
             self.store.append_event(cancelled_event)
             self.store.mark_cancelled(run_id)
+            self._settle_agent_run_quota(reservation_key, succeeded=False)
         except Exception as exc:
             failed_event = AgentEvent(
                 event_type=AgentEventType.RUN_FAILED,
@@ -1400,6 +1520,7 @@ class AgentOrchestrationService:
                     failed_run.error_message = str(exc)[:2000]
                     failed_run.completed_at = self._now()
                     db.commit()
+            self._settle_agent_run_quota(reservation_key, succeeded=False)
 
     def cancel_agent_run(self, user_id: str, run_id: str) -> AgentRunDetail:
         detail = self.get_agent_run(user_id, run_id)
@@ -1680,11 +1801,12 @@ class AgentOrchestrationService:
         meta: dict | None = None,
         event_sink: Callable[[AgentEvent], Awaitable[None]] | None = None,
     ) -> RecommendationsResponse:
+        diagnosis = None
+        artifacts = None
         if diagnosis_id:
             diagnosis = self.get_diagnosis(diagnosis_id)
             self._ensure_diagnosis_access(diagnosis, user_id, project_id)
-        else:
-            diagnosis = await self.generate_diagnosis(user_id, project_id, trigger)
+            artifacts = {"diagnosis": {"diagnosis": diagnosis.diagnosis}}
 
         result = await self._run_supervisor(
             user_id=user_id,
@@ -1693,9 +1815,24 @@ class AgentOrchestrationService:
             trigger=trigger,
             meta=meta,
             event_sink=event_sink,
-            artifacts={"diagnosis": {"diagnosis": diagnosis.diagnosis}},
+            artifacts=artifacts,
         )
         self.store.save_run_events(result)
+        if diagnosis is None:
+            diagnosis = DiagnosisResponse(
+                diagnosis_id=f"diag_{uuid4().hex}",
+                run_id=result.run_id,
+                project_id=project_id,
+                student_id=user_id,
+                status=result.status,
+                diagnosis=result.final_result.get("diagnosis", {}),
+                recommendations=result.final_result.get("recommendations", []),
+                next_actions=["generate_learning_path"]
+                if result.status == RunStatus.COMPLETED
+                else [],
+                created_at=self._now(),
+            )
+            self.store.save_diagnosis(diagnosis)
         response = RecommendationsResponse(
             run_id=result.run_id,
             project_id=project_id,
@@ -1847,18 +1984,39 @@ class AgentOrchestrationService:
         artifacts: dict | None = None,
     ) -> SupervisorRunResult:
         context = self._load_context(user_id, project_id)
-        return await self.supervisor.run(
-            OrchestrationRunRequest(
-                project_id=project_id,
-                student_id=user_id,
-                goal=goal,
-                trigger=trigger or AgentTrigger(),
-                context=context,
-                artifacts=artifacts or {},
-                meta=meta or {},
-            ),
-            event_sink=event_sink,
+        run_meta = dict(meta or {})
+        run_id = str(run_meta.get("run_id") or f"run_{uuid4().hex}")
+        run_meta["run_id"] = run_id
+        reservation_key = self._reserve_agent_run_quota(
+            user_id=user_id,
+            run_id=run_id,
+            idempotency_key=run_meta.get("idempotency_key"),
         )
+        try:
+            result = await self.supervisor.run(
+                OrchestrationRunRequest(
+                    project_id=project_id,
+                    student_id=user_id,
+                    goal=goal,
+                    trigger=trigger or AgentTrigger(),
+                    context=context,
+                    artifacts=artifacts or {},
+                    meta=run_meta,
+                ),
+                event_sink=event_sink,
+            )
+        except asyncio.CancelledError:
+            self._settle_agent_run_quota(reservation_key, succeeded=False)
+            raise
+        except Exception:
+            self._settle_agent_run_quota(reservation_key, succeeded=False)
+            raise
+        self._settle_agent_run_quota(
+            reservation_key,
+            succeeded=result.status
+            in {RunStatus.COMPLETED, RunStatus.PARTIALLY_COMPLETED},
+        )
+        return result
 
     def _load_context(self, user_id: str, project_id: str) -> AgentContextData:
         with self._get_db_session() as db:

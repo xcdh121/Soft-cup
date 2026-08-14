@@ -10,6 +10,7 @@ from secrets import token_hex
 from typing import Any
 from uuid import uuid4
 
+from edu_core.services.quota import UNLIMITED_RESOURCE_TYPES
 from edu_db.models import (
     AdminAuditLog,
     BillingPlan,
@@ -47,7 +48,7 @@ DEFAULT_PLANS = (
             "quiz_generation": 3,
             "flashcard_generation": 3,
             "mindmap_generation": 1,
-            "agent_run": 2,
+            "agent_run": -1,
             "resource_package": 1,
             "active_project": 1,
             "storage_mb": 200,
@@ -67,7 +68,7 @@ DEFAULT_PLANS = (
             "quiz_generation": 20,
             "flashcard_generation": 20,
             "mindmap_generation": 10,
-            "agent_run": 15,
+            "agent_run": -1,
             "resource_package": 5,
             "active_project": 3,
             "storage_mb": 1024,
@@ -87,7 +88,7 @@ DEFAULT_PLANS = (
             "quiz_generation": 60,
             "flashcard_generation": 60,
             "mindmap_generation": 30,
-            "agent_run": 50,
+            "agent_run": -1,
             "resource_package": 20,
             "active_project": 10,
             "storage_mb": 3072,
@@ -107,7 +108,7 @@ DEFAULT_PLANS = (
             "quiz_generation": 120,
             "flashcard_generation": 120,
             "mindmap_generation": 60,
-            "agent_run": 100,
+            "agent_run": -1,
             "resource_package": 40,
             "active_project": 30,
             "storage_mb": 5120,
@@ -418,6 +419,13 @@ class BillingService:
                 item["used"] += bucket.used
                 item["reserved"] += bucket.reserved
                 item["remaining"] += bucket.granted - bucket.used - bucket.reserved
+            for resource_type in UNLIMITED_RESOURCE_TYPES:
+                totals[resource_type] = {
+                    "granted": -1,
+                    "used": 0,
+                    "reserved": 0,
+                    "remaining": -1,
+                }
             active = [self._entitlement_dict(item) for item in entitlements]
             return {"entitlements": active, "current_plan": active[-1]["plan_snapshot"] if active else None, "expires_at": max((item.ends_at for item in entitlements), default=None), "quotas": totals}
 
@@ -498,8 +506,15 @@ class BillingService:
         ))
 
     @staticmethod
-    def _plan_snapshot(plan: BillingPlan) -> dict[str, Any]:
-        return {"id": plan.id, "code": plan.code, "name": plan.name, "price_cents": plan.price_cents, "currency": plan.currency, "duration_days": plan.duration_days, "quotas": plan.quotas or {}, "features": plan.features or {}}
+    def _with_unlimited_quotas(quotas: dict[str, Any] | None) -> dict[str, Any]:
+        normalized = dict(quotas or {})
+        for resource_type in UNLIMITED_RESOURCE_TYPES:
+            normalized[resource_type] = -1
+        return normalized
+
+    @classmethod
+    def _plan_snapshot(cls, plan: BillingPlan) -> dict[str, Any]:
+        return {"id": plan.id, "code": plan.code, "name": plan.name, "price_cents": plan.price_cents, "currency": plan.currency, "duration_days": plan.duration_days, "quotas": cls._with_unlimited_quotas(plan.quotas), "features": plan.features or {}}
 
     @classmethod
     def _plan_dict(cls, plan: BillingPlan) -> dict[str, Any]:
@@ -509,9 +524,11 @@ class BillingService:
     def _order_dict(order: PaymentOrder) -> dict[str, Any]:
         return {"id": order.id, "order_no": order.order_no, "user_id": order.user_id, "plan_id": order.plan_id, "plan_snapshot": order.plan_snapshot, "amount_cents": order.amount_cents, "currency": order.currency, "provider": order.provider, "provider_transaction_id": order.provider_transaction_id, "payment_claimed_at": order.payment_claimed_at, "payment_claim_note": order.payment_claim_note, "payment_reference": order.payment_reference, "status": order.status, "expires_at": order.expires_at, "paid_at": order.paid_at, "refunded_at": order.refunded_at, "refunded_amount_cents": order.refunded_amount_cents, "refund_reason": order.refund_reason, "exception_note": order.exception_note, "created_at": order.created_at, "updated_at": order.updated_at}
 
-    @staticmethod
-    def _entitlement_dict(item: UserEntitlement) -> dict[str, Any]:
-        return {"id": item.id, "user_id": item.user_id, "order_id": item.order_id, "plan_id": item.plan_id, "plan_snapshot": item.plan_snapshot, "status": item.status, "starts_at": item.starts_at, "ends_at": item.ends_at, "grant_reason": item.grant_reason}
+    @classmethod
+    def _entitlement_dict(cls, item: UserEntitlement) -> dict[str, Any]:
+        snapshot = dict(item.plan_snapshot or {})
+        snapshot["quotas"] = cls._with_unlimited_quotas(snapshot.get("quotas"))
+        return {"id": item.id, "user_id": item.user_id, "order_id": item.order_id, "plan_id": item.plan_id, "plan_snapshot": snapshot, "status": item.status, "starts_at": item.starts_at, "ends_at": item.ends_at, "grant_reason": item.grant_reason}
 
     @staticmethod
     def _bucket_dict(bucket: QuotaBucket) -> dict[str, Any]:

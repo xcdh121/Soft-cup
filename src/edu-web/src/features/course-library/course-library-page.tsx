@@ -631,7 +631,7 @@ export const CourseLibraryPage = ({
           ) : Result.isFailure(coursesResult) ? (
             <Card>
               <CardContent className="p-8 text-center text-sm text-destructive">
-                课程加载失败，请确认后端服务已经启动。
+                课程加载失败，请刷新页面或重新登录后重试。
               </CardContent>
             </Card>
           ) : (

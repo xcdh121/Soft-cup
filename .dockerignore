@@ -6,6 +6,8 @@
 !uv.lock
 !alembic.ini
 !src/
+!payment-codes/
+!payment-codes/**
 
 # Exclude common build artifacts and caches
 .git/

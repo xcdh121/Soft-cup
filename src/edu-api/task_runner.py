@@ -18,11 +18,12 @@ from edu_core.model_providers import (
     create_embeddings,
 )
 from edu_core.schemas.documents import DocumentStatus
-from edu_core.services.learner_profiles import LearnerProfileService
 from edu_core.services.agent_orchestration import AgentOrchestrationService
 from edu_core.services.flashcard_groups import FlashcardGroupService
+from edu_core.services.learner_profiles import LearnerProfileService
 from edu_core.services.mind_maps import MindMapService
 from edu_core.services.notes import NoteService
+from edu_core.services.quota import QuotaService
 from edu_core.services.quizzes import QuizService
 from edu_core.services.resource_packages import ResourcePackageService
 from edu_core.storage import LocalStorageService
@@ -47,6 +48,8 @@ class TaskRunnerService:
         llm_model: str,
         llm_api_key: str = "",
         llm_base_url: str | None = None,
+        llm_input_cost_per_million_cny: float = 0.0,
+        llm_output_cost_per_million_cny: float = 0.0,
         embedding_model: str,
         embedding_provider: str = "openai",
         embedding_api_key: str = "",
@@ -70,6 +73,8 @@ class TaskRunnerService:
             api_key=llm_api_key,
             base_url=llm_base_url,
             temperature=0.25,
+            input_cost_per_million_cny=llm_input_cost_per_million_cny,
+            output_cost_per_million_cny=llm_output_cost_per_million_cny,
         )
         self.embeddings = create_embeddings(
             EmbeddingProviderConfig(
@@ -146,6 +151,7 @@ class TaskRunnerService:
             quiz_service=QuizService(queue_service=local_queue),
             note_service=NoteService(queue_service=local_queue),
             mind_map_service=MindMapService(queue_service=local_queue),
+            quota_service=QuotaService(),
         )
         await service.execute_agent_run(
             str(payload["user_id"]), str(payload["run_id"])

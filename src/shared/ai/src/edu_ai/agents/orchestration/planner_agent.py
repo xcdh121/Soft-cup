@@ -15,7 +15,7 @@ from edu_core.schemas.learning_path_generation import LearningPathContent
 from edu_core.schemas.internal_tools import ToolExecutionContext
 
 from edu_ai.agents.orchestration.base import BaseOrchestrationAgent
-from edu_ai.agents.utils import generate_stream
+from edu_ai.agents.utils import ModelUsage, generate_stream
 from edu_ai.internal_tools import ToolRunner, build_context_tool_registry
 from edu_ai.skills import SkillRunner, build_skill_registry
 
@@ -27,6 +27,7 @@ class PlannerAgent(BaseOrchestrationAgent):
     artifact_key = "learning_path"
 
     def __init__(self, llm_config: LlmProviderConfig | None = None) -> None:
+        self.llm_config = llm_config
         self.llm = (
             create_chat_model(llm_config, streaming=True, temperature=0.3)
             if llm_config and llm_config.model
@@ -67,11 +68,16 @@ class PlannerAgent(BaseOrchestrationAgent):
         )
         learning_path = self._build_rule_learning_path(context)
         generation_mode = "rule"
+        model_usage = ModelUsage(
+            model_name=self.llm_config.model if self.llm_config else None
+        )
 
         if self.llm:
             try:
                 learning_path = await self._build_llm_learning_path(
-                    context, partial_sink=partial_sink
+                    context,
+                    partial_sink=partial_sink,
+                    model_usage=model_usage,
                 )
                 generation_mode = "llm"
             except Exception:
@@ -141,6 +147,25 @@ class PlannerAgent(BaseOrchestrationAgent):
             input_artifact_keys=["profile", "knowledge_state", "diagnosis", "recommendations"],
             output_artifact_keys=[self.artifact_key],
             tool_call_audits=tool_runner.audits,
+            model_name=model_usage.model_name if self.llm else None,
+            input_tokens=model_usage.input_tokens,
+            output_tokens=model_usage.output_tokens,
+            estimated_cost_micros=self._estimate_cost_micros(model_usage),
+        )
+
+    def _estimate_cost_micros(self, usage: ModelUsage) -> int:
+        """Convert configured CNY-per-million rates to millionths of CNY."""
+
+        if not self.llm_config:
+            return 0
+        return max(
+            0,
+            round(
+                usage.input_tokens
+                * self.llm_config.input_cost_per_million_cny
+                + usage.output_tokens
+                * self.llm_config.output_cost_per_million_cny
+            ),
         )
 
     @staticmethod
@@ -220,6 +245,7 @@ class PlannerAgent(BaseOrchestrationAgent):
         self,
         context: AgentRunContext,
         partial_sink: Callable[[dict], Awaitable[None]] | None = None,
+        model_usage: ModelUsage | None = None,
     ) -> dict:
         diagnosis = context.artifacts.get("diagnosis", {}).get("diagnosis", {})
         recommendations = context.artifacts.get("recommendations", {}).get(
@@ -251,6 +277,21 @@ class PlannerAgent(BaseOrchestrationAgent):
         latest_partial: dict = {}
         last_emitted: dict | None = None
         last_emitted_at = 0.0
+
+        def collect_usage(update: ModelUsage) -> None:
+            if model_usage is None:
+                return
+            model_usage.model_name = update.model_name or model_usage.model_name
+            # Streaming providers normally report cumulative usage on the
+            # terminal chunk. max() also avoids double-counting providers that
+            # repeat cumulative usage on multiple chunks.
+            model_usage.input_tokens = max(
+                model_usage.input_tokens, update.input_tokens
+            )
+            model_usage.output_tokens = max(
+                model_usage.output_tokens, update.output_tokens
+            )
+
         async for partial in generate_stream(
             llm=self.llm,
             search_service=None,
@@ -265,6 +306,7 @@ class PlannerAgent(BaseOrchestrationAgent):
                 "验证资源必须等学生完成推荐后，由系统另行单独生成。所有面向学生的文案使用中文。"
             ),
             document_content=document_content,
+            usage_sink=collect_usage,
         ):
             latest_partial = partial
             now = monotonic()

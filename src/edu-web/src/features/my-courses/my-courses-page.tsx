@@ -167,7 +167,7 @@ export const MyCoursesPage = () => {
         ) : Result.isFailure(coursesResult) ? (
           <Card className="border-destructive/30 bg-card shadow-none">
             <CardContent className="px-6 py-10 text-center text-sm text-destructive">
-              课程加载失败，请确认服务已启动后重试。
+              课程加载失败，请刷新页面或重新登录后重试。
             </CardContent>
           </Card>
         ) : (

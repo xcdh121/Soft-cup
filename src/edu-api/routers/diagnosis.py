@@ -1,6 +1,6 @@
 from auth import get_current_user
 from dependencies import get_agent_orchestration_service
-from edu_core.exceptions import NotFoundError
+from edu_core.exceptions import NotFoundError, UsageLimitExceededError
 from edu_core.schemas.agent_orchestration import (
     AgentEvent,
     DiagnosisCreateRequest,
@@ -30,6 +30,8 @@ async def generate_diagnosis(
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except UsageLimitExceededError:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

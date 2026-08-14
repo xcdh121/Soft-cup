@@ -49,6 +49,7 @@ export function AgentRuntimePage() {
   const [runId, setRunId] = useState<string | null>(params.get('runId'))
   const [goal, setGoal] = useState('diagnosis')
   const [busy, setBusy] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
   const projectsResult = useAtomValue(projectsAtom)
   const projects = Result.isSuccess(projectsResult) ? projectsResult.value : []
   const { run, steps, events, error, connection, refresh } = useAgentRun(runId)
@@ -73,10 +74,24 @@ export function AgentRuntimePage() {
       ),
     [events],
   )
+  const totalTokens = (run?.input_tokens ?? 0) + (run?.output_tokens ?? 0)
+  const tokenDisplay = totalTokens
+    ? totalTokens.toLocaleString('zh-CN')
+    : run?.model_name
+      ? '未采集'
+      : '未调用模型'
+  const costDisplay = !run?.model_name
+    ? '—'
+    : !totalTokens
+      ? '未采集'
+      : run.estimated_cost_micros > 0
+        ? `¥${(run.estimated_cost_micros / 1_000_000).toFixed(4)}`
+        : '未配置价格'
 
   const start = async () => {
     if (!projectId.trim()) return
     setBusy(true)
+    setStartError(null)
     try {
       const created = await agentRunsApi.create(projectId.trim(), goal)
       setRunId(created.run_id)
@@ -84,6 +99,10 @@ export function AgentRuntimePage() {
         null,
         '',
         `?projectId=${encodeURIComponent(projectId.trim())}&runId=${encodeURIComponent(created.run_id)}`,
+      )
+    } catch (cause) {
+      setStartError(
+        cause instanceof Error ? cause.message : '创建智能体运行失败，请稍后重试。',
       )
     } finally {
       setBusy(false)
@@ -115,7 +134,7 @@ export function AgentRuntimePage() {
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg font-semibold">智能协作观测台</h1>
             <p className="text-xs text-muted-foreground">
-              数据库事件为事实源，刷新后从最后事件继续
+              查看 AI 如何协作完成诊断、推荐与学习路径，并审计每一步依据
             </p>
           </div>
           {demoMode ? (
@@ -137,6 +156,16 @@ export function AgentRuntimePage() {
       </header>
 
       <main className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
+        <section className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-5">
+          <h2 className="font-semibold">这里不是新的学习模块，而是 AI 执行记录</h2>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
+            选择一个学习目标后，系统会创建真实的多智能体任务。你可以查看画像、知识追踪、诊断、资源和规划等节点如何协作，以及证据、耗时、模型 Token、失败兜底和重试情况。
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            多智能体完整运行不限制次数；模型 Token 与耗时仍会按次记录，方便核对执行成本和效果。
+          </p>
+        </section>
+
         <section className="rounded-2xl border bg-card p-5 shadow-sm">
           <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
             <label className="space-y-1 text-sm">
@@ -187,6 +216,12 @@ export function AgentRuntimePage() {
               创建真实运行
             </Button>
           </div>
+          {startError && (
+            <div className="mt-4 flex gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              <CircleAlertIcon className="mt-0.5 size-4 shrink-0" />
+              {startError}
+            </div>
+          )}
         </section>
 
         {!run && !demoMode && (
@@ -260,12 +295,12 @@ export function AgentRuntimePage() {
                   [
                     CoinsIcon,
                     'Token',
-                    `${run.input_tokens + run.output_tokens}`,
+                    tokenDisplay,
                   ],
                   [
                     ShieldCheckIcon,
                     '估算成本',
-                    `¥${(run.estimated_cost_micros / 1_000_000).toFixed(4)}`,
+                    costDisplay,
                   ],
                 ].map(([Icon, label, value]) => {
                   const MetricIcon = Icon as typeof Clock3Icon

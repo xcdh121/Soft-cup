@@ -20,6 +20,8 @@ class LlmProviderConfig:
     api_key: str = ""
     base_url: str | None = None
     temperature: float = 0.25
+    input_cost_per_million_cny: float = 0.0
+    output_cost_per_million_cny: float = 0.0
 
 
 @dataclass(slots=True)
@@ -336,6 +338,10 @@ def create_chat_model(
         "model": config.model,
         "api_key": _normalize_api_key(config.api_key),
         "streaming": streaming,
+        # Ask OpenAI-compatible providers to include usage on the terminal
+        # stream chunk. Providers that omit it remain usable; the UI will show
+        # "not collected" instead of a misleading zero.
+        "stream_usage": streaming,
         "temperature": config.temperature if temperature is None else temperature,
     }
     if config.base_url:

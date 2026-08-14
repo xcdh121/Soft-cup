@@ -93,6 +93,45 @@ class BaiduSearchClientTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result["videos"][0]["duration"], "8:21")
 
+    async def test_search_videos_replaces_baidu_cache_with_bilibili_cover(self):
+        async def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.host == "api.bilibili.com":
+                self.assertEqual(request.url.params["bvid"], "BV1EP4y1v7ns")
+                return httpx.Response(
+                    200,
+                    json={
+                        "code": 0,
+                        "data": {
+                            "pic": "http://i2.hdslb.com/bfs/archive/cover.png"
+                        },
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "references": [
+                        {
+                            "title": "动态规划",
+                            "type": "video",
+                            "url": "http://www.bilibili.com/video/BV1EP4y1v7ns?p=19",
+                            "image": "https://t15.baidu.com/it/cached-cover",
+                        }
+                    ]
+                },
+            )
+
+        client = BaiduSearchClient(
+            BaiduSearchConfig(api_key="secret-key"),
+            transport=httpx.MockTransport(handler),
+        )
+
+        result = await client.search_videos("动态规划")
+
+        self.assertEqual(
+            result["videos"][0]["thumbnail_url"],
+            "https://i2.hdslb.com/bfs/archive/cover.png",
+        )
+
     async def test_resource_package_builds_video_recommendation_resource(self):
         class FakeBaiduSearchClient:
             is_enabled = True

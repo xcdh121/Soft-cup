@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch
 
+from edu_core.exceptions import UsageLimitExceededError
 from edu_core.services.billing import BillingError, BillingService
 from edu_core.services.quota import QuotaService
 from edu_db.base import Base
@@ -72,8 +73,8 @@ class BillingServiceTest(unittest.TestCase):
         with self.sessions() as db:
             self.assertEqual(db.query(PaymentEvent).count(), 1)
             self.assertEqual(db.query(UserEntitlement).count(), 1)
-            self.assertEqual(db.query(QuotaBucket).count(), 1)
-            self.assertEqual(db.query(QuotaLedger).count(), 1)
+            self.assertEqual(db.query(QuotaBucket).count(), 0)
+            self.assertEqual(db.query(QuotaLedger).count(), 0)
 
     def test_paid_order_cannot_be_closed(self):
         order = self.service.create_order(user_id="user-1", plan_code="test_plan", provider="manual")
@@ -132,7 +133,7 @@ class BillingServiceTest(unittest.TestCase):
                 payload_digest="digest", verified=False,
             )
 
-    def test_quota_consume_is_idempotent(self):
+    def test_agent_run_quota_is_unlimited(self):
         order = self.service.create_order(user_id="user-1", plan_code="test_plan", provider="manual")
         self.service.process_payment(
             order_no=order["order_no"], provider="manual", provider_event_id="manual:event-3",
@@ -148,12 +149,71 @@ class BillingServiceTest(unittest.TestCase):
         first = quota.consume(**arguments)
         second = quota.consume(**arguments)
 
-        self.assertEqual(first["used"], 1)
-        self.assertEqual(second["used"], 1)
+        self.assertTrue(first["unlimited"])
+        self.assertTrue(second["unlimited"])
+        self.assertEqual(first["remaining"], -1)
         with self.sessions() as db:
-            bucket = db.query(QuotaBucket).one()
-            self.assertEqual(bucket.used, 1)
-            self.assertEqual(bucket.reserved, 0)
+            self.assertEqual(db.query(QuotaBucket).count(), 0)
+            self.assertEqual(db.query(QuotaLedger).count(), 0)
+
+        plan = self.service.list_plans()[0]
+        summary = self.service.billing_summary(user_id="user-1")
+        self.assertEqual(plan["quotas"]["agent_run"], -1)
+        self.assertEqual(summary["quotas"]["agent_run"]["remaining"], -1)
+
+    def test_quota_limit_reports_reserved_usage(self):
+        order = self.service.create_order(
+            user_id="user-1", plan_code="test_plan", provider="manual"
+        )
+        self.service.process_payment(
+            order_no=order["order_no"],
+            provider="manual",
+            provider_event_id="manual:event-reserved",
+            provider_transaction_id="manual:tx-reserved",
+            amount_cents=2990,
+            currency="CNY",
+            payload_digest="digest",
+            verified=True,
+        )
+        with self.sessions() as db:
+            entitlement = db.query(UserEntitlement).one()
+            db.add(
+                QuotaBucket(
+                    id="quiz-bucket",
+                    user_id="user-1",
+                    entitlement_id=entitlement.id,
+                    resource_type="quiz_generation",
+                    granted=3,
+                    used=0,
+                    reserved=0,
+                    starts_at=entitlement.starts_at,
+                    expires_at=entitlement.ends_at,
+                )
+            )
+            db.commit()
+        quota = QuotaService()
+        for index in range(3):
+            quota.reserve(
+                user_id="user-1",
+                resource_type="quiz_generation",
+                quantity=1,
+                idempotency_key=f"agent:reserved:{index}",
+                business_type="test",
+                business_id=f"operation-{index}",
+            )
+
+        with self.assertRaises(UsageLimitExceededError) as raised:
+            quota.reserve(
+                user_id="user-1",
+                resource_type="quiz_generation",
+                quantity=1,
+                idempotency_key="agent:reserved:overflow",
+                business_type="test",
+                business_id="operation-overflow",
+            )
+
+        self.assertEqual(raised.exception.current_count, 3)
+        self.assertEqual(raised.exception.limit, 3)
 
 
 if __name__ == "__main__":

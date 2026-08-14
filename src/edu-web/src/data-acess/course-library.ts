@@ -1,4 +1,4 @@
-import { Atom, Registry } from '@effect-atom/atom-react'
+import { Atom, Registry, Result } from '@effect-atom/atom-react'
 import { HttpBody } from '@effect/platform'
 import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Effect, Layer } from 'effect'
@@ -7,6 +7,7 @@ import type {
   GeneratedResource,
   ResourcePackage,
 } from '@/data-acess/resource-package'
+import { authAtom } from '@/data-acess/auth'
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
 
@@ -116,9 +117,20 @@ const getJson = <T>(path: string) =>
     return (yield* response.json) as T
   })
 
-export const coursesAtom = runtime
-  .atom(getJson<Array<Course>>('/api/v1/courses'))
-  .pipe(Atom.keepAlive)
+const coursesRemoteAtom = runtime.atom(
+  getJson<Array<Course>>('/api/v1/courses'),
+)
+
+// Some globally mounted UI (for example dialogs and navigation helpers) can
+// subscribe before the dashboard is visible. Keep the authenticated request
+// behind the session atom so public routes never issue a guaranteed 401. Once
+// a session appears this derived atom automatically starts the remote atom.
+export const coursesAtom = Atom.make((get) => {
+  const { session, user } = get(authAtom)
+  return session && user
+    ? get(coursesRemoteAtom)
+    : Result.success<Array<Course>>([])
+})
 
 export const projectCourseOutlineAtom = Atom.family((projectId: string) =>
   runtime

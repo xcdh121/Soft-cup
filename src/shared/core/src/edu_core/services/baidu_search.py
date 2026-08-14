@@ -1,8 +1,13 @@
+import asyncio
+import re
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+
+
+_BILIBILI_BVID_PATTERN = re.compile(r"/video/(BV[0-9A-Za-z]+)", re.IGNORECASE)
 
 
 class BaiduSearchError(RuntimeError):
@@ -72,6 +77,7 @@ class BaiduSearchClient:
         ]
         if not videos:
             raise BaiduSearchError(f"No video results found for '{query}'")
+        videos = await self._replace_baidu_bilibili_thumbnails(videos)
 
         return {
             "query": query,
@@ -79,6 +85,73 @@ class BaiduSearchClient:
             "request_id": data.get("request_id"),
             "videos": videos,
         }
+
+    async def _replace_baidu_bilibili_thumbnails(
+        self, videos: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Replace fragile Baidu cache images with Bilibili's canonical covers."""
+
+        pending: list[tuple[int, str]] = []
+        for index, video in enumerate(videos):
+            page_url = str(video.get("url") or "")
+            page_host = (urlparse(page_url).hostname or "").lower()
+            thumbnail_host = (
+                urlparse(str(video.get("thumbnail_url") or "")).hostname or ""
+            ).lower()
+            bvid_match = _BILIBILI_BVID_PATTERN.search(urlparse(page_url).path)
+            is_bilibili = page_host == "bilibili.com" or page_host.endswith(
+                ".bilibili.com"
+            )
+            is_baidu_cache = (
+                thumbnail_host == "baidu.com"
+                or thumbnail_host.endswith(".baidu.com")
+            )
+            if is_bilibili and bvid_match and (
+                not thumbnail_host or is_baidu_cache
+            ):
+                pending.append((index, bvid_match.group(1)))
+
+        if not pending:
+            return videos
+
+        async with httpx.AsyncClient(
+            timeout=self.config.timeout_seconds,
+            transport=self.transport,
+            follow_redirects=True,
+        ) as client:
+            resolved = await asyncio.gather(
+                *(self._get_bilibili_cover(client, bvid) for _, bvid in pending)
+            )
+
+        enriched = [dict(video) for video in videos]
+        for (index, _), cover_url in zip(pending, resolved, strict=True):
+            # Do not keep a known-fragile Baidu cache URL when metadata lookup
+            # fails; the frontend can then render its intentional placeholder.
+            enriched[index]["thumbnail_url"] = cover_url
+        return enriched
+
+    async def _get_bilibili_cover(
+        self, client: httpx.AsyncClient, bvid: str
+    ) -> str | None:
+        try:
+            response = await client.get(
+                "https://api.bilibili.com/x/web-interface/view",
+                params={"bvid": bvid},
+                headers={
+                    "User-Agent": "Mozilla/5.0",
+                    "Referer": "https://www.bilibili.com/",
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return None
+        return self._normalize_media_url(self._first_string(data.get("pic")))
 
     def _normalize_video(self, item: Any) -> dict[str, Any] | None:
         if not isinstance(item, dict):

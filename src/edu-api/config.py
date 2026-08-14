@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     llm_api_key: str = ""
     llm_base_url: str | None = None
+    # Provider price in CNY per one million tokens. Keep zero when unknown;
+    # token usage is still recorded while estimated cost is shown as unconfigured.
+    llm_input_cost_per_million_cny: float = 0.0
+    llm_output_cost_per_million_cny: float = 0.0
     embedding_provider: str = "openai"
     embedding_model: str = "text-embedding-3-large"
     embedding_api_key: str = ""

@@ -261,12 +261,14 @@ export function BillingPage({ publicMode = false }: { publicMode?: boolean }) {
                   <div className="flex justify-between text-sm">
                     <span>{quotaNames[key] ?? key}</span>
                     <span className="text-muted-foreground">
-                      {item.remaining} / {item.granted}
+                      {item.granted < 0
+                        ? '不限次数'
+                        : `${item.remaining} / ${item.granted}`}
                     </span>
                   </div>
                   <Progress
                     value={
-                      item.granted
+                      item.granted > 0
                         ? ((item.used + item.reserved) / item.granted) * 100
                         : 0
                     }
@@ -312,7 +314,8 @@ export function BillingPage({ publicMode = false }: { publicMode?: boolean }) {
                   .map(([key, value]) => (
                     <li key={key} className="flex gap-2">
                       <Check className="mt-0.5 size-4 text-emerald-600" />
-                      {quotaNames[key] ?? key}：{value}
+                      {quotaNames[key] ?? key}：
+                      {value < 0 ? '不限次数' : value}
                     </li>
                   ))}
               </ul>

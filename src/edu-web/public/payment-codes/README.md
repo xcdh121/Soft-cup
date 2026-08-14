@@ -2,7 +2,7 @@
 
 将本人导出的原始收款码图片放在本目录，并使用以下文件名：
 
-- `wechat.png`：微信收款码
+- `wechat.jpg`：微信收款码
 - `qq.png`：QQ 收款码
 
 本目录默认忽略二维码图片，避免个人收款码被误提交到公开 Git 仓库；部署时请通过私有发布流程复制图片。也可以把图片放在受控对象存储中，并把下方 URL 配置成对应的 HTTPS 地址。
@@ -13,9 +13,11 @@
 BILLING_ENVIRONMENT=competition
 BILLING_MANUAL_PAYMENT_ENABLED=true
 BILLING_MANUAL_PAYMENT_RECIPIENT=你的收款昵称
-BILLING_MANUAL_WECHAT_QR_URL=/payment-codes/wechat.png
+BILLING_MANUAL_WECHAT_QR_URL=/payment-codes/wechat.jpg
 BILLING_MANUAL_QQ_QR_URL=/payment-codes/qq.png
 ```
+
+生产 Docker 构建会将仓库根目录 `payment-codes/` 中的私有发布资产复制到这个公共路径。
 
 只配置实际存在的图片。未配置 URL 的渠道不会显示。
 

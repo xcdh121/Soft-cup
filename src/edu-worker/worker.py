@@ -49,6 +49,8 @@ async def run_task(ctx, message: QueueTaskMessage) -> None:
         llm_model=settings.llm_model,
         llm_api_key=settings.llm_api_key,
         llm_base_url=settings.llm_base_url,
+        llm_input_cost_per_million_cny=settings.llm_input_cost_per_million_cny,
+        llm_output_cost_per_million_cny=settings.llm_output_cost_per_million_cny,
         embedding_provider=settings.embedding_provider,
         embedding_model=settings.embedding_model,
         embedding_api_key=settings.embedding_api_key,

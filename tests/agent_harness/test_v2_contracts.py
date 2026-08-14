@@ -9,11 +9,17 @@ from edu_core.schemas.agent_artifacts import (
     upgrade_legacy_artifact,
 )
 from edu_core.schemas.agent_orchestration import (
+    AgentContextData,
     AgentName,
+    AgentResult,
+    AgentRunContext,
     BudgetPolicy,
     ExecutionPlan,
     PlanNode,
+    RunStatus,
+    SupervisorRunResult,
 )
+from edu_core.services.agent_orchestration import _aggregate_model_usage
 from pydantic import ValidationError
 
 
@@ -82,6 +88,37 @@ class V2ContractTests(unittest.TestCase):
         validated = ArtifactEnvelope[dict].model_validate(wrapped)
         self.assertEqual("2.0", validated.schema_version)
         self.assertTrue(validated.content_hash)
+
+    def test_agent_model_usage_is_aggregated_for_the_run(self):
+        result = SupervisorRunResult(
+            run_id="run-1",
+            status=RunStatus.COMPLETED,
+            context=AgentRunContext(
+                run_id="run-1",
+                project_id="project-1",
+                student_id="user-1",
+                context=AgentContextData(),
+            ),
+            agent_results=[
+                AgentResult(
+                    agent_name=AgentName.PLANNER,
+                    status=RunStatus.COMPLETED,
+                    summary="planned",
+                    model_name="model-a",
+                    input_tokens=120,
+                    output_tokens=45,
+                    estimated_cost_micros=320,
+                )
+            ],
+        )
+
+        usage = _aggregate_model_usage(result)
+
+        self.assertEqual(usage["model_name"], "model-a")
+        self.assertEqual(usage["input_tokens"], 120)
+        self.assertEqual(usage["output_tokens"], 45)
+        self.assertEqual(usage["estimated_cost_micros"], 320)
+        self.assertTrue(usage["token_usage_captured"])
 
 
 if __name__ == "__main__":

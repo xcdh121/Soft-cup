@@ -179,7 +179,7 @@ export function NavProjects() {
           <SidebarMenuItem>
             <SidebarMenuButton disabled>
               <span className="text-sm text-muted-foreground">
-                课程或项目加载失败
+                课程或项目加载失败，请刷新或重新登录
               </span>
             </SidebarMenuButton>
           </SidebarMenuItem>

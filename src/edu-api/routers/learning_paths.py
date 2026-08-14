@@ -8,7 +8,7 @@ from dependencies import (
     get_agent_orchestration_service,
     get_learning_closed_loop_service,
 )
-from edu_core.exceptions import NotFoundError
+from edu_core.exceptions import NotFoundError, UsageLimitExceededError
 from edu_core.schemas.agent_orchestration import (
     LearningPathGenerateRequest,
     LearningPathResponse,
@@ -68,6 +68,8 @@ async def generate_learning_path(
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except UsageLimitExceededError:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -111,6 +113,15 @@ async def generate_learning_path_stream(
                 "status": "completed",
                 "message": "学习计划生成完成。",
                 "result": result.model_dump(mode="json"),
+            }
+            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode()
+        except UsageLimitExceededError as exc:
+            payload = {
+                "event": "failed",
+                "status": "failed",
+                "message": "多智能体运行额度不足，请升级套餐后重试。",
+                "error_code": "quota_exceeded",
+                "error": str(exc),
             }
             yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode()
         except Exception as exc:
