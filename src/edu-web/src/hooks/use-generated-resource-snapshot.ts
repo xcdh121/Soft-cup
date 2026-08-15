@@ -8,7 +8,11 @@ type SnapshotState<T> = {
   checking: boolean
   data: T | null
   status: GeneratedResourceStatus | null
+  timedOut: boolean
 }
+
+const isEmptySnapshot = (data: unknown) =>
+  data == null || (Array.isArray(data) && data.length === 0)
 
 export const useGeneratedResourceSnapshot = <T>({
   projectId,
@@ -16,22 +20,37 @@ export const useGeneratedResourceSnapshot = <T>({
   targetId,
   dataPath,
   intervalMs = 1000,
+  pollWhenEmpty = false,
+  maxPollingMs = 10 * 60 * 1000,
 }: {
   projectId: string
   targetType: GeneratedResourceTarget
   targetId: string
   dataPath: string
   intervalMs?: number
+  /** Poll standalone generated collections that do not own a generated_resources row. */
+  pollWhenEmpty?: boolean
+  /** Stop presenting an endless spinner if a queued task is lost or fails silently. */
+  maxPollingMs?: number
 }) => {
+  const [retryVersion, setRetryVersion] = useState(0)
   const [state, setState] = useState<SnapshotState<T>>({
     checking: true,
     data: null,
     status: null,
+    timedOut: false,
   })
 
   useEffect(() => {
     let cancelled = false
     let timerId: number | undefined
+    const pollingStartedAt = Date.now()
+
+    setState((current) => ({
+      ...current,
+      checking: true,
+      timedOut: false,
+    }))
 
     const poll = async () => {
       let shouldContinue = false
@@ -53,12 +72,24 @@ export const useGeneratedResourceSnapshot = <T>({
             ).status
           : null
         const data = dataResponse.ok ? ((await dataResponse.json()) as T) : null
-        shouldContinue = status === 'pending' || status === 'generating'
-        setState({ checking: false, data, status })
+        const generationIsActive =
+          status === 'pending' || status === 'generating'
+        const standaloneCollectionIsEmpty =
+          status === null && pollWhenEmpty && isEmptySnapshot(data)
+        shouldContinue = generationIsActive || standaloneCollectionIsEmpty
+        const timedOut =
+          shouldContinue && Date.now() - pollingStartedAt >= maxPollingMs
+        if (timedOut) shouldContinue = false
+        setState({ checking: false, data, status, timedOut })
       } catch {
         // Keep the last good snapshot visible and retry managed generations.
-        shouldContinue = true
-        setState((current) => ({ ...current, checking: false }))
+        const timedOut = Date.now() - pollingStartedAt >= maxPollingMs
+        shouldContinue = !timedOut
+        setState((current) => ({
+          ...current,
+          checking: false,
+          timedOut,
+        }))
       } finally {
         if (!cancelled && shouldContinue) {
           timerId = window.setTimeout(poll, intervalMs)
@@ -71,11 +102,28 @@ export const useGeneratedResourceSnapshot = <T>({
       cancelled = true
       if (timerId !== undefined) window.clearTimeout(timerId)
     }
-  }, [dataPath, intervalMs, projectId, targetId, targetType])
+  }, [
+    dataPath,
+    intervalMs,
+    maxPollingMs,
+    pollWhenEmpty,
+    projectId,
+    retryVersion,
+    targetId,
+    targetType,
+  ])
+
+  const inferredStandaloneGeneration =
+    pollWhenEmpty && state.status === null && isEmptySnapshot(state.data)
 
   return {
     ...state,
-    isGenerating: state.status === 'pending' || state.status === 'generating',
+    isGenerating:
+      !state.timedOut &&
+      (state.status === 'pending' ||
+        state.status === 'generating' ||
+        inferredStandaloneGeneration),
     isManaged: state.status !== null,
+    retry: () => setRetryVersion((current) => current + 1),
   }
 }

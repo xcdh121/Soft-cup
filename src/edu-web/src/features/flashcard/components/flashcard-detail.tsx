@@ -2,12 +2,15 @@ import { useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import React, { useCallback, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Option } from 'effect'
-import { Loader2Icon } from 'lucide-react'
+import { Loader2Icon, RefreshCwIcon } from 'lucide-react'
 import { FlashcardContent } from './flashcard-content'
 import type { FlashcardDto } from '@/integrations/api/client'
 import { Response } from '@/components/ai-elements/response'
 import { flashcardDetailRoute } from '@/routes/_config'
-import { refreshFlashcardsAtom } from '@/data-acess/flashcard'
+import {
+  flashcardGroupAtom,
+  refreshFlashcardsAtom,
+} from '@/data-acess/flashcard'
 import { useGeneratedResourceSnapshot } from '@/hooks/use-generated-resource-snapshot'
 import {
   flashcardDetailStateAtom,
@@ -19,6 +22,7 @@ import {
   setShowAnswerAtom,
   submitPendingPracticeRecordsAtom,
 } from '@/features/flashcard/state/flashcard-detail-state'
+import { Button } from '@/components/ui/button'
 
 type Props = React.ComponentProps<'div'> & {
   flashcardGroupId: string
@@ -30,6 +34,13 @@ export const FlashcardDetail = ({ flashcardGroupId, ...props }: Props) => {
   const navigate = useNavigate()
 
   const stateResult = useAtomValue(flashcardDetailStateAtom(flashcardGroupId))
+  const groupResult = useAtomValue(
+    flashcardGroupAtom(`${projectId}:${flashcardGroupId}`),
+  )
+  const groupName =
+    groupResult._tag === 'Success' ? groupResult.value.name || '' : ''
+  const isGeneratedReinforcementGroup =
+    /^(巩固闪卡|reinforcement flashcards)\s*[:：]/i.test(groupName)
 
   const reset = useAtomSet(resetAtom)
   const initializeQueue = useAtomSet(initializeQueueAtom, { mode: 'promise' })
@@ -51,6 +62,7 @@ export const FlashcardDetail = ({ flashcardGroupId, ...props }: Props) => {
     targetType: 'flashcards',
     targetId: flashcardGroupId,
     dataPath: `/api/v1/projects/${projectId}/flashcard-groups/${flashcardGroupId}/flashcards`,
+    pollWhenEmpty: isGeneratedReinforcementGroup,
   })
 
   const handleClose = useCallback(() => {
@@ -152,6 +164,36 @@ export const FlashcardDetail = ({ flashcardGroupId, ...props }: Props) => {
     snapshot.isGenerating ||
     (snapshot.isManaged && !queueIsReady && flashcards.length > 0)
 
+  if (
+    isGeneratedReinforcementGroup &&
+    flashcards.length === 0 &&
+    (snapshot.status === 'failed' || snapshot.timedOut)
+  ) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+        <div className="font-medium">
+          {snapshot.status === 'failed' ? '闪卡生成失败' : '闪卡生成时间较长'}
+        </div>
+        <p className="max-w-md text-sm text-muted-foreground">
+          {snapshot.status === 'failed'
+            ? '本次生成任务未能完成，请返回学习计划重新生成，或稍后重试。'
+            : '任务可能仍在队列中。你可以稍后再来，或立即重新检查生成结果。'}
+        </p>
+        <Button type="button" variant="outline" onClick={snapshot.retry}>
+          <RefreshCwIcon className="size-4" /> 重新检查
+        </Button>
+      </div>
+    )
+  }
+
+  if (!snapshot.checking && !snapshot.isGenerating && flashcards.length === 0) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-muted-foreground">
+        没有可用闪卡
+      </div>
+    )
+  }
+
   if (showIncrementalGeneration) {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
@@ -169,7 +211,10 @@ export const FlashcardDetail = ({ flashcardGroupId, ...props }: Props) => {
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {flashcards.map((card, index) => (
-            <div key={card.id} className="rounded-xl border bg-card p-4 text-card-foreground">
+            <div
+              key={card.id}
+              className="rounded-xl border bg-card p-4 text-card-foreground"
+            >
               <div className="text-xs text-muted-foreground">
                 闪卡 {index + 1}
               </div>

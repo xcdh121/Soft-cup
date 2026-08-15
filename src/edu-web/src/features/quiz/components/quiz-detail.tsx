@@ -1,6 +1,6 @@
 import { useAtomSet, useAtomValue } from '@effect-atom/atom-react'
 import { Option } from 'effect'
-import { Loader2Icon } from 'lucide-react'
+import { Loader2Icon, RefreshCwIcon } from 'lucide-react'
 import React, { useEffect, useRef } from 'react'
 import { QuizContent } from './quiz-content'
 import type { QuizQuestionDto } from '@/integrations/api/client'
@@ -19,6 +19,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useGeneratedResourceSnapshot } from '@/hooks/use-generated-resource-snapshot'
 import { readLearningVerification } from '@/lib/learning-verification-context'
+import { Button } from '@/components/ui/button'
 
 type Props = React.ComponentProps<'div'> & {
   quizId: string
@@ -36,6 +37,9 @@ export const QuizDetail = ({
   )
   const quizResult = useAtomValue(quizAtom(`${projectId}:${quizId}`))
   const stateResult = useAtomValue(quizDetailStateAtom(quizId))
+  const quizName = quizResult._tag === 'Success' ? quizResult.value.name : ''
+  const isGeneratedReinforcementQuiz =
+    /^(巩固选择题|reinforcement quiz)\s*[:：]/i.test(quizName)
   const refreshQuestions = useAtomSet(refreshQuizQuestionsAtom, {
     mode: 'promise',
   })
@@ -44,6 +48,7 @@ export const QuizDetail = ({
     targetType: 'quiz',
     targetId: quizId,
     dataPath: `/api/v1/projects/${projectId}/quizzes/${quizId}/questions`,
+    pollWhenEmpty: isGeneratedReinforcementQuiz,
   })
 
   const setSelectedAnswer = useAtomSet(setSelectedAnswerAtom, {
@@ -53,7 +58,6 @@ export const QuizDetail = ({
   const goToPrevious = useAtomSet(goToPreviousQuestionAtom, { mode: 'promise' })
   const submitQuestion = useAtomSet(submitQuizQuestionAtom, { mode: 'promise' })
   const wasGenerating = useRef(false)
-  const emptyRefreshCount = useRef(0)
   const verificationContext = readLearningVerification(projectId)
 
   // Keyboard shortcuts
@@ -150,35 +154,8 @@ export const QuizDetail = ({
     snapshot.isGenerating,
   ])
 
-  const quizName = quizResult._tag === 'Success' ? quizResult.value.name : ''
-  const isGeneratedReinforcementQuiz =
-    /^(巩固选择题|reinforcement quiz)\s*[:：]/i.test(quizName)
   const isEmpty =
     questionsResult._tag === 'Success' && questionsResult.value.length === 0
-
-  useEffect(() => {
-    if (!isGeneratedReinforcementQuiz || !isEmpty || snapshot.isGenerating) {
-      emptyRefreshCount.current = 0
-      return
-    }
-
-    const timer = window.setInterval(() => {
-      if (emptyRefreshCount.current >= 30) {
-        window.clearInterval(timer)
-        return
-      }
-      emptyRefreshCount.current += 1
-      void refreshQuestions({ projectId, quizId })
-    }, 2000)
-    return () => window.clearInterval(timer)
-  }, [
-    projectId,
-    quizId,
-    isEmpty,
-    isGeneratedReinforcementQuiz,
-    refreshQuestions,
-    snapshot.isGenerating,
-  ])
 
   const loadedQuestionCount =
     questionsResult._tag === 'Success' ? questionsResult.value.length : 0
@@ -186,12 +163,34 @@ export const QuizDetail = ({
   const showIncrementalGeneration =
     snapshot.checking ||
     snapshot.isGenerating ||
-    (isGeneratedReinforcementQuiz &&
-      isEmpty &&
-      emptyRefreshCount.current < 30) ||
     (snapshot.isManaged &&
       snapshotQuestions.length > 0 &&
       loadedQuestionCount < snapshotQuestions.length)
+
+  if (
+    isGeneratedReinforcementQuiz &&
+    isEmpty &&
+    snapshotQuestions.length === 0 &&
+    (snapshot.status === 'failed' || snapshot.timedOut)
+  ) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+        <div className="font-medium">
+          {snapshot.status === 'failed'
+            ? '选择题生成失败'
+            : '选择题生成时间较长'}
+        </div>
+        <p className="max-w-md text-sm text-muted-foreground">
+          {snapshot.status === 'failed'
+            ? '本次生成任务未能完成，请返回学习计划重新生成，或稍后重试。'
+            : '任务可能仍在队列中。你可以稍后再来，或立即重新检查生成结果。'}
+        </p>
+        <Button type="button" variant="outline" onClick={snapshot.retry}>
+          <RefreshCwIcon className="size-4" /> 重新检查
+        </Button>
+      </div>
+    )
+  }
 
   if (showIncrementalGeneration) {
     return (

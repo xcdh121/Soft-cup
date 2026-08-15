@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   getAdjustedOutcomeIds,
+  getRecommendationResourceDestination,
   getRecommendationStage,
   groupInterventionOutcomes,
 } from './study-plan-closed-loop'
@@ -25,6 +26,28 @@ const interaction = (
   reason_code: null,
   occurred_at: '2026-08-08T08:00:00Z',
   metadata: {},
+})
+
+describe('getRecommendationResourceDestination', () => {
+  it('opens every generated recommendation on its real detail page', () => {
+    expect(getRecommendationResourceDestination('quiz', 'quiz-1')).toBe('quiz')
+    expect(getRecommendationResourceDestination('flashcards', 'cards-1')).toBe(
+      'flashcards',
+    )
+    expect(getRecommendationResourceDestination('note', 'note-1')).toBe('note')
+    expect(getRecommendationResourceDestination('mind_map', 'map-1')).toBe(
+      'mind_map',
+    )
+  })
+
+  it('uses actionable fallbacks only when there is no direct target', () => {
+    expect(getRecommendationResourceDestination('practice', 'kp-1')).toBe(
+      'practice',
+    )
+    expect(getRecommendationResourceDestination('note', null)).toBe(
+      'resource_packages',
+    )
+  })
 })
 
 describe('getRecommendationStage', () => {

@@ -198,6 +198,31 @@ const toNumber = (value: unknown): number | null =>
 const percent = (value: number | null | undefined) =>
   value == null ? '—' : `${Math.round(value * 100)}%`
 
+export type RecommendationResourceDestination =
+  | 'quiz'
+  | 'flashcards'
+  | 'note'
+  | 'mind_map'
+  | 'practice'
+  | 'resource_packages'
+
+export const getRecommendationResourceDestination = (
+  recommendationType: string,
+  targetId: string | null | undefined,
+): RecommendationResourceDestination => {
+  if (targetId && recommendationType === 'quiz') return 'quiz'
+  if (
+    targetId &&
+    (recommendationType === 'flashcard' || recommendationType === 'flashcards')
+  ) {
+    return 'flashcards'
+  }
+  if (targetId && recommendationType === 'note') return 'note'
+  if (targetId && recommendationType === 'mind_map') return 'mind_map'
+  if (recommendationType === 'practice') return 'practice'
+  return 'resource_packages'
+}
+
 const RecommendationResourceLink = ({
   projectId,
   recommendation,
@@ -209,12 +234,13 @@ const RecommendationResourceLink = ({
 }) => {
   const targetId = recommendation.target_id
   const type = recommendation.recommendation_type
-  if (targetId && type === 'quiz') {
+  const destination = getRecommendationResourceDestination(type, targetId)
+  if (destination === 'quiz') {
     return (
       <Button size="sm" variant="outline" asChild>
         <Link
           to="/dashboard/p/$projectId/q/$quizId"
-          params={{ projectId, quizId: targetId }}
+          params={{ projectId, quizId: targetId! }}
           onClick={onOpen}
         >
           打开推荐题目 <ArrowUpRight className="size-3.5" />
@@ -222,15 +248,54 @@ const RecommendationResourceLink = ({
       </Button>
     )
   }
-  if (targetId && (type === 'flashcard' || type === 'flashcards')) {
+  if (destination === 'flashcards') {
     return (
       <Button size="sm" variant="outline" asChild>
         <Link
           to="/dashboard/p/$projectId/f/$flashcardGroupId"
-          params={{ projectId, flashcardGroupId: targetId }}
+          params={{ projectId, flashcardGroupId: targetId! }}
           onClick={onOpen}
         >
           打开推荐闪卡 <ArrowUpRight className="size-3.5" />
+        </Link>
+      </Button>
+    )
+  }
+  if (destination === 'note') {
+    return (
+      <Button size="sm" variant="outline" asChild>
+        <Link
+          to="/dashboard/p/$projectId/n/$noteId"
+          params={{ projectId, noteId: targetId! }}
+          onClick={onOpen}
+        >
+          打开巩固笔记 <ArrowUpRight className="size-3.5" />
+        </Link>
+      </Button>
+    )
+  }
+  if (destination === 'mind_map') {
+    return (
+      <Button size="sm" variant="outline" asChild>
+        <Link
+          to="/dashboard/p/$projectId/m/$mindMapId"
+          params={{ projectId, mindMapId: targetId! }}
+          onClick={onOpen}
+        >
+          打开知识导图 <ArrowUpRight className="size-3.5" />
+        </Link>
+      </Button>
+    )
+  }
+  if (destination === 'practice') {
+    return (
+      <Button size="sm" variant="outline" asChild>
+        <Link
+          to="/dashboard/p/$projectId/learning-evaluation/practice"
+          params={{ projectId }}
+          onClick={onOpen}
+        >
+          开始专项练习 <ArrowUpRight className="size-3.5" />
         </Link>
       </Button>
     )
