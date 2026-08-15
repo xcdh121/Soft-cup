@@ -478,6 +478,10 @@ export class ChatCompletionRequest extends S.Class<ChatCompletionRequest>(
   'ChatCompletionRequest',
 )({
   parts: S.Array(S.Union(TextPart, FilePart)),
+  web_search: S.optionalWith(S.Boolean, {
+    nullable: true,
+    default: () => false as const,
+  }),
 }) {}
 
 export class SendStreamingMessageApiV1ProjectsProjectIdChatsChatIdMessagesStreamPost200 extends S.Struct(

@@ -1,8 +1,10 @@
+import asyncio
 import unittest
 from contextlib import ExitStack
+from datetime import datetime
 from unittest.mock import patch
 
-from edu_core.schemas.chats import TextPartDto, ToolCallPartDto
+from edu_core.schemas.chats import ChatMessageDto, TextPartDto, ToolCallPartDto
 from edu_core.services.chats import ChatService
 from edu_core.services.resource_packages import ResourcePackageService
 from edu_core.services.search import SearchService
@@ -180,6 +182,105 @@ class ChatSourcesAndNotePackagesTests(unittest.TestCase):
             )
 
         self.assertIsNone(duplicate_part)
+
+    def test_web_source_keeps_external_url_without_document_route(self):
+        service = ChatService.__new__(ChatService)
+        web_source = {
+            "id": "https://www.moe.gov.cn/example",
+            "title": "教育部人工智能教育指南",
+            "url": "https://www.moe.gov.cn/example",
+            "source": "moe.gov.cn",
+            "published_at": "2026-08-01",
+            "provider": "baidu_ai_search",
+        }
+
+        with self.session_factory() as db:
+            part = service._create_source_document_part(web_source, db, set(), 0)
+
+        self.assertIsNotNone(part)
+        self.assertEqual(part.source_id, web_source["url"])
+        self.assertEqual(part.media_type, "text/html")
+        self.assertEqual(part.provider_metadata["url"], web_source["url"])
+        self.assertEqual(part.provider_metadata["provider"], "baidu_ai_search")
+        self.assertNotIn("document_id", part.provider_metadata)
+
+    def test_enabled_web_search_is_run_before_tutor_generation(self):
+        captured: dict = {}
+
+        class FakeWebSearchClient:
+            is_enabled = True
+
+            async def search_web(self, query: str):
+                captured["query"] = query
+                return {
+                    "provider": "baidu_ai_search",
+                    "results": [
+                        {
+                            "id": "https://www.moe.gov.cn/guide",
+                            "title": "人工智能教育指南",
+                            "url": "https://www.moe.gov.cn/guide",
+                            "snippet": "文章会生成图片来图解图论知识点。",
+                            "source": "moe.gov.cn",
+                            "published_at": "2026-08-01",
+                        }
+                    ],
+                }
+
+        class FakeChatbot:
+            async def astream(self, state, **kwargs):
+                captured["state"] = state
+                captured["context"] = kwargs["context"]
+                if False:
+                    yield None
+
+        service = ChatService.__new__(ChatService)
+        service.web_search_client = FakeWebSearchClient()
+        service.search_service = None
+        service.usage_service = None
+        service._queue_service = None
+        service.llm_non_streaming = None
+        service.resource_package_service = None
+        service.learning_path_service = None
+        service.chatbot = FakeChatbot()
+        message = ChatMessageDto(
+            id="message-1",
+            chat_id="chat-1",
+            role="user",
+            created_at=datetime.now(),
+            parts=[TextPartDto(text_content="请讲解图论知识点")],
+        )
+
+        async def collect(db):
+            return [
+                chunk
+                async for chunk in service._get_response_stream(
+                    query="请讲解图论知识点",
+                    messages=[message],
+                    project_id="project-1",
+                    language_code="zh",
+                    user_id="user-1",
+                    assistant_message_id="assistant-1",
+                    db_session=db,
+                    web_search_enabled=True,
+                )
+            ]
+
+        with self.session_factory() as db:
+            chunks = asyncio.run(collect(db))
+
+        self.assertEqual(captured["query"], "请讲解图论知识点")
+        self.assertEqual(chunks[0].parts[0].source_id, "https://www.moe.gov.cn/guide")
+        self.assertEqual(
+            chunks[0].parts[0].provider_metadata["url"],
+            "https://www.moe.gov.cn/guide",
+        )
+        latest_content = captured["state"]["messages"][-1]["content"]
+        self.assertEqual(latest_content[-1]["text"], "请讲解图论知识点")
+        self.assertIn(
+            "生成图片来图解图论知识点",
+            captured["context"].web_search_context,
+        )
+        self.assertFalse(captured["context"].web_search_enabled)
 
     def test_tool_snapshot_does_not_resend_accumulated_text_as_delta(self):
         parts = [

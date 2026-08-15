@@ -84,9 +84,14 @@ describe('KnowledgeGraphCanvas', () => {
 
     const panel = getByTestId('knowledge-point-detail-panel')
     expect(panel.className).toContain('h-full')
+    expect(panel.className).toContain('w-full')
     expect(panel.className).toContain('overflow-y-auto')
     expect(panel.className).toContain('overscroll-contain')
     expect(panel.textContent).toContain('第 8 次状态更新')
+
+    const panelViewport = panel.parentElement
+    expect(panelViewport?.getAttribute('width')).toBe('480')
+    expect(panelViewport?.getAttribute('height')).toBe('580')
 
     expect(() => fireEvent.wheel(panel, { deltaY: 120 })).not.toThrow()
   })

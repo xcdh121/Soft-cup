@@ -3,6 +3,7 @@
 import { Registry, Result } from '@effect-atom/atom-react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  buildChatStreamRequestBody,
   chatAtom,
   chatRuntimeEventsAtom,
   chatStreamStatusAtom,
@@ -15,6 +16,17 @@ afterEach(() => {
 })
 
 describe('chat streaming state lifecycle', () => {
+  it('includes the web search choice in the stream request', () => {
+    expect(buildChatStreamRequestBody([], true)).toEqual({
+      parts: [],
+      web_search: true,
+    })
+    expect(buildChatStreamRequestBody([])).toEqual({
+      parts: [],
+      web_search: false,
+    })
+  })
+
   it('keeps per-chat state alive while its page is unmounted', () => {
     expect(chatAtom('project-1:chat-1').keepAlive).toBe(true)
     expect(chatStreamStatusAtom('chat-1').keepAlive).toBe(true)
@@ -99,6 +111,7 @@ describe('chat streaming state lifecycle', () => {
       projectId: 'project-1',
       chatId: 'chat-1',
       message: makeUserMessage('chat-1', 'first question'),
+      webSearch: true,
     })
     await chat1Ready
 

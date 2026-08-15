@@ -88,6 +88,12 @@ class ChatbotImageGenerationRoutingTests(unittest.TestCase):
             )
         )
 
+    def test_graph_theory_explanation_does_not_trigger_image_generation(self):
+        messages = [HumanMessage(content="请讲解图论知识点")]
+
+        self.assertFalse(should_force_image_generation(messages))
+        self.assertIsNone(resolve_forced_resource_generation(messages))
+
     def test_affirmative_reply_after_programming_offer_is_forced(self):
         messages = [
             AIMessage(content="要不要为递归生成一套编程题?"),

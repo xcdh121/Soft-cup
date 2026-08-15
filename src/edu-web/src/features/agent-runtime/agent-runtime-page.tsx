@@ -199,16 +199,6 @@ export function AgentRuntimePage() {
       </header>
 
       <main className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
-        <section className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-5">
-          <h2 className="font-semibold">这里不是新的学习模块，而是 AI 执行记录</h2>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
-            选择一个学习目标后，系统会创建真实的多智能体任务。你可以查看画像、知识追踪、诊断、资源和规划等节点如何协作，以及证据、耗时、模型 Token、失败兜底和重试情况。
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            多智能体完整运行不限制次数；模型 Token 与耗时仍会按次记录，方便核对执行成本和效果。
-          </p>
-        </section>
-
         <section className="rounded-2xl border bg-card p-5 shadow-sm">
           <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
             <label className="space-y-1 text-sm">

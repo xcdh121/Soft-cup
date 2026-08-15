@@ -226,6 +226,11 @@ export type ChatRuntimeEvent = {
   sequence: number
 }
 
+export const buildChatStreamRequestBody = (
+  parts: ReadonlyArray<unknown>,
+  webSearch = false,
+) => ({ parts, web_search: Boolean(webSearch) })
+
 export const chatRuntimeEventsAtom = Atom.family((_chatId: string) =>
   Atom.make<Array<ChatRuntimeEvent>>([]).pipe(Atom.keepAlive),
 )
@@ -434,6 +439,7 @@ export const streamMessageAtom = Atom.family((_chatId: string) =>
           message: ChatMessageDto
           projectId: string
           chatId: string
+          webSearch?: boolean
         },
         get: Atom.FnContext,
       ) {
@@ -478,7 +484,9 @@ export const streamMessageAtom = Atom.family((_chatId: string) =>
           return part
         })
 
-        const body = HttpBody.unsafeJson({ parts: apiParts })
+        const body = HttpBody.unsafeJson(
+          buildChatStreamRequestBody(apiParts, input.webSearch),
+        )
         const resp = yield* httpClient
           .post(
             `/api/v1/projects/${input.projectId}/chats/${input.chatId}/messages/stream`,

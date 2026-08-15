@@ -271,6 +271,7 @@ class FilePart(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     parts: list[Union[TextPart, FilePart]]
+    web_search: bool = False
 
 
 class FlashcardCreate(BaseModel):

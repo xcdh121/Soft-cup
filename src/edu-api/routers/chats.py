@@ -398,7 +398,10 @@ async def send_streaming_message(
     async def generate_stream() -> AsyncGenerator[bytes]:
         """Generate streaming response chunks - each part as a separate SSE event"""
         async for part_event in chat_service.stream_chat_events(
-            chat_id, user_id, processed_parts
+            chat_id,
+            user_id,
+            processed_parts,
+            web_search_enabled=body.web_search,
         ):
             part_json = part_event.model_dump_json()
             yield f"data: {part_json}\n\n".encode()

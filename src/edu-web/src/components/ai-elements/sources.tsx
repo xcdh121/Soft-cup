@@ -34,7 +34,7 @@ export const SourcesTrigger = ({
   >
     {children ?? (
       <>
-        <p className="font-medium">使用了 {count} 个来源</p>
+        <p className="font-medium">搜索来源（{count}）</p>
         <ChevronDownIcon className="h-4 w-4" />
       </>
     )}
@@ -61,7 +61,7 @@ export type SourceProps = ComponentProps<'a'>
 
 export const Source = ({ href, title, children, ...props }: SourceProps) => (
   <a
-    className="flex items-center gap-2"
+    className="flex items-center gap-2 hover:underline"
     href={href}
     rel="noreferrer"
     target="_blank"

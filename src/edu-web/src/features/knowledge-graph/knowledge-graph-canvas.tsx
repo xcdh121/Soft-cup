@@ -47,8 +47,8 @@ type LayoutLink = SimulationLinkDatum<LayoutNode> & {
   strength: number
 }
 
-const DETAIL_PANEL_WIDTH = 440
-const DETAIL_PANEL_HEIGHT = 520
+const DETAIL_PANEL_WIDTH = 480
+const DETAIL_PANEL_HEIGHT = 580
 
 export const KNOWLEDGE_STATUS_OPTIONS = [
   {
@@ -333,10 +333,24 @@ export function KnowledgeGraphCanvas({
       }
     : null
   const detailPanelX = selectedViewportPoint
-    ? selectedViewportPoint.x + DETAIL_PANEL_WIDTH + 48 <=
-      viewBoxRect.x + viewBoxRect.width
-      ? selectedViewportPoint.x + 32
-      : selectedViewportPoint.x - DETAIL_PANEL_WIDTH - 32
+    ? (() => {
+        const panelGap = 32
+        const panelMargin = 16
+        const minX = viewBoxRect.x + panelMargin
+        const maxX =
+          viewBoxRect.x + viewBoxRect.width - DETAIL_PANEL_WIDTH - panelMargin
+        const rightX = selectedViewportPoint.x + panelGap
+        const leftX = selectedViewportPoint.x - DETAIL_PANEL_WIDTH - panelGap
+        const fitsRight = rightX <= maxX
+        const fitsLeft = leftX >= minX
+        const rightSpace =
+          viewBoxRect.x + viewBoxRect.width - selectedViewportPoint.x
+        const leftSpace = selectedViewportPoint.x - viewBoxRect.x
+        const preferredX =
+          fitsRight || (!fitsLeft && rightSpace >= leftSpace) ? rightX : leftX
+
+        return clamp(preferredX, minX, maxX)
+      })()
     : 0
   const detailPanelY = selectedViewportPoint
     ? clamp(
@@ -618,7 +632,7 @@ export function KnowledgeGraphCanvas({
           >
             <div
               aria-label={`${selectedNode.label}知识点详情`}
-              className="pointer-events-auto h-full w-[428px] overflow-y-auto overscroll-contain rounded-lg border border-[#7DA0CA]/40 bg-[#052659]/95 p-5 font-sans text-sm text-[#C1E8FF] shadow-2xl shadow-[#021024]/50 backdrop-blur"
+              className="pointer-events-auto h-full w-full overflow-y-auto overscroll-contain rounded-lg border border-[#7DA0CA]/40 bg-[#052659]/95 p-6 font-sans text-sm text-[#C1E8FF] shadow-2xl shadow-[#021024]/50 backdrop-blur"
               data-testid="knowledge-point-detail-panel"
               role="region"
               onPointerDown={(event) => event.stopPropagation()}

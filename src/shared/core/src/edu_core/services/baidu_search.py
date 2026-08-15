@@ -6,7 +6,6 @@ from urllib.parse import urlparse
 
 import httpx
 
-
 _BILIBILI_BVID_PATTERN = re.compile(r"/video/(BV[0-9A-Za-z]+)", re.IGNORECASE)
 
 
@@ -19,7 +18,9 @@ class BaiduSearchConfig:
     api_key: str = ""
     base_url: str = "https://qianfan.baidubce.com"
     video_top_k: int = 6
+    web_top_k: int = 5
     sites: tuple[str, ...] = ()
+    safe_search: bool = True
     timeout_seconds: float = 15.0
 
 
@@ -38,19 +39,79 @@ class BaiduSearchClient:
         return bool(self.config.api_key.strip())
 
     async def search_videos(self, query: str) -> dict[str, Any]:
+        data, references = await self._search(
+            query,
+            resource_type="video",
+            top_k=max(1, min(self.config.video_top_k, 10)),
+            sites=self.config.sites,
+        )
+
+        videos = [
+            video for item in references if (video := self._normalize_video(item))
+        ]
+        if not videos:
+            raise BaiduSearchError(f"No video results found for '{query}'")
+        videos = await self._replace_baidu_bilibili_thumbnails(videos)
+
+        return {
+            "query": query,
+            "provider": "baidu_ai_search",
+            "request_id": data.get("request_id"),
+            "videos": videos,
+        }
+
+    async def search_web(
+        self,
+        query: str,
+        *,
+        recency: str | None = None,
+    ) -> dict[str, Any]:
+        """Search public webpages and return normalized, model-ready snippets."""
+        supported_recency = {"week", "month", "semiyear", "year"}
+        normalized_recency = recency if recency in supported_recency else None
+        data, references = await self._search(
+            query,
+            resource_type="web",
+            top_k=max(1, min(self.config.web_top_k, 20)),
+            recency=normalized_recency,
+        )
+        results = [
+            result for item in references if (result := self._normalize_web(item))
+        ]
+        if not results:
+            raise BaiduSearchError(f"No web results found for '{query}'")
+        return {
+            "query": query,
+            "provider": "baidu_ai_search",
+            "request_id": data.get("request_id"),
+            "results": results,
+        }
+
+    async def _search(
+        self,
+        query: str,
+        *,
+        resource_type: str,
+        top_k: int,
+        sites: tuple[str, ...] = (),
+        recency: str | None = None,
+    ) -> tuple[dict[str, Any], list[Any]]:
         if not self.is_enabled:
             raise BaiduSearchError("Baidu AI Search is not configured")
+        if not query.strip():
+            raise BaiduSearchError("Baidu AI Search query cannot be empty")
 
         payload: dict[str, Any] = {
-            "messages": [{"content": query, "role": "user"}],
+            "messages": [{"content": query.strip(), "role": "user"}],
             "edition": "lite",
             "search_source": "baidu_search_v2",
-            "resource_type_filter": [
-                {"type": "video", "top_k": max(1, min(self.config.video_top_k, 10))}
-            ],
+            "resource_type_filter": [{"type": resource_type, "top_k": top_k}],
+            "safe_search": self.config.safe_search,
         }
-        if self.config.sites:
-            payload["search_filter"] = {"match": {"site": list(self.config.sites)}}
+        if sites:
+            payload["search_filter"] = {"match": {"site": list(sites)}}
+        if recency:
+            payload["search_recency_filter"] = recency
 
         endpoint = f"{self.config.base_url.rstrip('/')}/v2/ai_search/web_search"
         headers = {
@@ -71,20 +132,7 @@ class BaiduSearchClient:
         references = data.get("references")
         if not isinstance(references, list):
             raise BaiduSearchError("Baidu AI Search returned an invalid response")
-
-        videos = [
-            video for item in references if (video := self._normalize_video(item))
-        ]
-        if not videos:
-            raise BaiduSearchError(f"No video results found for '{query}'")
-        videos = await self._replace_baidu_bilibili_thumbnails(videos)
-
-        return {
-            "query": query,
-            "provider": "baidu_ai_search",
-            "request_id": data.get("request_id"),
-            "videos": videos,
-        }
+        return data, references
 
     async def _replace_baidu_bilibili_thumbnails(
         self, videos: list[dict[str, Any]]
@@ -194,6 +242,30 @@ class BaiduSearchClient:
             "source": urlparse(url).netloc.removeprefix("www."),
             "published_at": self._first_string(item.get("date"), video.get("date")),
             "duration": self._format_duration(video.get("duration")),
+        }
+
+    def _normalize_web(self, item: Any) -> dict[str, Any] | None:
+        if not isinstance(item, dict):
+            return None
+        url = self._first_string(item.get("url"))
+        parsed_url = urlparse(url or "")
+        if not url or parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            return None
+        title = self._first_string(item.get("title"), item.get("web_anchor"))
+        snippet = self._first_string(
+            item.get("content"),
+            item.get("summary"),
+            item.get("snippet"),
+        )
+        return {
+            "id": url,
+            "title": title or url,
+            "url": url,
+            "snippet": snippet or "",
+            "source": parsed_url.netloc.removeprefix("www."),
+            "published_at": self._first_string(
+                item.get("date"), item.get("published_at")
+            ),
         }
 
     @staticmethod

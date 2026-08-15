@@ -12,6 +12,9 @@ class ChatbotContext(BaseModel):
     language: str
     project_id: str
     search: Any
+    web_search: Any = None
+    web_search_enabled: bool = False
+    web_search_context: str = ""
     queue: Any
     usage: object = (
         None  # Optional usage service (can be None or any usage service type)

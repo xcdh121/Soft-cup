@@ -2,12 +2,89 @@ import json
 import unittest
 
 import httpx
-
 from edu_core.services.baidu_search import BaiduSearchClient, BaiduSearchConfig
+from edu_core.services.chats import ChatService
 from edu_core.services.resource_packages import ResourcePackageService
 
 
 class BaiduSearchClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_chat_prefetches_web_results_for_deterministic_grounding(self):
+        class FakeBaiduSearchClient:
+            is_enabled = True
+
+            async def search_web(self, query: str):
+                self.query = query
+                return {
+                    "provider": "baidu_ai_search",
+                    "results": [
+                        {
+                            "id": "https://www.moe.gov.cn/guide",
+                            "title": "人工智能教育指南",
+                            "url": "https://www.moe.gov.cn/guide",
+                            "snippet": "指南强调人工智能通识教育。",
+                            "source": "moe.gov.cn",
+                            "published_at": "2026-08-01",
+                        }
+                    ],
+                }
+
+        client = FakeBaiduSearchClient()
+        service = ChatService.__new__(ChatService)
+        service.web_search_client = client
+
+        sources, context = await service._prefetch_web_search("人工智能教育")
+
+        self.assertEqual(client.query, "人工智能教育")
+        self.assertEqual(sources[0]["url"], "https://www.moe.gov.cn/guide")
+        self.assertIn("指南强调人工智能通识教育", context)
+        self.assertIn("引用对应网址", context)
+
+    async def test_search_web_builds_request_and_normalizes_sources(self):
+        captured: dict = {}
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "request_id": "web-request-1",
+                    "references": [
+                        {
+                            "title": "教育部发布人工智能教育指南",
+                            "content": "指南提出加强人工智能通识教育。",
+                            "date": "2026-08-01",
+                            "url": "https://www.moe.gov.cn/example",
+                        },
+                        {
+                            "title": "Unsafe result",
+                            "content": "must be ignored",
+                            "url": "javascript:alert(1)",
+                        },
+                    ],
+                },
+            )
+
+        client = BaiduSearchClient(
+            BaiduSearchConfig(api_key="secret-key", web_top_k=5),
+            transport=httpx.MockTransport(handler),
+        )
+
+        result = await client.search_web("人工智能教育政策", recency="month")
+
+        self.assertEqual(
+            captured["body"]["resource_type_filter"],
+            [{"type": "web", "top_k": 5}],
+        )
+        self.assertEqual(captured["body"]["search_recency_filter"], "month")
+        self.assertTrue(captured["body"]["safe_search"])
+        self.assertNotIn("search_filter", captured["body"])
+        self.assertEqual(len(result["results"]), 1)
+        self.assertEqual(result["results"][0]["source"], "moe.gov.cn")
+        self.assertEqual(
+            result["results"][0]["snippet"],
+            "指南提出加强人工智能通识教育。",
+        )
+
     async def test_search_videos_builds_documented_request_and_normalizes_results(self):
         captured: dict = {}
 

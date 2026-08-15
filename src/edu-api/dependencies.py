@@ -64,6 +64,27 @@ def get_search_service(
     )
 
 
+def get_baidu_search_client(
+    settings: Settings = Depends(get_settings_dep),
+) -> BaiduSearchClient:
+    """Build the shared Baidu client used by tutor web search and video search."""
+    return BaiduSearchClient(
+        BaiduSearchConfig(
+            api_key=settings.baidu_search_api_key,
+            base_url=settings.baidu_search_base_url,
+            video_top_k=settings.baidu_search_video_top_k,
+            web_top_k=settings.baidu_search_web_top_k,
+            sites=tuple(
+                site.strip()
+                for site in settings.baidu_search_sites.split(",")
+                if site.strip()
+            ),
+            safe_search=settings.baidu_search_safe_search,
+            timeout_seconds=settings.baidu_search_timeout_seconds,
+        )
+    )
+
+
 def get_task_runner(
     settings: Settings = Depends(get_settings_dep),
     search_service: SearchService = Depends(get_search_service),
@@ -223,6 +244,7 @@ def get_resource_package_service(
     settings: Settings = Depends(get_settings_dep),
     task_runner: TaskRunnerService = Depends(get_task_runner),
     queue_service: QueueService | ArqQueueService = Depends(get_queue_service),
+    baidu_search_client: BaiduSearchClient = Depends(get_baidu_search_client),
     agent_orchestration_service: AgentOrchestrationService = Depends(
         get_agent_orchestration_service
     ),
@@ -264,19 +286,7 @@ def get_resource_package_service(
                 poll_timeout_seconds=settings.xfyun_ppt_poll_timeout_seconds,
             )
         ),
-        baidu_search_client=BaiduSearchClient(
-            BaiduSearchConfig(
-                api_key=settings.baidu_search_api_key,
-                base_url=settings.baidu_search_base_url,
-                video_top_k=settings.baidu_search_video_top_k,
-                sites=tuple(
-                    site.strip()
-                    for site in settings.baidu_search_sites.split(",")
-                    if site.strip()
-                ),
-                timeout_seconds=settings.baidu_search_timeout_seconds,
-            )
-        ),
+        baidu_search_client=baidu_search_client,
         llm_config=LlmProviderConfig(
             model=settings.llm_model,
             api_key=settings.llm_api_key,
@@ -300,6 +310,7 @@ def get_chat_service(
     usage_service: UsageService = Depends(get_usage_service),
     queue_service: QueueService = Depends(get_queue_service),
     search_service: SearchService = Depends(get_search_service),
+    baidu_search_client: BaiduSearchClient = Depends(get_baidu_search_client),
     resource_package_service: ResourcePackageService = Depends(
         get_resource_package_service
     ),
@@ -310,6 +321,7 @@ def get_chat_service(
     """Get ChatService instance."""
     return ChatService(
         search_service=search_service,
+        web_search_client=baidu_search_client,
         llm_model=settings.llm_model,
         llm_api_key=settings.llm_api_key,
         llm_base_url=settings.llm_base_url,
@@ -364,6 +376,7 @@ def get_chat_service_with_streaming(
     settings: Settings = Depends(get_settings_dep),
     usage_service: UsageService = Depends(get_usage_service),
     queue_service: QueueService = Depends(get_queue_service),
+    baidu_search_client: BaiduSearchClient = Depends(get_baidu_search_client),
     resource_package_service: ResourcePackageService = Depends(
         get_resource_package_service
     ),
@@ -374,6 +387,7 @@ def get_chat_service_with_streaming(
     """Get ChatService instance configured for streaming with SearchService."""
     return ChatService(
         search_service=search_service,
+        web_search_client=baidu_search_client,
         llm_model=settings.llm_model,
         llm_api_key=settings.llm_api_key,
         llm_base_url=settings.llm_base_url,

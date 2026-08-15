@@ -624,6 +624,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
         message: userMessage,
         projectId,
         chatId,
+        webSearch,
       })
 
       setInput('')
@@ -734,20 +735,28 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                           <SourcesTrigger count={sourceDocuments.length} />
                           <SourcesContent>
                             {sourceDocuments.map((sourceDoc, index) => {
-                              const documentUrl = sourceDoc.provider_metadata
-                                ?.document_id
-                                ? `/dashboard/p/${projectId}/d/${sourceDoc.provider_metadata.document_id}`
-                                : `#${sourceDoc.source_id}`
+                              const externalUrl =
+                                typeof sourceDoc.provider_metadata?.url ===
+                                'string'
+                                  ? sourceDoc.provider_metadata.url
+                                  : null
+                              const documentUrl = externalUrl
+                                ? externalUrl
+                                : sourceDoc.provider_metadata?.document_id
+                                  ? `/dashboard/p/${projectId}/d/${sourceDoc.provider_metadata.document_id}`
+                                  : `#${sourceDoc.source_id}`
 
                               return (
                                 <Source
                                   key={`${message.id}-source-${index}`}
                                   href={documentUrl}
-                                  title={
-                                    sourceDoc.title ||
-                                    sourceDoc.filename ||
-                                    'Document'
-                                  }
+                                  title={`${sourceDoc.title || sourceDoc.filename || 'Document'}${
+                                    externalUrl &&
+                                    typeof sourceDoc.provider_metadata
+                                      ?.source === 'string'
+                                      ? ` · ${sourceDoc.provider_metadata.source}`
+                                      : ''
+                                  }`}
                                 />
                               )
                             })}
@@ -930,9 +939,11 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
                 <PromptInputButton
                   variant={webSearch ? 'default' : 'ghost'}
                   onClick={() => setWebSearch(!webSearch)}
+                  aria-pressed={webSearch}
+                  aria-label="联网搜索"
                 >
                   <GlobeIcon size={16} />
-                  <span>Search</span>
+                  <span>联网搜索</span>
                 </PromptInputButton>
                 <PromptInputSpeechButton
                   aria-label="中文语音输入"

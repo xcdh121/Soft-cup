@@ -132,7 +132,9 @@ class Settings(BaseSettings):
     baidu_search_api_key: str = ""
     baidu_search_base_url: str = "https://qianfan.baidubce.com"
     baidu_search_video_top_k: int = 6
+    baidu_search_web_top_k: int = 5
     baidu_search_sites: str = "bilibili.com"
+    baidu_search_safe_search: bool = True
     baidu_search_timeout_seconds: float = 15.0
 
     # Sandboxed code execution (Piston-compatible POST /api/v2/execute endpoint)
