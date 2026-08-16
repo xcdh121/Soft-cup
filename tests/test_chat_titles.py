@@ -188,6 +188,25 @@ class ChatTitleTests(unittest.IsolatedAsyncioTestCase):
         with self.session_factory() as db:
             self.assertEqual(db.get(Chat, "chat-3").title, "我的自定义标题")
 
+    async def test_quiz_worker_consumes_incremental_stream(self):
+        runner = TaskRunnerService.__new__(TaskRunnerService)
+        observed = []
+
+        async def stream_quiz(payload):
+            observed.append(("started", payload["quiz_id"]))
+            yield {"event": "quiz_question_created", "position": 0}
+            observed.append(("completed", payload["quiz_id"]))
+
+        runner.stream_quiz = stream_quiz
+        await runner._run_quiz(
+            {"project_id": "project-1", "quiz_id": "quiz-1", "count": 5}
+        )
+
+        self.assertEqual(
+            observed,
+            [("started", "quiz-1"), ("completed", "quiz-1")],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

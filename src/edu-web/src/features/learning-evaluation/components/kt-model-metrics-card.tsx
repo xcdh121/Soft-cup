@@ -43,9 +43,9 @@ export const KTModelMetricsCard = ({ projectId }: { projectId: string }) => {
               <BrainCircuit className="size-5 text-primary" />
               专家参数 BKT 模型验证
             </CardTitle>
-            <CardDescription className="mt-1">
+            {/* <CardDescription className="mt-1">
               使用真实学习事件评估下一题预测、知识点映射覆盖率和证据充分程度。
-            </CardDescription>
+            </CardDescription> */}
           </div>
           <Badge variant="outline">{metrics.event_count} 条有效事件</Badge>
         </div>
@@ -125,7 +125,7 @@ export const KTModelMetricsCard = ({ projectId }: { projectId: string }) => {
             <span className="font-semibold">
               {Math.abs(metrics.brier_score_improvement).toFixed(3)}
             </span>
-            。该结果用于影子运行对照，不代表参数来自离线训练。
+            。
           </div>
         )}
       </CardContent>

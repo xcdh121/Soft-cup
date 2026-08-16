@@ -446,7 +446,6 @@ export const Chatbot: React.FC<ChatbotProps> = ({ chatId, projectId }) => {
         progress: 5,
         state: 'active',
       })
-      toast.info('正在识别 PDF，完成后将自动发送给 AI 导师')
     } else {
       setPdfUploadProgress(null)
     }

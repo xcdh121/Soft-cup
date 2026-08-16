@@ -45,6 +45,11 @@ _AFFIRMATIVE_REPLIES = {
     "please do",
 }
 
+_HIDDEN_ATTACHMENT_CONTEXT_PREFIXES = (
+    "[pdf识别上下文:",
+    "[图片理解上下文:",
+)
+
 _PROGRAMMING_TERMS = (
     "编程题",
     "代码题",
@@ -84,16 +89,20 @@ def _message_text(message: Any) -> str:
         else getattr(message, "content", "")
     )
     if isinstance(content, str):
+        if content.strip().lower().startswith(_HIDDEN_ATTACHMENT_CONTEXT_PREFIXES):
+            return ""
         return content.strip().lower()
     if isinstance(content, list):
         return (
             " ".join(
-                str(item.get("text") or "")
+                text
                 for item in content
                 if isinstance(item, dict)
+                and not (text := str(item.get("text") or "").strip().lower()).startswith(
+                    _HIDDEN_ATTACHMENT_CONTEXT_PREFIXES
+                )
             )
             .strip()
-            .lower()
         )
     return str(content or "").strip().lower()
 

@@ -55,7 +55,7 @@ const FIELD_LABELS: Record<string, string> = {
   knowledge_background: '知识基础',
   learning_progress: '学习进度',
   resource_preference: '资源偏好',
-  cognitive_style: '认知风格',
+  preferred_knowledge_points: '偏好知识点',
   common_error_types: '常见错误',
   practical_ability: '实践能力',
   available_study_time: '可用学习时间',
@@ -88,7 +88,7 @@ const FIELD_GROUPS = [
     description: '影响学习资源选择和学习节奏的个体特征。',
     keys: [
       'resource_preference',
-      'cognitive_style',
+      'preferred_knowledge_points',
       'available_study_time',
       'current_learning_state',
     ],

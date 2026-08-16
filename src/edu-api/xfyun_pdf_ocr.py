@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hmac
 import json
@@ -32,9 +33,16 @@ class XfyunPdfOcrConfig:
 class XfyunPdfOcrError(RuntimeError):
     """Raised when XFYun rejects a PDF OCR request."""
 
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+
 
 MAX_OCR_RESULT_BYTES = 20 * 1024 * 1024
 MAX_OCR_TEXT_CHARS = 120_000
+STATUS_RATE_LIMIT_CODE = "10023"
+STATUS_RATE_LIMIT_RETRY_SECONDS = 5.0
+STATUS_RATE_LIMIT_MAX_RETRIES = 1
 
 
 def _decode_result_text(content: bytes) -> str:
@@ -147,7 +155,10 @@ def _response_data(payload: Any) -> dict[str, Any]:
     if payload.get("flag") is not True or str(code) != "0":
         description = str(payload.get("desc") or "讯飞 PDF 文档识别失败")
         error_code = code if code is not None else "unknown"
-        raise XfyunPdfOcrError(f"{description}（错误码 {error_code}）")
+        raise XfyunPdfOcrError(
+            f"{description}（错误码 {error_code}）",
+            code=str(error_code),
+        )
     data = payload.get("data")
     if not isinstance(data, dict):
         raise XfyunPdfOcrError("讯飞返回了无效的任务数据")
@@ -247,26 +258,39 @@ class XfyunPdfOcrClient:
     async def get_status(self, task_no: str) -> dict[str, Any]:
         if not task_no.strip():
             raise XfyunPdfOcrError("任务号不能为空")
-        try:
-            async with httpx.AsyncClient(
-                timeout=min(self.config.timeout_seconds, 30.0),
-                transport=self._transport,
-            ) as client:
-                response = await client.get(
-                    f"{self.config.base_url.rstrip('/')}/status",
-                    headers=self._headers(),
-                    params={"taskNo": task_no},
-                )
-                response.raise_for_status()
-        except httpx.TimeoutException as exc:
-            raise XfyunPdfOcrError("查询识别进度超时，请稍后重试") from exc
-        except httpx.HTTPError as exc:
-            raise XfyunPdfOcrError("暂时无法查询 PDF 文档识别进度") from exc
+        async with httpx.AsyncClient(
+            timeout=min(self.config.timeout_seconds, 30.0),
+            transport=self._transport,
+        ) as client:
+            for attempt in range(STATUS_RATE_LIMIT_MAX_RETRIES + 1):
+                try:
+                    response = await client.get(
+                        f"{self.config.base_url.rstrip('/')}/status",
+                        headers=self._headers(),
+                        params={"taskNo": task_no},
+                    )
+                    response.raise_for_status()
+                except httpx.TimeoutException as exc:
+                    raise XfyunPdfOcrError(
+                        "查询识别进度超时，请稍后重试"
+                    ) from exc
+                except httpx.HTTPError as exc:
+                    raise XfyunPdfOcrError("暂时无法查询 PDF 文档识别进度") from exc
 
-        try:
-            return _normalize_task(_response_data(response.json()))
-        except ValueError as exc:
-            raise XfyunPdfOcrError("讯飞返回了无法解析的响应") from exc
+                try:
+                    return _normalize_task(_response_data(response.json()))
+                except ValueError as exc:
+                    raise XfyunPdfOcrError("讯飞返回了无法解析的响应") from exc
+                except XfyunPdfOcrError as exc:
+                    should_retry = (
+                        exc.code == STATUS_RATE_LIMIT_CODE
+                        and attempt < STATUS_RATE_LIMIT_MAX_RETRIES
+                    )
+                    if not should_retry:
+                        raise
+                    await asyncio.sleep(STATUS_RATE_LIMIT_RETRY_SECONDS)
+
+        raise XfyunPdfOcrError("暂时无法查询 PDF 文档识别进度")
 
     async def download_text(self, download_url: str) -> tuple[str, bool]:
         """Download an OCR Markdown result and return bounded tutor context."""

@@ -27,8 +27,8 @@ class AgentContractTest(unittest.IsolatedAsyncioTestCase):
                             "value": ["diagrams", "practice"],
                             "confidence": 0.85,
                         },
-                        "cognitive_style": {
-                            "value": "visual",
+                        "preferred_knowledge_points": {
+                            "value": ["graphs", "shortest paths"],
                             "confidence": 0.8,
                         },
                     }
@@ -51,7 +51,10 @@ class AgentContractTest(unittest.IsolatedAsyncioTestCase):
             profile.result["profile_summary"]["resource_preference"],
             ["diagrams", "practice"],
         )
-        self.assertEqual(profile.result["profile_summary"]["learning_style"], "visual")
+        self.assertEqual(
+            profile.result["profile_summary"]["preferred_topics"],
+            ["graphs", "shortest paths"],
+        )
         kt = await KTAgent().run(context)
         context.artifacts["knowledge_state"] = kt.result
         diagnosis = await DiagnosisAgent().run(context)

@@ -2,6 +2,7 @@ import asyncio
 import unittest
 from contextlib import ExitStack
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from edu_core.schemas.chats import ChatMessageDto, TextPartDto, ToolCallPartDto
@@ -152,6 +153,31 @@ class ChatSourcesAndNotePackagesTests(unittest.TestCase):
         self.assertEqual(packages[0].completed_resource_count, 1)
         self.assertEqual(packages[0].resources[0].status, "completed")
         self.assertEqual(packages[0].resources[0].content_text, "# Strings")
+
+    def test_explicit_chat_note_starts_worker_without_diagnosis(self):
+        calls = []
+
+        class NoteServiceStub:
+            @staticmethod
+            def create_note(**_kwargs):
+                return SimpleNamespace(id="note-fast")
+
+            @staticmethod
+            def queue_generation(**kwargs):
+                calls.append(kwargs)
+
+        service = ResourcePackageService(note_service=NoteServiceStub())
+        resource = service.start_chat_note_generation(
+            user_id="user-1",
+            project_id="project-1",
+            topic="最短路径",
+            custom_instructions="包含 Dijkstra 示例",
+        )
+
+        self.assertEqual(resource.status, "generating")
+        self.assertEqual(resource.content_json["target_id"], "note-fast")
+        self.assertEqual(calls[0]["generated_resource_id"], resource.id)
+        self.assertEqual(calls[0]["topic"], "最短路径")
 
     def test_chat_sources_are_deduplicated_by_document_not_segment(self):
         service = ChatService.__new__(ChatService)

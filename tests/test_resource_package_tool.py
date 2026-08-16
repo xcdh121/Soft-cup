@@ -150,7 +150,7 @@ class ResourcePackageToolTests(unittest.IsolatedAsyncioTestCase):
                     "current_course": "数据结构",
                     "learning_goal": "准备期末考试",
                     "resource_preference": ["视频", "刷题"],
-                    "cognitive_style": "视觉型",
+                    "preferred_knowledge_points": ["图的遍历"],
                 },
             },
             learning_evidence={
@@ -195,3 +195,41 @@ class ResourcePackageToolTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertNotIn("runtime", fields)
         self.assertIn("resource_types", fields)
+
+    async def test_explicit_single_note_uses_fast_generation_path(self):
+        calls: list[dict] = []
+
+        class FastNoteService:
+            def start_chat_note_generation(self, **kwargs):
+                calls.append(kwargs)
+                return SimpleNamespace(
+                    resource_package_id="package-note-fast",
+                    status="generating",
+                    preview_url="/dashboard/p/project-1/n/note-fast",
+                )
+
+            async def generate_resource_package(self, **_kwargs):
+                raise AssertionError(
+                    "diagnosis-backed package generation should be skipped"
+                )
+
+        context = SimpleNamespace(
+            user_id="user-1",
+            project_id="project-1",
+            resource_packages=FastNoteService(),
+            learner_profile={},
+            learning_evidence={},
+            project_context={},
+        )
+        result_text = await generate_resource_package.coroutine(
+            topic="最短路径",
+            resource_types=["lecture_note"],
+            runtime=SimpleNamespace(context=context),
+        )
+        result = json.loads(result_text)
+
+        self.assertEqual(result["package_id"], "package-note-fast")
+        self.assertEqual(
+            result["preview_url"], "/dashboard/p/project-1/n/note-fast"
+        )
+        self.assertEqual(calls[0]["topic"], "最短路径")

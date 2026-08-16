@@ -847,6 +847,55 @@ class ResourcePackageService:
             db.refresh(resource)
             return self._resource_to_dto(resource)
 
+    def start_chat_note_generation(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        topic: str,
+        custom_instructions: str | None = None,
+    ) -> GeneratedResourceDto:
+        """Start one explicitly requested chat note without a diagnosis round-trip.
+
+        A single, named note does not need the recommendation agents to decide
+        its topic or format. It still gets a normal resource-package row, target
+        link, worker task, and terminal status; only the redundant pre-generation
+        diagnosis is skipped.
+        """
+        if self.note_service is None:
+            raise RuntimeError("Note generation is not configured")
+
+        note = self.note_service.create_note(
+            project_id=project_id,
+            title=f"{topic}笔记",
+            description="AI 导师生成的学习笔记",
+            content="",
+        )
+        resource = self.register_chat_note(
+            user_id=user_id,
+            project_id=project_id,
+            note_id=note.id,
+            topic=topic,
+            custom_instructions=custom_instructions,
+        )
+        try:
+            self.note_service.queue_generation(
+                note_id=note.id,
+                project_id=project_id,
+                topic=topic,
+                custom_instructions=custom_instructions,
+                user_id=user_id,
+                generated_resource_id=resource.id,
+            )
+        except Exception as exc:
+            self.finish_chat_note(
+                project_id=project_id,
+                generated_resource_id=resource.id,
+                error_message=str(exc),
+            )
+            raise
+        return resource
+
     def finish_chat_note(
         self,
         *,

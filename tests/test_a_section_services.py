@@ -10,6 +10,9 @@ from edu_core.services.learner_profiles import LearnerProfileService
 from edu_core.services.practice import PracticeService
 from edu_db.models import (
     Base,
+    Chat,
+    ChatMessage,
+    ChatMessagePart,
     Course,
     CourseChapter,
     CourseResourceKnowledgePoint,
@@ -509,6 +512,85 @@ class ASectionServiceTests(unittest.TestCase):
         self.assertEqual(
             profile.profile_data["resource_preference"]["value"],
             ["编程题", "学习笔记", "选择题"],
+        )
+
+    def test_explicit_learning_goal_is_extracted_without_waiting_for_llm(self):
+        fields = LearnerProfileService.extract_explicit_chat_fields(
+            "我想学习最短路径"
+        )
+
+        self.assertEqual(fields["learning_goal"]["value"], "学习最短路径")
+        self.assertEqual(
+            fields["preferred_knowledge_points"]["value"], ["最短路径"]
+        )
+        self.assertEqual(fields["learning_goal"]["status"], "confirmed")
+
+    def test_chat_inferences_merge_preferred_knowledge_points(self):
+        service = LearnerProfileService()
+        service.replace_profile(
+            "project-1",
+            "user-1",
+            {
+                "preferred_knowledge_points": {
+                    "value": ["图的遍历"],
+                    "confidence": 1.0,
+                    "status": "confirmed",
+                }
+            },
+        )
+
+        profile = service.apply_chat_inferences(
+            "project-1",
+            "user-1",
+            "message-goal",
+            "我想学习最短路径",
+            LearnerProfileService.extract_explicit_chat_fields(
+                "我想学习最短路径"
+            ),
+        )
+
+        self.assertEqual(
+            profile.profile_data["preferred_knowledge_points"]["value"],
+            ["图的遍历", "最短路径"],
+        )
+
+    def test_profile_refresh_backfills_goal_from_existing_chat(self):
+        with self.session_factory() as db:
+            db.add(
+                Chat(
+                    id="chat-goal",
+                    project_id="project-1",
+                    user_id="user-1",
+                )
+            )
+            db.add(
+                ChatMessage(
+                    id="message-goal-existing",
+                    chat_id="chat-goal",
+                    role="user",
+                )
+            )
+            db.add(
+                ChatMessagePart(
+                    id="part-goal-existing",
+                    message_id="message-goal-existing",
+                    part_type="text",
+                    order=0,
+                    text_content="我想学习最短路径",
+                )
+            )
+            db.commit()
+
+        profile = LearnerProfileService().refresh_profile(
+            "project-1", "user-1"
+        )
+
+        self.assertEqual(
+            profile.profile_data["learning_goal"]["value"], "学习最短路径"
+        )
+        self.assertEqual(
+            profile.profile_data["preferred_knowledge_points"]["value"],
+            ["最短路径"],
         )
 
     def test_practice_refresh_is_automatic_and_idempotent(self):

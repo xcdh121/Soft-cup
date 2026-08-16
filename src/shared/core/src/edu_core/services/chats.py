@@ -95,7 +95,7 @@ class ChatService:
         "knowledge_background",
         "learning_progress",
         "resource_preference",
-        "cognitive_style",
+        "preferred_knowledge_points",
         "common_error_types",
         "practical_ability",
         "available_study_time",
@@ -1086,6 +1086,32 @@ class ChatService:
                     # Queue profile extraction after the final SSE event has been
                     # yielded, so local synchronous queues do not delay the answer.
                     if stream_chunk.done and user_message_text.strip():
+                        # Apply explicit first-person goals before the response
+                        # stream closes. The client refresh that follows can then
+                        # observe the change even when the richer LLM extractor is
+                        # still waiting in a background queue.
+                        from edu_core.services.learner_profiles import (
+                            LearnerProfileService,
+                        )
+
+                        try:
+                            explicit_fields = (
+                                LearnerProfileService.extract_explicit_chat_fields(
+                                    user_message_text
+                                )
+                            )
+                            if explicit_fields:
+                                LearnerProfileService().apply_chat_inferences(
+                                    project_id=chat.project_id,
+                                    user_id=user_id,
+                                    message_id=user_message_db.id,
+                                    message_text=user_message_text,
+                                    inferred_fields=explicit_fields,
+                                )
+                        except Exception:
+                            logger.exception(
+                                "Failed to apply explicit learner-profile facts"
+                            )
                         queue_service = getattr(self, "_queue_service", None)
                         if queue_service:
                             try:

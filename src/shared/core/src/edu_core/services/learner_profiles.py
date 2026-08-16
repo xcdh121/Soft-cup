@@ -1,10 +1,13 @@
 """Service for project-scoped learner profiles."""
 
+import re
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from edu_db.models import (
+    Chat,
+    ChatMessage,
     Course,
     KnowledgePoint,
     LearnerProfile,
@@ -21,7 +24,6 @@ from edu_core.schemas.learner_profiles import (
     LearnerProfileRevisionDto,
 )
 
-
 PROFILE_FIELDS = (
     "major_background",
     "education_level",
@@ -30,7 +32,7 @@ PROFILE_FIELDS = (
     "knowledge_background",
     "learning_progress",
     "resource_preference",
-    "cognitive_style",
+    "preferred_knowledge_points",
     "common_error_types",
     "practical_ability",
     "available_study_time",
@@ -43,12 +45,13 @@ CHAT_PROFILE_FIELDS = frozenset(
         "education_level",
         "learning_goal",
         "resource_preference",
-        "cognitive_style",
+        "preferred_knowledge_points",
         "available_study_time",
     }
 )
 
 RESOURCE_PREFERENCE_LIMIT = 3
+PREFERRED_KNOWLEDGE_POINT_LIMIT = 5
 
 
 class LearnerProfileService:
@@ -207,6 +210,12 @@ class LearnerProfileService:
                 )
                 if field_key == "resource_preference":
                     value = self._merge_resource_preferences(existing_value, value)
+                elif field_key == "preferred_knowledge_points":
+                    value = self._merge_distinct_values(
+                        existing_value,
+                        value,
+                        limit=PREFERRED_KNOWLEDGE_POINT_LIMIT,
+                    )
                 # Values written manually before field metadata was introduced are
                 # treated as confirmed so an LLM inference cannot silently replace them.
                 existing_status = existing_field.get(
@@ -280,6 +289,16 @@ class LearnerProfileService:
     def _merge_resource_preferences(existing, candidate) -> list[str]:
         """Keep stable resource-format preferences without unbounded growth."""
 
+        return LearnerProfileService._merge_distinct_values(
+            existing,
+            candidate,
+            limit=RESOURCE_PREFERENCE_LIMIT,
+        )
+
+    @staticmethod
+    def _merge_distinct_values(existing, candidate, *, limit: int) -> list[str]:
+        """Merge ordered string values while keeping the newest bounded set."""
+
         def as_items(value) -> list[str]:
             values = value if isinstance(value, list) else [value]
             return [
@@ -292,7 +311,67 @@ class LearnerProfileService:
         for item in [*as_items(existing), *as_items(candidate)]:
             if item not in merged:
                 merged.append(item)
-        return merged[-RESOURCE_PREFERENCE_LIMIT:]
+        return merged[-limit:]
+
+    @staticmethod
+    def extract_explicit_chat_fields(message_text: str) -> dict:
+        """Extract unambiguous first-person goals before asynchronous LLM enrichment.
+
+        This deliberately covers only explicit phrasing. It gives the profile an
+        immediate, deterministic update for common messages such as
+        ``我想学习最短路径`` while the background extractor handles richer prose.
+        """
+        text = " ".join(str(message_text or "").strip().split())
+        if not text:
+            return {}
+
+        topic: str | None = None
+        goal: str | None = None
+        chinese_patterns = (
+            r"(?:我想|我希望|我打算|我计划|我的目标是)\s*(学习|掌握|了解|弄懂|复习)\s*([^。！？!?，,；;]{1,80})",  # noqa: RUF001
+            r"(?:我想|我希望|我打算|我计划)\s*([^。！？!?，,；;]{1,80})",  # noqa: RUF001
+        )
+        for pattern in chinese_patterns:
+            match = re.search(pattern, text)
+            if not match:
+                continue
+            if match.lastindex == 2:
+                action = match.group(1).strip()
+                topic = match.group(2).strip()
+                goal = f"{action}{topic}"
+            else:
+                goal = match.group(1).strip()
+            break
+
+        if goal is None:
+            english_match = re.search(
+                r"\bI\s+(?:want|hope|plan|intend)\s+to\s+"
+                r"(learn|master|understand|review)\s+([^.!?;,]{1,80})",
+                text,
+                flags=re.IGNORECASE,
+            )
+            if english_match:
+                action = english_match.group(1).lower()
+                topic = english_match.group(2).strip()
+                goal = f"{action} {topic}"
+
+        if goal is None:
+            return {}
+
+        fields = {
+            "learning_goal": {
+                "value": goal,
+                "confidence": 1.0,
+                "status": "confirmed",
+            }
+        }
+        if topic:
+            fields["preferred_knowledge_points"] = {
+                "value": [topic],
+                "confidence": 1.0,
+                "status": "confirmed",
+            }
+        return fields
 
     def list_revisions(
         self, project_id: str, user_id: str
@@ -477,6 +556,10 @@ class LearnerProfileService:
                 [{"source_type": "project", "source_id": project.id}],
             )
 
+        inferred.update(
+            self._infer_explicit_chat_data(db, project.id, user_id)
+        )
+
         total_attempts = len(records)
         correct_attempts = sum(1 for record in records if record.was_correct)
         if total_attempts:
@@ -533,6 +616,68 @@ class LearnerProfileService:
                 [{"source_type": "student_knowledge_states", "count": len(states)}],
             )
 
+        return inferred
+
+    def _infer_explicit_chat_data(
+        self, db, project_id: str, user_id: str
+    ) -> dict:
+        """Backfill explicit goals from existing project conversations on refresh."""
+        messages = (
+            db.query(ChatMessage)
+            .join(Chat, Chat.id == ChatMessage.chat_id)
+            .filter(
+                Chat.project_id == project_id,
+                Chat.user_id == user_id,
+                ChatMessage.role == "user",
+            )
+            .order_by(ChatMessage.created_at.desc())
+            .limit(100)
+            .all()
+        )
+        latest_goal = None
+        preferred_points: list[str] = []
+        preferred_evidence: list[dict] = []
+        for message in messages:
+            message_text = " ".join(
+                str(part.text_content or "").strip()
+                for part in message.parts
+                if part.part_type == "text" and str(part.text_content or "").strip()
+            )
+            fields = self.extract_explicit_chat_fields(message_text)
+            if not fields:
+                continue
+            evidence = {
+                "source_type": "chat_message",
+                "source_id": message.id,
+                "excerpt": message_text[:240],
+            }
+            if latest_goal is None and "learning_goal" in fields:
+                latest_goal = self._field(
+                    fields["learning_goal"]["value"],
+                    1.0,
+                    [evidence],
+                )
+                latest_goal["status"] = "confirmed"
+            for point in fields.get("preferred_knowledge_points", {}).get(
+                "value", []
+            ):
+                if len(preferred_points) >= PREFERRED_KNOWLEDGE_POINT_LIMIT:
+                    break
+                if point not in preferred_points:
+                    preferred_points.append(point)
+                    preferred_evidence.append(evidence)
+
+        inferred = {}
+        if latest_goal is not None:
+            inferred["learning_goal"] = latest_goal
+        if preferred_points:
+            field = self._field(
+                list(reversed(preferred_points)),
+                1.0,
+                list(reversed(preferred_evidence)),
+            )
+            field["status"] = "confirmed"
+            inferred["preferred_knowledge_points"] = field
         return inferred
 
     @staticmethod

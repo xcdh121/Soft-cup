@@ -4,6 +4,7 @@ import hmac
 import io
 import unittest
 import zipfile
+from unittest.mock import AsyncMock, patch
 
 import httpx
 from routers.pdf_ocr import router as pdf_ocr_router
@@ -127,6 +128,69 @@ class XfyunPdfOcrClientTests(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaisesRegex(XfyunPdfOcrError, "10001"):
             await client.get_status("task-1")
+
+    async def test_status_retries_once_when_provider_rate_limits(self):
+        request_count = 0
+
+        async def handler(_: httpx.Request) -> httpx.Response:
+            nonlocal request_count
+            request_count += 1
+            if request_count == 1:
+                return httpx.Response(
+                    200,
+                    json={
+                        "flag": False,
+                        "code": 10023,
+                        "desc": "rate limited",
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "flag": True,
+                    "code": 0,
+                    "data": {
+                        "taskNo": "task-1",
+                        "status": "FINISH",
+                        "downUrl": "https://example.test/result.md",
+                    },
+                },
+            )
+
+        client = XfyunPdfOcrClient(
+            XfyunPdfOcrConfig(enabled=True, app_id="app", secret="secret"),
+            transport=httpx.MockTransport(handler),
+        )
+        with patch("xfyun_pdf_ocr.asyncio.sleep", new_callable=AsyncMock) as sleep:
+            result = await client.get_status("task-1")
+
+        self.assertEqual(result["status"], "FINISH")
+        self.assertEqual(request_count, 2)
+        sleep.assert_awaited_once_with(5.0)
+
+    async def test_status_does_not_retry_non_rate_limit_provider_errors(self):
+        request_count = 0
+
+        async def handler(_: httpx.Request) -> httpx.Response:
+            nonlocal request_count
+            request_count += 1
+            return httpx.Response(
+                200,
+                json={"flag": False, "code": 10001, "desc": "签名认证失败"},
+            )
+
+        client = XfyunPdfOcrClient(
+            XfyunPdfOcrConfig(enabled=True, app_id="app", secret="bad"),
+            transport=httpx.MockTransport(handler),
+        )
+        with (
+            patch("xfyun_pdf_ocr.asyncio.sleep", new_callable=AsyncMock) as sleep,
+            self.assertRaisesRegex(XfyunPdfOcrError, "10001"),
+        ):
+            await client.get_status("task-1")
+
+        self.assertEqual(request_count, 1)
+        sleep.assert_not_awaited()
 
     async def test_download_text_reads_markdown_result(self):
         async def handler(request: httpx.Request) -> httpx.Response:

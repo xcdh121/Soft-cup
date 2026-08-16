@@ -49,6 +49,7 @@ export const QuizDetail = ({
     targetId: quizId,
     dataPath: `/api/v1/projects/${projectId}/quizzes/${quizId}/questions`,
     pollWhenEmpty: isGeneratedReinforcementQuiz,
+    maxPollingMs: 3 * 60 * 1000,
   })
 
   const setSelectedAnswer = useAtomSet(setSelectedAnswerAtom, {
@@ -59,6 +60,11 @@ export const QuizDetail = ({
   const submitQuestion = useAtomSet(submitQuizQuestionAtom, { mode: 'promise' })
   const wasGenerating = useRef(false)
   const verificationContext = readLearningVerification(projectId)
+  const isEmpty =
+    questionsResult._tag === 'Success' && questionsResult.value.length === 0
+  const loadedQuestionCount =
+    questionsResult._tag === 'Success' ? questionsResult.value.length : 0
+  const snapshotQuestions = snapshot.data ?? []
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -139,6 +145,9 @@ export const QuizDetail = ({
 
   useEffect(() => {
     if (snapshot.checking) return
+    if (snapshotQuestions.length > loadedQuestionCount) {
+      void refreshQuestions({ projectId, quizId })
+    }
     if (snapshot.isGenerating) {
       wasGenerating.current = true
       return
@@ -150,16 +159,12 @@ export const QuizDetail = ({
     projectId,
     quizId,
     refreshQuestions,
+    loadedQuestionCount,
     snapshot.checking,
     snapshot.isGenerating,
+    snapshotQuestions.length,
   ])
 
-  const isEmpty =
-    questionsResult._tag === 'Success' && questionsResult.value.length === 0
-
-  const loadedQuestionCount =
-    questionsResult._tag === 'Success' ? questionsResult.value.length : 0
-  const snapshotQuestions = snapshot.data ?? []
   const showIncrementalGeneration =
     snapshot.checking ||
     snapshot.isGenerating ||
@@ -171,17 +176,19 @@ export const QuizDetail = ({
     isGeneratedReinforcementQuiz &&
     isEmpty &&
     snapshotQuestions.length === 0 &&
-    (snapshot.status === 'failed' || snapshot.timedOut)
+    (snapshot.status === 'failed' ||
+      snapshot.status === 'completed' ||
+      snapshot.timedOut)
   ) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
         <div className="font-medium">
-          {snapshot.status === 'failed'
+          {snapshot.status === 'failed' || snapshot.status === 'completed'
             ? '选择题生成失败'
             : '选择题生成时间较长'}
         </div>
         <p className="max-w-md text-sm text-muted-foreground">
-          {snapshot.status === 'failed'
+          {snapshot.status === 'failed' || snapshot.status === 'completed'
             ? '本次生成任务未能完成，请返回学习计划重新生成，或稍后重试。'
             : '任务可能仍在队列中。你可以稍后再来，或立即重新检查生成结果。'}
         </p>
@@ -208,7 +215,7 @@ export const QuizDetail = ({
               ? '正在加载测验…'
               : snapshotQuestions.length > 0
                 ? `已生成 ${snapshotQuestions.length} 道题，后续题目正在生成…`
-                : '正在生成第一道题…'}
+                : '正在准备题目内容…'}
           </span>
         </div>
         <div className="space-y-3">

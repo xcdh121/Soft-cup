@@ -94,6 +94,46 @@ class ChatbotImageGenerationRoutingTests(unittest.TestCase):
         self.assertFalse(should_force_image_generation(messages))
         self.assertIsNone(resolve_forced_resource_generation(messages))
 
+    def test_pdf_ocr_context_does_not_trigger_image_generation(self):
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "[PDF识别上下文:数据结构与算法.pdf]\n"
+                            "![img](data:image/jpeg;base64,abc)\n"
+                            "Make use of all bits, then draw the binary search tree."
+                        ),
+                    }
+                ],
+            }
+        ]
+
+        self.assertFalse(should_force_image_generation(messages))
+        self.assertIsNone(resolve_forced_resource_generation(messages))
+
+    def test_explicit_request_still_routes_when_pdf_context_is_attached(self):
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "请生成一张归并排序示意图"},
+                    {
+                        "type": "text",
+                        "text": "[PDF识别上下文:讲义.pdf]\n课程正文",
+                    },
+                ],
+            }
+        ]
+
+        intent = resolve_forced_resource_generation(messages)
+
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.resource_types, ("image",))
+        self.assertEqual(intent.topic, "归并排序")
+
     def test_affirmative_reply_after_programming_offer_is_forced(self):
         messages = [
             AIMessage(content="要不要为递归生成一套编程题?"),

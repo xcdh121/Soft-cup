@@ -23,8 +23,8 @@ from edu_core.services.flashcard_groups import FlashcardGroupService
 from edu_core.services.learner_profiles import LearnerProfileService
 from edu_core.services.mind_maps import MindMapService
 from edu_core.services.notes import NoteService
-from edu_core.services.quota import QuotaService
 from edu_core.services.quizzes import QuizService
+from edu_core.services.quota import QuotaService
 from edu_core.services.resource_packages import ResourcePackageService
 from edu_core.storage import LocalStorageService
 from edu_db.models import Chat, Document, DocumentSegment
@@ -234,6 +234,9 @@ Assistant: {ai_response[:2000]}
         if not message_text:
             return
 
+        explicit_fields = LearnerProfileService.extract_explicit_chat_fields(
+            message_text
+        )
         prompt = f"""You extract learner profile facts from a single message written by a student.
 
 Return JSON only, with this exact top-level shape:
@@ -244,7 +247,7 @@ Allowed field keys:
 - education_level: education stage or year
 - learning_goal: an explicit learning objective
 - resource_preference: reusable learning resource formats or methods as a JSON array; never include the current subject or topic in an item
-- cognitive_style: stable learning/cognitive style only when explicitly stated or strongly evidenced
+- preferred_knowledge_points: subjects or knowledge points the student explicitly wants or prefers to learn, as a JSON array
 - available_study_time: stated schedule or available study duration
 
 Rules:
@@ -255,18 +258,30 @@ Rules:
 - Do not invent missing details. If there are no supported facts, return {{"fields": {{}}}}.
 - Preserve the student's language in values.
 - When the message supports multiple resource preferences, return 2-3 distinct items.
+- A statement like "我想学习最短路径" supports learning_goal="学习最短路径" and preferred_knowledge_points=["最短路径"].
 
 Student message:
 {message_text}
 """
-        model = create_chat_model(self.llm_config, streaming=False, temperature=0.1)
-        response = await model.ainvoke(prompt)
-        content = response.content
-        if not isinstance(content, str):
-            content = str(content)
-        parsed = JsonOutputParser().parse(content)
-        fields = parsed.get("fields", {}) if isinstance(parsed, dict) else {}
-        if not isinstance(fields, dict):
+        fields: dict[str, Any] = {}
+        try:
+            model = create_chat_model(self.llm_config, streaming=False, temperature=0.1)
+            response = await model.ainvoke(prompt)
+            content = response.content
+            if not isinstance(content, str):
+                content = str(content)
+            parsed = JsonOutputParser().parse(content)
+            parsed_fields = parsed.get("fields", {}) if isinstance(parsed, dict) else {}
+            if isinstance(parsed_fields, dict):
+                fields = parsed_fields
+        except Exception:
+            if not explicit_fields:
+                raise
+            logger.exception(
+                "Learner-profile LLM extraction failed; applying explicit facts"
+            )
+        fields.update(explicit_fields)
+        if not fields:
             return
         LearnerProfileService().apply_chat_inferences(
             project_id=str(payload["project_id"]),
@@ -295,8 +310,10 @@ Student message:
         return llm, topic_graph_agent
 
     async def stream_note(self, payload: dict[str, Any]):
-        llm, topic_graph_agent = self._make_streaming_agent_dependencies()
-        agent = NoteAgent(self.search_service, llm, topic_graph_agent)
+        llm, _ = self._make_streaming_agent_dependencies()
+        # The caller already supplied the exact topic. Avoid a separate topic-
+        # graph LLM call so the first note delta can start immediately.
+        agent = NoteAgent(self.search_service, llm)
         async for event in agent.generate_and_save_stream(
             project_id=payload["project_id"], topic=payload.get("topic"),
             custom_instructions=payload.get("custom_instructions"),
@@ -326,8 +343,10 @@ Student message:
             yield event
 
     async def stream_quiz(self, payload: dict[str, Any]):
-        llm, topic_graph_agent = self._make_streaming_agent_dependencies()
-        agent = QuizAgent(self.search_service, llm, topic_graph_agent)
+        llm, _ = self._make_streaming_agent_dependencies()
+        # Stream the requested topic directly. Topic expansion previously kept
+        # the detail page at "first question" for a full extra model request.
+        agent = QuizAgent(self.search_service, llm)
         async for event in agent.generate_and_save_stream(
             project_id=payload["project_id"],
             topic=payload.get("topic"),
@@ -350,27 +369,21 @@ Student message:
         )
 
     async def _run_quiz(self, payload: dict[str, Any]) -> None:
-        llm, topic_graph_agent = self._make_topic_graph_agent()
-        agent = QuizAgent(self.search_service, llm, topic_graph_agent)
-        await agent.generate_and_save(
-            project_id=payload["project_id"],
-            topic=payload.get("topic"),
-            custom_instructions=payload.get("custom_instructions"),
-            quiz_id=payload["quiz_id"],
-            count=payload.get("count"),
-        )
+        # Persist each complete question as it arrives. Standalone reinforcement
+        # quizzes are opened while their worker job is still running, so waiting
+        # for the entire JSON document made the page look permanently stuck.
+        async for _event in self.stream_quiz(payload):
+            pass
 
     async def _run_note(self, payload: dict[str, Any]) -> None:
-        llm, topic_graph_agent = self._make_topic_graph_agent()
-        agent = NoteAgent(self.search_service, llm, topic_graph_agent)
         generated_resource_id = payload.get("generated_resource_id")
         resource_packages = ResourcePackageService()
         try:
-            note = await agent.generate_and_save(
-                project_id=payload["project_id"],
-                topic=payload.get("topic"),
-                custom_instructions=payload.get("custom_instructions"),
+            async for _event in self.stream_note(payload):
+                pass
+            note = NoteService(queue_service=QueueService()).get_note(
                 note_id=payload["note_id"],
+                project_id=payload["project_id"],
             )
             if generated_resource_id:
                 resource_packages.finish_chat_note(

@@ -21,7 +21,7 @@ class ProfileAgent(BaseOrchestrationAgent):
         "knowledge_background",
         "learning_progress",
         "resource_preference",
-        "cognitive_style",
+        "preferred_knowledge_points",
         "common_error_types",
         "practical_ability",
         "available_study_time",
@@ -33,7 +33,7 @@ class ProfileAgent(BaseOrchestrationAgent):
         "learning_goal",
         "knowledge_background",
         "resource_preference",
-        "cognitive_style",
+        "preferred_knowledge_points",
         "available_study_time",
     )
 
@@ -57,7 +57,9 @@ class ProfileAgent(BaseOrchestrationAgent):
             if not self._has_value(profile_data.get(field))
         ]
 
-        cognitive_style = profile_data.get("cognitive_style", "unknown")
+        preferred_knowledge_points = profile_data.get(
+            "preferred_knowledge_points", []
+        )
         resource_preference = profile_data.get("resource_preference", [])
         available_study_time = profile_data.get("available_study_time")
 
@@ -74,7 +76,7 @@ class ProfileAgent(BaseOrchestrationAgent):
                 **profile_data,
                 # Compatibility aliases for consumers not yet migrated to the
                 # canonical learner-profile field names.
-                "learning_style": cognitive_style,
+                "preferred_topics": preferred_knowledge_points,
                 "preferred_resource_type": resource_preference,
                 "preferred_pace": available_study_time,
             },

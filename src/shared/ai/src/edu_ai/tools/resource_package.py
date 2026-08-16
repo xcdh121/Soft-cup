@@ -130,11 +130,6 @@ def _preference_resource_types(fields: dict[str, Any]) -> list[ResourceType]:
     if selected:
         return list(dict.fromkeys(selected))
 
-    cognitive_style = str(fields.get("cognitive_style") or "").lower()
-    if any(keyword in cognitive_style for keyword in ("视觉", "visual", "图像")):
-        return ["mind_map", "lecture_note", "practice_set"]
-    if any(keyword in cognitive_style for keyword in ("实践", "动手", "practical")):
-        return ["practice_set", "programming_questions", "lecture_note"]
     return ["lecture_note", "mind_map", "practice_set"]
 
 
@@ -204,7 +199,7 @@ def _personalization_basis(
                 "current_course",
                 "learning_goal",
                 "resource_preference",
-                "cognitive_style",
+                "preferred_knowledge_points",
                 "available_study_time",
             )
             if key in fields
@@ -273,26 +268,49 @@ async def generate_resource_package(
     ]
     learner_profile = getattr(ctx, "learner_profile", {}) or {}
 
-    package = await _start_resource_package_generation(
-        service=service,
-        user_id=ctx.user_id,
-        project_id=ctx.project_id,
-        payload={
-            "profile_id": learner_profile.get("id"),
-            "target_topic": resolved_topic,
-            "target_goal": resolved_goal,
-            "resource_types": requested_types,
-            "knowledge_point_ids": weak_point_ids,
-            "weak_knowledge_point_ids": weak_point_ids,
-            "difficulty_level": resolved_difficulty,
-            "custom_instructions": resolved_instructions,
-            "generation_mode": "recommended",
-            "generation_params": {
-                "launch_context": "personalized tutor recommendation",
-                "personalization_basis": personalization_basis,
-            },
+    package_payload = {
+        "profile_id": learner_profile.get("id"),
+        "target_topic": resolved_topic,
+        "target_goal": resolved_goal,
+        "resource_types": requested_types,
+        "knowledge_point_ids": weak_point_ids,
+        "weak_knowledge_point_ids": weak_point_ids,
+        "difficulty_level": resolved_difficulty,
+        "custom_instructions": resolved_instructions,
+        "generation_mode": "recommended",
+        "generation_params": {
+            "launch_context": "personalized tutor recommendation",
+            "personalization_basis": personalization_basis,
         },
+    }
+
+    direct_resource = None
+    can_start_direct_note = (
+        requested_types == ["lecture_note"]
+        and bool(str(topic or "").strip())
+        and callable(getattr(service, "start_chat_note_generation", None))
     )
+    if can_start_direct_note:
+        direct_resource = await asyncio.to_thread(
+            service.start_chat_note_generation,
+            user_id=ctx.user_id,
+            project_id=ctx.project_id,
+            topic=resolved_topic,
+            custom_instructions=resolved_instructions,
+        )
+        package = {
+            "id": direct_resource.resource_package_id,
+            "status": direct_resource.status,
+            "completed_resource_count": 0,
+            "failed_resource_count": 0,
+        }
+    else:
+        package = await _start_resource_package_generation(
+            service=service,
+            user_id=ctx.user_id,
+            project_id=ctx.project_id,
+            payload=package_payload,
+        )
 
     package_id = package["id"]
     package_status = package["status"]
@@ -315,6 +333,9 @@ async def generate_resource_package(
             "personalization_basis": personalization_basis,
             "completed_resource_count": package["completed_resource_count"],
             "failed_resource_count": package["failed_resource_count"],
+            "preview_url": (
+                direct_resource.preview_url if direct_resource is not None else None
+            ),
             "resource_package_url": (
                 f"/dashboard/p/{ctx.project_id}/resource-packages"
                 f"?packageId={package_id}"
