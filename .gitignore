@@ -29,3 +29,9 @@ docs/
 .tmp_ppt_rebuild/
 .cache/
 .tmp_ppt_two_stages/
+
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.codex-tmp/
+node_modules/
