@@ -170,6 +170,78 @@ class BaiduSearchClientTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result["videos"][0]["duration"], "8:21")
 
+    async def test_search_videos_retries_without_exact_site_filter(self):
+        requests: list[dict] = []
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            requests.append(body)
+            if len(requests) == 1:
+                return httpx.Response(200, json={"references": []})
+            return httpx.Response(
+                200,
+                json={
+                    "request_id": "fallback-request",
+                    "references": [
+                        {
+                            "title": "二叉树教程",
+                            "url": "https://www.bilibili.com/video/BV-fallback",
+                        }
+                    ],
+                },
+            )
+
+        client = BaiduSearchClient(
+            BaiduSearchConfig(api_key="secret-key", sites=("bilibili.com",)),
+            transport=httpx.MockTransport(handler),
+        )
+
+        result = await client.search_videos("二叉树")
+
+        self.assertEqual(len(requests), 2)
+        self.assertIn("search_filter", requests[0])
+        self.assertNotIn("search_filter", requests[1])
+        self.assertEqual(requests[1]["messages"][0]["content"], "二叉树 教程")
+        self.assertEqual(result["search_query"], "二叉树 教程")
+        self.assertEqual(result["videos"][0]["title"], "二叉树教程")
+
+    async def test_search_videos_falls_back_to_web_classified_video_pages(self):
+        requests: list[dict] = []
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            requests.append(body)
+            if len(requests) < 3:
+                return httpx.Response(200, json={"references": []})
+            return httpx.Response(
+                200,
+                json={
+                    "request_id": "web-fallback-request",
+                    "references": [
+                        {
+                            "title": "二叉树遍历动画教程",
+                            "url": "https://www.bilibili.com/video/BV-web-fallback",
+                            "content": "前序、中序和后序遍历",
+                        }
+                    ],
+                },
+            )
+
+        client = BaiduSearchClient(
+            BaiduSearchConfig(api_key="secret-key", sites=("bilibili.com",)),
+            transport=httpx.MockTransport(handler),
+        )
+
+        result = await client.search_videos("二叉树")
+
+        self.assertEqual(len(requests), 3)
+        self.assertEqual(
+            requests[2]["resource_type_filter"],
+            [{"type": "web", "top_k": 6}],
+        )
+        self.assertEqual(result["search_query"], "二叉树 教程 视频")
+        self.assertEqual(len(result["videos"]), 1)
+
     async def test_search_videos_replaces_baidu_cache_with_bilibili_cover(self):
         async def handler(request: httpx.Request) -> httpx.Response:
             if request.url.host == "api.bilibili.com":

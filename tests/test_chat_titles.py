@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from edu_core.services.chats import ChatService
 from edu_db.models import Base, Chat, ChatMessage, ChatMessagePart
@@ -205,6 +205,60 @@ class ChatTitleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             observed,
             [("started", "quiz-1"), ("completed", "quiz-1")],
+        )
+
+    async def test_note_worker_forwards_incremental_content_to_resource_package(self):
+        runner = TaskRunnerService.__new__(TaskRunnerService)
+
+        async def stream_note(_payload):
+            yield {
+                "event": "note_delta",
+                "content": "# Sorting",
+            }
+            yield {
+                "event": "note_completed",
+                "title": "Sorting note",
+                "description": "Generated incrementally",
+                "content": "# Sorting\n\nUse merge sort.",
+            }
+
+        runner.stream_note = stream_note
+        package_service = SimpleNamespace(
+            update_chat_note_progress=MagicMock(),
+            finish_chat_note=MagicMock(),
+        )
+        note_service = SimpleNamespace(
+            get_note=MagicMock(
+                return_value=SimpleNamespace(
+                    title="Sorting note",
+                    description="Generated incrementally",
+                    content="# Sorting\n\nUse merge sort.",
+                )
+            )
+        )
+
+        with (
+            patch("task_runner.ResourcePackageService", return_value=package_service),
+            patch("task_runner.QueueService"),
+            patch("task_runner.NoteService", return_value=note_service),
+        ):
+            await runner._run_note(
+                {
+                    "project_id": "project-1",
+                    "note_id": "note-1",
+                    "generated_resource_id": "resource-1",
+                }
+            )
+
+        self.assertEqual(package_service.update_chat_note_progress.call_count, 2)
+        first_progress = package_service.update_chat_note_progress.call_args_list[0]
+        self.assertEqual(first_progress.kwargs["content"], "# Sorting")
+        package_service.finish_chat_note.assert_called_once_with(
+            project_id="project-1",
+            generated_resource_id="resource-1",
+            title="Sorting note",
+            description="Generated incrementally",
+            content="# Sorting\n\nUse merge sort.",
         )
 
 

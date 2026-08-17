@@ -297,6 +297,8 @@ def get_resource_package_service(
         quiz_streamer=task_runner.stream_quiz,
         flashcard_streamer=task_runner.stream_flashcards,
         mind_map_streamer=task_runner.stream_mind_map,
+        queue_service=queue_service,
+        local_generation_concurrency=settings.resource_package_generation_concurrency,
     )
 
 

@@ -154,6 +154,47 @@ class ChatSourcesAndNotePackagesTests(unittest.TestCase):
         self.assertEqual(packages[0].resources[0].status, "completed")
         self.assertEqual(packages[0].resources[0].content_text, "# Strings")
 
+    def test_chat_note_progress_is_visible_before_package_completion(self):
+        service = ResourcePackageService()
+        resource = service.register_chat_note(
+            user_id="user-1",
+            project_id="project-1",
+            note_id="note-1",
+            topic="String algorithms",
+        )
+
+        service.update_chat_note_progress(
+            project_id="project-1",
+            generated_resource_id=resource.id,
+            content="# Strings\n\nA growing explanation",
+        )
+
+        package = service.get_resource_package(
+            "user-1", "project-1", resource.resource_package_id
+        )
+        self.assertEqual(package.status, "generating")
+        self.assertEqual(package.resources[0].status, "generating")
+        self.assertEqual(
+            package.resources[0].content_text,
+            "# Strings\n\nA growing explanation",
+        )
+
+        async def first_stream_event():
+            stream = service.stream_resource_package_events(
+                "user-1", "project-1", resource.resource_package_id
+            )
+            try:
+                return await anext(stream)
+            finally:
+                await stream.aclose()
+
+        event = asyncio.run(first_stream_event())
+        self.assertEqual(event.event, "package_snapshot")
+        self.assertEqual(
+            event.payload["package"]["resources"][0]["content_text"],
+            "# Strings\n\nA growing explanation",
+        )
+
     def test_explicit_chat_note_starts_worker_without_diagnosis(self):
         calls = []
 

@@ -89,7 +89,7 @@ export const NoteContent = ({
               {description}
             </Response>
           )}
-          {noteStream.isGenerating ? (
+          {noteStream.isGenerating && content.trim() ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2Icon className="size-4 animate-spin" />
               <span>笔记正在生成，内容会持续更新…</span>
@@ -118,7 +118,11 @@ export const NoteContent = ({
           ) : (
             <div className="flex flex-1 items-center justify-center gap-2 text-muted-foreground">
               <Loader2Icon className="size-4 animate-spin" />
-              <span>笔记正在排队生成，内容完成后会自动显示...</span>
+              <span>
+                {noteStream.isGenerating
+                  ? '笔记模型正在准备，内容即将开始显示...'
+                  : '笔记正在排队生成，内容完成后会自动显示...'}
+              </span>
             </div>
           )}
         </div>

@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { NoteDto } from '@/integrations/api/client'
+import { env } from '@/env'
+import { authClient } from '@/lib/auth-client'
 import { appendSseChunk } from '@/lib/sse'
+
+const serverUrl = (env.VITE_SERVER_URL ?? window.location.origin).replace(
+  /\/$/,
+  '',
+)
 
 type NoteGenerationStatus = 'pending' | 'generating' | 'completed' | 'failed'
 
@@ -28,17 +35,29 @@ export const useGeneratedNoteStream = ({
     const controller = new AbortController()
     let cancelled = false
 
-    const pollFallback = async () => {
+    const getHeaders = async () => {
+      const { data } = await authClient.auth.getSession()
+      return {
+        Accept: 'application/json',
+        ...(data.session?.access_token
+          ? { Authorization: `Bearer ${data.session.access_token}` }
+          : {}),
+      }
+    }
+
+    const pollFallback = async (headers?: Record<string, string>) => {
+      const requestHeaders = headers ?? (await getHeaders())
       while (!cancelled) {
         try {
           const [statusResponse, noteResponse] = await Promise.all([
             fetch(
-              `/api/v1/projects/${projectId}/generated-resources/by-target/note/${noteId}`,
-              { signal: controller.signal },
+              `${serverUrl}/api/v1/projects/${projectId}/generated-resources/by-target/note/${noteId}`,
+              { headers: requestHeaders, signal: controller.signal },
             ),
-            fetch(`/api/v1/projects/${projectId}/notes/${noteId}`, {
-              signal: controller.signal,
-            }),
+            fetch(
+              `${serverUrl}/api/v1/projects/${projectId}/notes/${noteId}`,
+              { headers: requestHeaders, signal: controller.signal },
+            ),
           ])
           if (!statusResponse.ok || !noteResponse.ok) return
 
@@ -69,15 +88,16 @@ export const useGeneratedNoteStream = ({
 
     const connect = async () => {
       try {
+        const headers = await getHeaders()
         const response = await fetch(
-          `/api/v1/projects/${projectId}/generated-resources/by-target/note/${noteId}/stream`,
+          `${serverUrl}/api/v1/projects/${projectId}/generated-resources/by-target/note/${noteId}/stream`,
           {
-            headers: { Accept: 'text/event-stream' },
+            headers: { ...headers, Accept: 'text/event-stream' },
             signal: controller.signal,
           },
         )
         if (!response.ok || !response.body) {
-          await pollFallback()
+          await pollFallback(headers)
           return
         }
 
@@ -105,7 +125,7 @@ export const useGeneratedNoteStream = ({
             terminal = next.status === 'completed' || next.status === 'failed'
           }
         }
-        if (!terminal && !cancelled) await pollFallback()
+        if (!terminal && !cancelled) await pollFallback(headers)
       } catch {
         if (!controller.signal.aborted) await pollFallback()
       }

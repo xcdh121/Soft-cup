@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     task_job_timeout_seconds: int = 900
     task_job_max_tries: int = 3
+    resource_package_generation_concurrency: int = 4
 
     # Database
     database_url: str = ""

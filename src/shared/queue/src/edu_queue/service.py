@@ -56,6 +56,10 @@ class QueueService:
             logger.error("Error sending message: %s", e)
             raise
 
+    @property
+    def is_remote(self) -> bool:
+        return False
+
 
 class ArqQueueService:
     """Service for enqueueing tasks into Redis for arq workers."""
@@ -86,16 +90,25 @@ class ArqQueueService:
             logger.error("Error enqueueing message: %s", e)
             raise
 
+    @property
+    def is_remote(self) -> bool:
+        return True
+
     async def _enqueue(self, message: QueueTaskMessage) -> str:
         redis = await create_pool(_redis_settings_from_url(self.redis_url))
         try:
+            normalized = _normalize_message(message)
+            desired_job_id = _job_id_for_message(normalized)
             job = await redis.enqueue_job(
                 "run_task",
-                _normalize_message(message),
+                normalized,
                 _queue_name=self.queue_name,
                 _expires=self.job_timeout_seconds * 2,
+                _job_id=desired_job_id,
             )
             if job is None:
+                if desired_job_id:
+                    return desired_job_id
                 raise RuntimeError("arq did not return a job handle")
             return job.job_id
         finally:
@@ -133,6 +146,18 @@ def _normalize_message(message: QueueTaskMessage) -> dict:
         "type": normalized_type,
         "data": dict(message["data"]),
     }
+
+
+def _job_id_for_message(message: dict) -> str | None:
+    """Use a stable ID for package items so Redis redelivery cannot duplicate work."""
+    if message.get("type") != TaskType.RESOURCE_PACKAGE_ITEM.value:
+        return None
+    data = message.get("data") or {}
+    package_id = str(data.get("package_id") or "")
+    resource_id = str(data.get("resource_id") or "")
+    if not package_id or not resource_id:
+        return None
+    return f"resource-package:{package_id}:{resource_id}"
 
 
 def _redis_settings_from_url(redis_url: str) -> RedisSettings:

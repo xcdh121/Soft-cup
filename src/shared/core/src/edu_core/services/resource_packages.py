@@ -69,6 +69,8 @@ class ResourcePackageService:
         | None = None,
         mind_map_streamer: Callable[[dict[str, Any]], AsyncIterator[dict[str, Any]]]
         | None = None,
+        queue_service: Any = None,
+        local_generation_concurrency: int = 4,
     ) -> None:
         self.storage = LocalStorageService(storage_root)
         self.agent_orchestration_service = agent_orchestration_service
@@ -84,6 +86,8 @@ class ResourcePackageService:
         self.quiz_streamer = quiz_streamer
         self.flashcard_streamer = flashcard_streamer
         self.mind_map_streamer = mind_map_streamer
+        self.queue_service = queue_service
+        self.local_generation_concurrency = max(1, local_generation_concurrency)
 
     def list_resource_packages(
         self,
@@ -954,6 +958,40 @@ class ResourcePackageService:
             package.agent_trace = trace
             db.commit()
 
+    def update_chat_note_progress(
+        self,
+        *,
+        project_id: str,
+        generated_resource_id: str,
+        content: str,
+        title: str | None = None,
+        description: str | None = None,
+    ) -> None:
+        """Expose a queued note snapshot through the owning package stream."""
+        with self._get_db_session() as db:
+            resource = (
+                db.query(GeneratedResource)
+                .filter(
+                    GeneratedResource.id == generated_resource_id,
+                    GeneratedResource.project_id == project_id,
+                    GeneratedResource.resource_type == "lecture_note",
+                )
+                .first()
+            )
+            if resource is None or resource.status in {"completed", "failed"}:
+                return
+
+            resource.status = "generating"
+            resource.content_text = content
+            if title:
+                resource.title = title
+            if description is not None:
+                resource.summary = description
+            resource.updated_at = datetime.now(UTC)
+            if resource.resource_package is not None:
+                resource.resource_package.updated_at = resource.updated_at
+            db.commit()
+
     async def generate_resource_package(
         self,
         user_id: str,
@@ -1011,23 +1049,10 @@ class ResourcePackageService:
                 raise NotFoundError(f"Project {project_id} not found")
 
             source_document_ids = payload.get("source_document_ids") or []
-            documents = []
-            if source_document_ids:
-                documents = (
-                    db.query(Document)
-                    .filter(
-                        Document.project_id == project_id,
-                        Document.id.in_(source_document_ids),
-                    )
-                    .all()
-                )
 
             chapter_ids = self._merge_distinct(payload.get("chapter_ids") or [])
-            chapters, chapter_points, chapter_resources = self._load_chapter_scope(
+            chapters, chapter_points, _chapter_resources = self._load_chapter_scope(
                 db, project, chapter_ids
-            )
-            chapter_context = self._build_chapter_context(
-                chapters, chapter_points, chapter_resources
             )
             scoped_instructions = self._build_scoped_instructions(
                 payload.get("custom_instructions"), chapters
@@ -1109,41 +1134,112 @@ class ResourcePackageService:
                 },
             )
 
-            diagnosis = await self._get_or_create_diagnosis(
-                user_id=user_id,
-                project_id=project_id,
-                package_id=package_id,
-                target_topic=target_topic,
-                difficulty_level=difficulty_level,
-                custom_instructions=scoped_instructions,
-                resource_types=resource_types,
-                generation_params=generation_params,
-                diagnosis_id=payload.get("diagnosis_id"),
-                event_sink=event_sink,
+            direct_note_request = (
+                resource_types == ["lecture_note"]
+                and payload.get("generation_mode", "manual") == "manual"
+                and not payload.get("diagnosis_id")
+                and self.note_service is not None
+                and self.note_streamer is not None
             )
-            diagnosis_trace = self._get_diagnosis_trace(diagnosis)
+            if direct_note_request:
+                note = self.note_service.create_note(
+                    project_id=project_id,
+                    title=f"{target_topic}笔记",
+                    description="根据明确主题生成的学习笔记",
+                    content="",
+                )
+                recommendation_pool = [
+                    {
+                        "id": f"{package_id}_direct_note",
+                        "recommendation_type": "note",
+                        "target_id": note.id,
+                        "title": note.title,
+                        "reason_codes": ["explicit_manual_request"],
+                        "reason_text": ["用户已明确指定笔记主题，无需再次诊断和推荐。"],
+                        "score": 1.0,
+                        "recommended_by": "ResourcePackageService",
+                        "topic": target_topic,
+                        "custom_instructions": scoped_instructions,
+                        "stream_on_client": False,
+                        "stream_in_package": True,
+                        "direct_generation": True,
+                    }
+                ]
+                knowledge_point_ids = self._merge_distinct(
+                    payload.get("knowledge_point_ids") or [],
+                    [point.id for point in chapter_points],
+                )
+                weak_points = self._merge_distinct(
+                    payload.get("weak_knowledge_point_ids") or []
+                )
+                generation_params = {
+                    **generation_params,
+                    "diagnosis_skipped": True,
+                    "recommendations": [dict(item) for item in recommendation_pool],
+                }
+                agent_trace = list(initial_trace)
+                skipped_payload = {
+                    "agent": "SupervisorAgent",
+                    "status": "completed",
+                    "summary": (
+                        "已识别为明确的单笔记请求，"
+                        "跳过诊断与推荐，直接开始生成。"
+                    ),
+                    "reason": "explicit_manual_note",
+                }
+                self._append_agent_event(
+                    agent_trace,
+                    package_id,
+                    "agent_skipped",
+                    skipped_payload,
+                )
+                await self._publish_stream_event(
+                    event_sink,
+                    package_id,
+                    "agent_step",
+                    {
+                        "event_type": "agent_skipped",
+                        "agent_name": "SupervisorAgent",
+                        **skipped_payload,
+                    },
+                )
+            else:
+                diagnosis = await self._get_or_create_diagnosis(
+                    user_id=user_id,
+                    project_id=project_id,
+                    package_id=package_id,
+                    target_topic=target_topic,
+                    difficulty_level=difficulty_level,
+                    custom_instructions=scoped_instructions,
+                    resource_types=resource_types,
+                    generation_params=generation_params,
+                    diagnosis_id=payload.get("diagnosis_id"),
+                    event_sink=event_sink,
+                )
+                diagnosis_trace = self._get_diagnosis_trace(diagnosis)
 
-            knowledge_point_ids = self._merge_distinct(
-                payload.get("knowledge_point_ids") or [],
-                [point.id for point in chapter_points],
-                self._extract_knowledge_point_ids(diagnosis),
-            )
-            weak_points = self._merge_distinct(
-                payload.get("weak_knowledge_point_ids") or [],
-                self._extract_weak_point_ids(diagnosis),
-            )
-            generation_params = {
-                **generation_params,
-                "diagnosis_id": diagnosis.diagnosis_id,
-                "learning_path": diagnosis.learning_path or {},
-                "recommendations": diagnosis.recommendations,
-            }
+                knowledge_point_ids = self._merge_distinct(
+                    payload.get("knowledge_point_ids") or [],
+                    [point.id for point in chapter_points],
+                    self._extract_knowledge_point_ids(diagnosis),
+                )
+                weak_points = self._merge_distinct(
+                    payload.get("weak_knowledge_point_ids") or [],
+                    self._extract_weak_point_ids(diagnosis),
+                )
+                generation_params = {
+                    **generation_params,
+                    "diagnosis_id": diagnosis.diagnosis_id,
+                    "learning_path": diagnosis.learning_path or {},
+                    "recommendations": diagnosis.recommendations,
+                }
 
-            agent_trace = self._build_agent_trace_from_events(
-                package_id=package_id,
-                diagnosis=diagnosis,
-                events=diagnosis_trace,
-            )
+                agent_trace = self._build_agent_trace_from_events(
+                    package_id=package_id,
+                    diagnosis=diagnosis,
+                    events=diagnosis_trace,
+                )
+                recommendation_pool = list(diagnosis.recommendations)
             self._append_agent_event(
                 agent_trace,
                 package_id,
@@ -1155,7 +1251,6 @@ class ResourcePackageService:
             package.weak_knowledge_point_ids = weak_points
             package.generation_params = generation_params
             package.updated_at = datetime.now(UTC)
-            recommendation_pool = list(diagnosis.recommendations)
             resources_to_generate: list[tuple[GeneratedResource, str]] = []
             for order, resource_type in enumerate(resource_types):
                 orchestration_type = self._to_orchestration_resource_type(resource_type)
@@ -1186,7 +1281,7 @@ class ResourcePackageService:
                     resource_type=resource_type,
                     title=initial.get("title") or f"Generating {resource_type}",
                     summary=initial.get("summary"),
-                    status="generating",
+                    status="pending",
                     format=initial.get("format") or "json",
                     content_json=initial.get("content_json"),
                     preview_url=initial.get("preview_url"),
@@ -1212,149 +1307,341 @@ class ResourcePackageService:
                 {"package": self._model_to_dto(package).model_dump(mode="json")},
             )
 
-            source_context = self._combine_source_context(
-                self._build_document_context(documents), chapter_context
-            )
-            completed = 0
-            failed = 0
-            for order, (resource, resource_type) in enumerate(resources_to_generate):
-                resource_id = resource.id
-                self._append_agent_event(
-                    agent_trace,
-                    package_id,
-                    "resource_started",
-                    {
-                        "resource_id": resource_id,
-                        "resource_type": resource_type,
-                        "order": order,
-                    },
-                )
-                await self._publish_stream_event(
-                    event_sink,
-                    package_id,
-                    "resource_started",
-                    {
-                        "resource_id": resource_id,
-                        "resource_type": resource_type,
-                        "order": order,
-                    },
-                )
+            resource_jobs = [
+                (resource.id, resource_type)
+                for resource, resource_type in resources_to_generate
+            ]
 
-                try:
-                    generated, resource_status = await self._generate_package_resource(
+            # Do not keep this orchestration session/transaction alive while
+            # independent resource jobs perform network I/O and persist progress.
+            db.close()
+
+            if self.queue_service is not None and bool(
+                getattr(self.queue_service, "is_remote", False)
+            ):
+                for resource_id, _resource_type in resource_jobs:
+                    self._enqueue_resource_package_item(
+                        package_id=package_id,
+                        resource_id=resource_id,
+                        project_id=project_id,
+                        user_id=user_id,
+                    )
+                return self.get_resource_package(user_id, project_id, package_id)
+
+            semaphore = asyncio.Semaphore(self.local_generation_concurrency)
+
+            async def generate_one(resource_id: str) -> None:
+                async with semaphore:
+                    await self.generate_resource_package_item(
                         user_id=user_id,
                         project_id=project_id,
-                        resource_type=resource_type,
-                        topic=target_topic,
-                        goal=target_goal,
-                        difficulty_level=difficulty_level,
-                        document_context=source_context,
-                        knowledge_point_ids=knowledge_point_ids,
-                        weak_points=weak_points,
-                        custom_instructions=scoped_instructions,
-                        documents=documents,
-                        generation_params=generation_params,
-                        recommendations=recommendation_pool,
                         package_id=package_id,
                         resource_id=resource_id,
                         event_sink=event_sink,
                     )
-                    error_message = None
-                    completed += 1
-                except Exception as exc:
-                    generated = self._build_failed_resource_content(
-                        resource_type=resource_type,
-                        topic=target_topic,
-                        error_message=str(exc),
-                    )
-                    resource_status = "failed"
-                    error_message = str(exc)
-                    failed += 1
 
-                resource.title = generated["title"]
-                resource.summary = generated.get("summary")
-                resource.status = resource_status
-                resource.format = generated["format"]
-                resource.content_text = generated.get("content_text")
-                resource.content_json = generated.get("content_json")
-                resource.file_url = generated.get("file_url")
-                resource.preview_url = generated.get("preview_url")
-                resource.cover_image_url = generated.get("cover_image_url")
-                resource.error_message = error_message
-                resource.estimated_minutes = generated.get("estimated_minutes")
-                resource.generator_agent = generated.get("generator_agent")
-                resource.generation_reason = generated.get("generation_reason")
-                resource.updated_at = datetime.now(UTC)
-                resource.completed_at = (
-                    resource.updated_at if resource_status == "completed" else None
-                )
-
-                self._append_agent_event(
-                    agent_trace,
-                    package_id,
-                    (
-                        "resource_completed"
-                        if resource_status == "completed"
-                        else "resource_failed"
-                        if resource_status == "failed"
-                        else "resource_generating"
-                    ),
-                    {
-                        "resource_id": resource.id,
-                        "resource_type": resource_type,
-                        "title": generated["title"],
-                        "error_message": error_message,
-                    },
-                )
-                package.completed_resource_count = completed
-                package.failed_resource_count = failed
-                package.agent_trace = agent_trace
-                package.updated_at = datetime.now(timezone.utc)
-                db.commit()
-                db.refresh(resource)
-                resource_event = (
-                    "resource_completed"
-                    if resource_status == "completed"
-                    else "resource_failed"
-                    if resource_status == "failed"
-                    else "resource_generating"
-                )
-                await self._publish_stream_event(
-                    event_sink,
-                    package_id,
-                    resource_event,
-                    {
-                        "resource": self._resource_to_dto(resource).model_dump(
-                            mode="json"
-                        )
-                    },
-                )
-
-            package.status = "completed" if failed == 0 else "failed"
-            package.completed_resource_count = completed
-            package.failed_resource_count = failed
-            package.completed_at = now
-            self._append_agent_event(
-                agent_trace,
-                package_id,
-                "package_status_changed",
-                {"status": package.status},
+            await asyncio.gather(
+                *(generate_one(resource_id) for resource_id, _ in resource_jobs)
             )
-            package.agent_trace = agent_trace
+            return self.get_resource_package(user_id, project_id, package_id)
 
+    def _enqueue_resource_package_item(
+        self,
+        *,
+        package_id: str,
+        resource_id: str,
+        project_id: str,
+        user_id: str,
+    ) -> str:
+        if self.queue_service is None:
+            raise RuntimeError("Resource package queue service is not configured")
+        from edu_queue.schemas import QueueTaskMessage, TaskType
+
+        message: QueueTaskMessage = {
+            "type": TaskType.RESOURCE_PACKAGE_ITEM,
+            "data": {
+                "package_id": package_id,
+                "resource_id": resource_id,
+                "project_id": project_id,
+                "user_id": user_id,
+            },
+        }
+        return self.queue_service.send_message(message)
+
+    async def generate_resource_package_item(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        package_id: str,
+        resource_id: str,
+        event_sink: Callable[[ResourcePackageStreamEventDto], Awaitable[None]]
+        | None = None,
+    ) -> GeneratedResourceDto:
+        """Generate one package item with an isolated database session.
+
+        This method is shared by ARQ workers and the bounded in-process fallback.
+        Its identity-only arguments make Redis redelivery safe after the item has
+        reached a terminal state.
+        """
+        with self._get_db_session() as db:
+            resource = (
+                db.query(GeneratedResource)
+                .filter(
+                    GeneratedResource.id == resource_id,
+                    GeneratedResource.resource_package_id == package_id,
+                    GeneratedResource.project_id == project_id,
+                    GeneratedResource.user_id == user_id,
+                )
+                .with_for_update()
+                .first()
+            )
+            if resource is None:
+                raise NotFoundError(f"Generated resource {resource_id} not found")
+            if resource.status in {"completed", "failed"}:
+                return self._resource_to_dto(resource)
+
+            package = (
+                db.query(ResourcePackage)
+                .filter(ResourcePackage.id == package_id)
+                .with_for_update()
+                .first()
+            )
+            if package is None:
+                raise NotFoundError(f"Resource package {package_id} not found")
+
+            resource_type = resource.resource_type
+            generation_order = resource.generation_order
+            generation_params = dict(package.generation_params or {})
+            document_ids = list(resource.source_document_ids or [])
+            documents = (
+                db.query(Document)
+                .filter(
+                    Document.project_id == project_id,
+                    Document.id.in_(document_ids),
+                )
+                .all()
+                if document_ids
+                else []
+            )
+            chapter_ids = self._merge_distinct(
+                generation_params.get("chapter_ids") or []
+            )
+            chapters, chapter_points, chapter_resources = self._load_chapter_scope(
+                db, package.project, chapter_ids
+            )
+            source_context = self._combine_source_context(
+                self._build_document_context(documents),
+                self._build_chapter_context(
+                    chapters, chapter_points, chapter_resources
+                ),
+            )
+            custom_instructions = self._build_scoped_instructions(
+                generation_params.get("custom_instructions"), chapters
+            )
+            topic = package.target_topic
+            goal = package.target_goal
+            difficulty_level = resource.difficulty_level
+            knowledge_point_ids = list(resource.knowledge_point_ids or [])
+            weak_points = list(package.weak_knowledge_point_ids or [])
+            recommendations = [
+                dict(item)
+                for item in generation_params.get("recommendations") or []
+                if isinstance(item, dict)
+            ]
+
+            resource.status = "generating"
+            resource.error_message = None
+            resource.updated_at = datetime.now(UTC)
+            trace = list(package.agent_trace or [])
+            self._append_agent_event(
+                trace,
+                package_id,
+                "resource_started",
+                {
+                    "resource_id": resource_id,
+                    "resource_type": resource_type,
+                    "order": generation_order,
+                },
+            )
+            package.agent_trace = trace
+            package.updated_at = resource.updated_at
             db.commit()
-            db.refresh(package)
+            for document in documents:
+                db.expunge(document)
+
+        await self._publish_stream_event(
+            event_sink,
+            package_id,
+            "resource_started",
+            {
+                "resource_id": resource_id,
+                "resource_type": resource_type,
+                "order": generation_order,
+            },
+        )
+
+        try:
+            generated, resource_status = await self._generate_package_resource(
+                user_id=user_id,
+                project_id=project_id,
+                resource_type=resource_type,
+                topic=topic,
+                goal=goal,
+                difficulty_level=difficulty_level,
+                document_context=source_context,
+                knowledge_point_ids=knowledge_point_ids,
+                weak_points=weak_points,
+                custom_instructions=custom_instructions,
+                documents=documents,
+                generation_params=generation_params,
+                recommendations=recommendations,
+                package_id=package_id,
+                resource_id=resource_id,
+                event_sink=event_sink,
+            )
+            error_message = None
+        except Exception as exc:
+            error_message = str(exc)
+            generated = self._build_failed_resource_content(
+                resource_type=resource_type,
+                topic=topic,
+                error_message=error_message,
+            )
+            resource_status = "failed"
+
+        resource_dto, package_state = self._persist_resource_package_item_result(
+            package_id=package_id,
+            resource_id=resource_id,
+            resource_type=resource_type,
+            generated=generated,
+            resource_status=resource_status,
+            error_message=error_message,
+        )
+        resource_event = (
+            "resource_completed"
+            if resource_status == "completed"
+            else "resource_failed"
+            if resource_status == "failed"
+            else "resource_generating"
+        )
+        await self._publish_stream_event(
+            event_sink,
+            package_id,
+            resource_event,
+            {"resource": resource_dto.model_dump(mode="json")},
+        )
+        if package_state is not None:
             await self._publish_stream_event(
                 event_sink,
                 package_id,
                 "package_completed",
+                package_state,
+            )
+        return resource_dto
+
+    def _persist_resource_package_item_result(
+        self,
+        *,
+        package_id: str,
+        resource_id: str,
+        resource_type: str,
+        generated: dict[str, Any],
+        resource_status: str,
+        error_message: str | None,
+    ) -> tuple[GeneratedResourceDto, dict[str, Any] | None]:
+        package_state: dict[str, Any] | None = None
+        with self._get_db_session() as db:
+            package = (
+                db.query(ResourcePackage)
+                .filter(ResourcePackage.id == package_id)
+                .with_for_update()
+                .first()
+            )
+            resource = (
+                db.query(GeneratedResource)
+                .filter(
+                    GeneratedResource.id == resource_id,
+                    GeneratedResource.resource_package_id == package_id,
+                )
+                .first()
+            )
+            if package is None or resource is None:
+                raise NotFoundError(f"Generated resource {resource_id} not found")
+
+            resource.title = generated["title"]
+            resource.summary = generated.get("summary")
+            resource.status = resource_status
+            resource.format = generated["format"]
+            resource.content_text = generated.get("content_text")
+            resource.content_json = generated.get("content_json")
+            resource.file_url = generated.get("file_url")
+            resource.preview_url = generated.get("preview_url")
+            resource.cover_image_url = generated.get("cover_image_url")
+            resource.error_message = error_message
+            resource.estimated_minutes = generated.get("estimated_minutes")
+            resource.generator_agent = generated.get("generator_agent")
+            resource.generation_reason = generated.get("generation_reason")
+            resource.updated_at = datetime.now(UTC)
+            resource.completed_at = (
+                resource.updated_at if resource_status == "completed" else None
+            )
+
+            statuses = [
+                status
+                for (status,) in db.query(GeneratedResource.status)
+                .filter(GeneratedResource.resource_package_id == package_id)
+                .all()
+            ]
+            completed = sum(status == "completed" for status in statuses)
+            failed = sum(status == "failed" for status in statuses)
+            active = sum(status in {"pending", "generating"} for status in statuses)
+            package.completed_resource_count = completed
+            package.failed_resource_count = failed
+            package.updated_at = resource.updated_at
+
+            event_name = (
+                "resource_completed"
+                if resource_status == "completed"
+                else "resource_failed"
+                if resource_status == "failed"
+                else "resource_generating"
+            )
+            trace = list(package.agent_trace or [])
+            self._append_agent_event(
+                trace,
+                package_id,
+                event_name,
                 {
+                    "resource_id": resource_id,
+                    "resource_type": resource_type,
+                    "title": generated["title"],
+                    "error_message": error_message,
+                },
+            )
+
+            if active == 0:
+                package.status = "completed" if failed == 0 else "failed"
+                package.completed_at = resource.updated_at
+                self._append_agent_event(
+                    trace,
+                    package_id,
+                    "package_status_changed",
+                    {"status": package.status},
+                )
+                package_state = {
                     "status": package.status,
                     "completed_resource_count": completed,
                     "failed_resource_count": failed,
-                },
-            )
-            return self._model_to_dto(package)
+                }
+            else:
+                package.status = "generating"
+                package.completed_at = None
+            package.agent_trace = trace
+            db.commit()
+            db.refresh(resource)
+            resource_dto = self._resource_to_dto(resource)
+        return resource_dto, package_state
 
     def update_generated_resource(
         self, user_id: str, project_id: str, resource_id: str, payload: dict
@@ -1791,6 +2078,7 @@ class ResourcePackageService:
                     package_id=package_id,
                     resource_id=resource_id,
                     event_sink=event_sink,
+                    document_context=document_context,
                 )
                 return generated, "completed"
             if resource_type in {"practice_set", "flashcards"} and recommendation.get(
@@ -1845,6 +2133,7 @@ class ResourcePackageService:
         package_id: str,
         resource_id: str,
         event_sink: Callable[[ResourcePackageStreamEventDto], Awaitable[None]] | None,
+        document_context: str | None = None,
     ) -> dict[str, Any]:
         if self.note_streamer is None:
             raise RuntimeError("Package note streamer is not configured")
@@ -1856,14 +2145,27 @@ class ResourcePackageService:
         content = ""
         title = str(generated.get("title") or "Generated note")
         summary = generated.get("summary")
-        async for event in self.note_streamer(
-            {
-                "project_id": project_id,
-                "note_id": note_id,
-                "topic": recommendation.get("topic"),
-                "custom_instructions": recommendation.get("custom_instructions"),
-            }
-        ):
+        stream_payload = {
+            "project_id": project_id,
+            "note_id": note_id,
+            "topic": recommendation.get("topic"),
+            "custom_instructions": recommendation.get("custom_instructions"),
+        }
+        if document_context and document_context.strip():
+            # The package service already loaded the selected documents and
+            # chapters. Reusing that text avoids a second embedding/search
+            # round-trip before the model can emit its first token.
+            stream_payload["document_content"] = document_context
+        elif recommendation.get("direct_generation"):
+            # An explicit single-note request should begin immediately even
+            # when the user did not select source material. A non-empty marker
+            # tells the note agent that there is intentionally no RAG context.
+            stream_payload["document_content"] = (
+                "No source material was selected. Follow the requested topic "
+                "and instructions directly."
+            )
+
+        async for event in self.note_streamer(stream_payload):
             event_type = str(event.get("event") or "")
             event_content = event.get("content")
             if isinstance(event_content, str):

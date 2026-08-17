@@ -39,26 +39,62 @@ class BaiduSearchClient:
         return bool(self.config.api_key.strip())
 
     async def search_videos(self, query: str) -> dict[str, Any]:
+        normalized_query = query.strip()
+        top_k = max(1, min(self.config.video_top_k, 10))
         data, references = await self._search(
-            query,
+            normalized_query,
             resource_type="video",
-            top_k=max(1, min(self.config.video_top_k, 10)),
+            top_k=top_k,
             sites=self.config.sites,
         )
 
-        videos = [
-            video for item in references if (video := self._normalize_video(item))
-        ]
+        videos = self._normalize_videos(references)
+        search_query = normalized_query
+        if not videos and self.config.sites:
+            # Some provider indexes treat an exact site filter as excluding
+            # subdomains such as www.bilibili.com. Retry the video index
+            # without that filter before reporting a false empty result.
+            search_query = f"{normalized_query} 教程"
+            data, references = await self._search(
+                search_query,
+                resource_type="video",
+                top_k=top_k,
+            )
+            videos = self._normalize_videos(references)
+        if not videos:
+            # The same Bilibili pages can be classified as ordinary webpages
+            # instead of video references. A final web-index lookup preserves
+            # useful links when the provider's media classification is sparse.
+            search_query = f"{normalized_query} 教程 视频"
+            data, references = await self._search(
+                search_query,
+                resource_type="web",
+                top_k=top_k,
+                sites=self.config.sites,
+            )
+            videos = self._normalize_videos(references)
         if not videos:
             raise BaiduSearchError(f"No video results found for '{query}'")
         videos = await self._replace_baidu_bilibili_thumbnails(videos)
 
         return {
-            "query": query,
+            "query": normalized_query,
+            "search_query": search_query,
             "provider": "baidu_ai_search",
             "request_id": data.get("request_id"),
             "videos": videos,
         }
+
+    def _normalize_videos(self, references: list[Any]) -> list[dict[str, Any]]:
+        videos: list[dict[str, Any]] = []
+        seen_urls: set[str] = set()
+        for item in references:
+            video = self._normalize_video(item)
+            if video is None or video["url"] in seen_urls:
+                continue
+            seen_urls.add(video["url"])
+            videos.append(video)
+        return videos
 
     async def search_web(
         self,
@@ -213,6 +249,9 @@ class BaiduSearchClient:
             video.get("play_url"),
         )
         if not url:
+            return None
+        parsed_url = urlparse(url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
             return None
 
         image = item.get("image") if isinstance(item.get("image"), dict) else {}

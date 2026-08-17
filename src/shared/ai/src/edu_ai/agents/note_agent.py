@@ -15,9 +15,12 @@ from edu_ai.agents.utils import generate, generate_stream, get_db_session
 class NoteGenerationResult(BaseModel):
     """Model for note generation result."""
 
+    # Keep content first in the structured-output schema. Streaming parsers can
+    # expose the body while it is still growing instead of waiting for the
+    # model to finish title and description fields first.
+    content: str = Field(..., description="The markdown content of the note")
     title: str = Field(..., description="The title of the note")
     description: str = Field(..., description="The description of the note")
-    content: str = Field(..., description="The content of the note")
 
 
 class NoteAgent:
@@ -121,6 +124,7 @@ class NoteAgent:
         topic: str | None = None,
         custom_instructions: str | None = None,
         note_id: str | None = None,
+        document_content: str | None = None,
     ) -> AsyncGenerator[dict[str, Any]]:
         if not note_id:
             raise ValueError("note_id is required for note generation")
@@ -163,6 +167,7 @@ class NoteAgent:
                 topic=generation_topic or "",
                 language_code=project.language_code,
                 custom_instructions=custom_instructions,
+                document_content=document_content,
             ):
                 content = partial.get("content")
                 if isinstance(content, str) and content != previous_content:

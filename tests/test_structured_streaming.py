@@ -73,6 +73,12 @@ class _Agent(BaseOrchestrationAgent):
 
 
 class StructuredStreamingTests(unittest.IsolatedAsyncioTestCase):
+    def test_note_streaming_schema_requests_content_first(self):
+        self.assertEqual(
+            list(NoteAgent.output_model.model_fields),
+            ["content", "title", "description"],
+        )
+
     async def test_note_agent_persists_each_content_snapshot(self):
         engine = create_engine(
             "sqlite://",
@@ -106,7 +112,10 @@ class StructuredStreamingTests(unittest.IsolatedAsyncioTestCase):
             )
             db.commit()
 
-        async def fake_generate_stream(**_kwargs):
+        observed_generation = {}
+
+        async def fake_generate_stream(**kwargs):
+            observed_generation.update(kwargs)
             yield {"content": "Hello"}
             yield {
                 "title": "Streaming note",
@@ -132,6 +141,7 @@ class StructuredStreamingTests(unittest.IsolatedAsyncioTestCase):
                 project_id="project-note-stream",
                 note_id="note-stream",
                 topic="streaming",
+                document_content="Selected course context",
             ):
                 if event["event"] == "note_delta":
                     with session_factory() as db:
@@ -143,6 +153,10 @@ class StructuredStreamingTests(unittest.IsolatedAsyncioTestCase):
                         )
 
         self.assertEqual(persisted_contents, ["Hello", "Hello world"])
+        self.assertEqual(
+            observed_generation["document_content"],
+            "Selected course context",
+        )
         engine.dispose()
 
     async def test_flashcard_agent_persists_each_card_before_event(self):

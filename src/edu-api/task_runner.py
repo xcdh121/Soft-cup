@@ -59,10 +59,16 @@ class TaskRunnerService:
         embedding_domain: str = "query",
         embedding_dimensions: int = 3072,
         search_service: Any,
+        xfyun_image_generation_client: Any = None,
+        xfyun_ppt_client: Any = None,
+        baidu_search_client: Any = None,
     ) -> None:
         self.storage = LocalStorageService(storage_root)
         self.parser = LocalDocumentParser()
         self.search_service = search_service
+        self.xfyun_image_generation_client = xfyun_image_generation_client
+        self.xfyun_ppt_client = xfyun_ppt_client
+        self.baidu_search_client = baidu_search_client
         self.embedding_provider = embedding_provider
         self.embedding_api_key = embedding_api_key
         self.embedding_base_url = embedding_base_url
@@ -131,6 +137,8 @@ class TaskRunnerService:
             await self._extract_learner_profile(payload)
         elif task_type == TaskType.AGENT_RUN:
             await self._run_agent_orchestration(payload)
+        elif task_type == TaskType.RESOURCE_PACKAGE_ITEM:
+            await self._run_resource_package_item(payload)
         else:
             raise ValueError(f"Unsupported task type: {task_type}")
 
@@ -155,6 +163,31 @@ class TaskRunnerService:
         )
         await service.execute_agent_run(
             str(payload["user_id"]), str(payload["run_id"])
+        )
+
+    async def _run_resource_package_item(self, payload: dict[str, Any]) -> None:
+        """Generate one package item in an isolated, idempotent worker job."""
+        local_queue = QueueService(queue_name="resource-package-item-local")
+        service = ResourcePackageService(
+            storage_root=str(self.storage.root),
+            note_service=NoteService(queue_service=local_queue),
+            quiz_service=QuizService(queue_service=local_queue),
+            flashcard_group_service=FlashcardGroupService(queue_service=local_queue),
+            mind_map_service=MindMapService(queue_service=local_queue),
+            xfyun_image_generation_client=self.xfyun_image_generation_client,
+            xfyun_ppt_client=self.xfyun_ppt_client,
+            baidu_search_client=self.baidu_search_client,
+            llm_config=self.llm_config,
+            note_streamer=self.stream_note,
+            quiz_streamer=self.stream_quiz,
+            flashcard_streamer=self.stream_flashcards,
+            mind_map_streamer=self.stream_mind_map,
+        )
+        await service.generate_resource_package_item(
+            user_id=str(payload["user_id"]),
+            project_id=str(payload["project_id"]),
+            package_id=str(payload["package_id"]),
+            resource_id=str(payload["resource_id"]),
         )
 
     async def _generate_chat_title(self, payload: dict[str, Any]) -> None:
@@ -318,6 +351,7 @@ Student message:
             project_id=payload["project_id"], topic=payload.get("topic"),
             custom_instructions=payload.get("custom_instructions"),
             note_id=payload["note_id"],
+            document_content=payload.get("document_content"),
         ):
             yield event
 
@@ -379,8 +413,19 @@ Student message:
         generated_resource_id = payload.get("generated_resource_id")
         resource_packages = ResourcePackageService()
         try:
-            async for _event in self.stream_note(payload):
-                pass
+            async for event in self.stream_note(payload):
+                if (
+                    generated_resource_id
+                    and event.get("event") in {"note_delta", "note_completed"}
+                    and isinstance(event.get("content"), str)
+                ):
+                    resource_packages.update_chat_note_progress(
+                        project_id=payload["project_id"],
+                        generated_resource_id=generated_resource_id,
+                        title=event.get("title"),
+                        description=event.get("description"),
+                        content=event["content"],
+                    )
             note = NoteService(queue_service=QueueService()).get_note(
                 note_id=payload["note_id"],
                 project_id=payload["project_id"],

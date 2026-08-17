@@ -110,7 +110,7 @@ services:
       - ${PRODUCTION_ENV_FILE:-.env.production}
     environment:
       <<: *app-environment
-      WORKER_MAX_JOBS: ${WORKER_MAX_JOBS:-1}
+      WORKER_MAX_JOBS: ${WORKER_MAX_JOBS:-4}
     depends_on:
       db:
         condition: service_healthy

@@ -15,6 +15,7 @@ class TaskType(str, Enum):
     CHAT_TITLE_GENERATION = "chat_title_generation"
     LEARNER_PROFILE_EXTRACTION = "learner_profile_extraction"
     AGENT_RUN = "agent_run"
+    RESOURCE_PACKAGE_ITEM = "resource_package_item"
 
 
 class FlashcardGenerationData(TypedDict):
@@ -97,6 +98,15 @@ class AgentRunData(TypedDict):
     user_id: str
 
 
+class ResourcePackageItemData(TypedDict):
+    """Identity-only payload for one independently generated package item."""
+
+    package_id: str
+    resource_id: str
+    project_id: str
+    user_id: str
+
+
 TaskData = Union[
     FlashcardGenerationData,
     QuizGenerationData,
@@ -106,6 +116,7 @@ TaskData = Union[
     ChatTitleGenerationData,
     LearnerProfileExtractionData,
     AgentRunData,
+    ResourcePackageItemData,
 ]
 
 

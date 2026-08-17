@@ -1,14 +1,19 @@
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
-import sys
 
 from arq.connections import RedisSettings
 from arq.worker import func
 from config import get_settings
 from edu_core.services import AgentOrchestrationService, SearchService
+from edu_core.services.baidu_search import BaiduSearchClient, BaiduSearchConfig
+from edu_core.services.xfyun_image_generation import (
+    XfyunImageGenerationClient,
+    XfyunImageGenerationConfig,
+)
+from edu_core.services.xfyun_ppt import XfyunPptClient, XfyunPptConfig
 from edu_db.session import init_db
 from edu_queue.schemas import QueueTaskMessage
-
 
 API_SRC = Path(__file__).resolve().parents[1] / "edu-api"
 if str(API_SRC) not in sys.path:
@@ -44,6 +49,50 @@ async def run_task(ctx, message: QueueTaskMessage) -> None:
         embedding_domain=settings.embedding_domain,
         embedding_dimensions=settings.embedding_dimensions,
     )
+    baidu_search_client = BaiduSearchClient(
+        BaiduSearchConfig(
+            api_key=settings.baidu_search_api_key,
+            base_url=settings.baidu_search_base_url,
+            video_top_k=settings.baidu_search_video_top_k,
+            web_top_k=settings.baidu_search_web_top_k,
+            sites=tuple(
+                site.strip()
+                for site in settings.baidu_search_sites.split(",")
+                if site.strip()
+            ),
+            safe_search=settings.baidu_search_safe_search,
+            timeout_seconds=settings.baidu_search_timeout_seconds,
+        )
+    )
+    xfyun_image_client = XfyunImageGenerationClient(
+        XfyunImageGenerationConfig(
+            enabled=settings.xfyun_image_generation_enabled,
+            app_id=settings.xfyun_image_generation_app_id,
+            api_key=settings.xfyun_image_generation_api_key,
+            api_secret=settings.xfyun_image_generation_api_secret,
+            base_url=settings.xfyun_image_generation_base_url,
+            timeout_seconds=settings.xfyun_image_generation_timeout_seconds,
+            default_width=settings.xfyun_image_generation_default_width,
+            default_height=settings.xfyun_image_generation_default_height,
+        )
+    )
+    xfyun_ppt_client = XfyunPptClient(
+        XfyunPptConfig(
+            enabled=settings.xfyun_ppt_enabled,
+            app_id=settings.xfyun_ppt_app_id,
+            secret=settings.xfyun_ppt_secret,
+            base_url=settings.xfyun_ppt_base_url,
+            business_id=settings.xfyun_ppt_business_id,
+            default_author=settings.xfyun_ppt_default_author,
+            default_language=settings.xfyun_ppt_default_language,
+            default_search=settings.xfyun_ppt_default_search,
+            default_is_card_note=settings.xfyun_ppt_default_is_card_note,
+            default_is_figure=settings.xfyun_ppt_default_is_figure,
+            default_ai_image=settings.xfyun_ppt_default_ai_image,
+            poll_interval_seconds=settings.xfyun_ppt_poll_interval_seconds,
+            poll_timeout_seconds=settings.xfyun_ppt_poll_timeout_seconds,
+        )
+    )
     runner = TaskRunnerService(
         storage_root=settings.storage_root,
         llm_model=settings.llm_model,
@@ -60,6 +109,9 @@ async def run_task(ctx, message: QueueTaskMessage) -> None:
         embedding_domain=settings.embedding_domain,
         embedding_dimensions=settings.embedding_dimensions,
         search_service=search_service,
+        xfyun_image_generation_client=xfyun_image_client,
+        xfyun_ppt_client=xfyun_ppt_client,
+        baidu_search_client=baidu_search_client,
     )
     await runner._dispatch_async(message)
 

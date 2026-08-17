@@ -200,17 +200,20 @@ class ResourcePackageToolTests(unittest.IsolatedAsyncioTestCase):
         calls: list[dict] = []
 
         class FastNoteService:
-            def start_chat_note_generation(self, **kwargs):
+            async def generate_resource_package(self, **kwargs):
                 calls.append(kwargs)
-                return SimpleNamespace(
-                    resource_package_id="package-note-fast",
-                    status="generating",
-                    preview_url="/dashboard/p/project-1/n/note-fast",
+                await kwargs["event_sink"](
+                    SimpleNamespace(
+                        event="package_started",
+                        package_id="package-note-fast",
+                        payload={"status": "generating", "resource_count": 1},
+                    )
                 )
-
-            async def generate_resource_package(self, **_kwargs):
-                raise AssertionError(
-                    "diagnosis-backed package generation should be skipped"
+                return SimpleNamespace(
+                    id="package-note-fast",
+                    status="completed",
+                    completed_resource_count=1,
+                    failed_resource_count=0,
                 )
 
         context = SimpleNamespace(
@@ -229,7 +232,6 @@ class ResourcePackageToolTests(unittest.IsolatedAsyncioTestCase):
         result = json.loads(result_text)
 
         self.assertEqual(result["package_id"], "package-note-fast")
-        self.assertEqual(
-            result["preview_url"], "/dashboard/p/project-1/n/note-fast"
-        )
-        self.assertEqual(calls[0]["topic"], "最短路径")
+        self.assertIsNone(result["preview_url"])
+        self.assertEqual(calls[0]["payload"]["target_topic"], "最短路径")
+        self.assertEqual(calls[0]["payload"]["generation_mode"], "manual")

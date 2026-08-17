@@ -256,10 +256,18 @@ const getVideoRecommendations = (
 
 const VideoRecommendationsPreview = ({
   videos,
+  status,
 }: {
   videos: Array<VideoRecommendation>
+  status: GeneratedResource['status']
 }) => {
-  if (videos.length === 0) return <Empty label="暂未找到相关视频。" />
+  if (videos.length === 0) {
+    return status === 'pending' || status === 'generating' ? (
+      <Loading label="正在搜索相关视频…" />
+    ) : (
+      <Empty label="暂未找到相关视频。" />
+    )
+  }
 
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -619,7 +627,10 @@ export const ResourceResultPreview = ({
 
   if (resource.resource_type === 'video_recommendations') {
     return (
-      <VideoRecommendationsPreview videos={getVideoRecommendations(resource)} />
+      <VideoRecommendationsPreview
+        videos={getVideoRecommendations(resource)}
+        status={resource.status}
+      />
     )
   }
 
@@ -641,6 +652,15 @@ export const ResourceResultPreview = ({
     return resource.content_json ? (
       <Empty label="结构化结果已生成，请通过上方链接查看完整内容。" />
     ) : null
+  }
+
+  if (
+    reference.target_type === 'note' &&
+    (resource.status === 'pending' || resource.status === 'generating')
+  ) {
+    return (
+      <Loading label="笔记模型正在准备，首段内容生成后会在这里实时显示…" />
+    )
   }
 
   switch (reference.target_type) {

@@ -284,33 +284,18 @@ async def generate_resource_package(
         },
     }
 
-    direct_resource = None
-    can_start_direct_note = (
-        requested_types == ["lecture_note"]
-        and bool(str(topic or "").strip())
-        and callable(getattr(service, "start_chat_note_generation", None))
+    can_stream_direct_note = requested_types == ["lecture_note"]
+    if can_stream_direct_note:
+        # Explicit single-note requests do not need diagnosis. Marking the
+        # package manual activates ResourcePackageService's direct in-process
+        # streamer, avoiding the worker queue that delayed the first token.
+        package_payload["generation_mode"] = "manual"
+    package = await _start_resource_package_generation(
+        service=service,
+        user_id=ctx.user_id,
+        project_id=ctx.project_id,
+        payload=package_payload,
     )
-    if can_start_direct_note:
-        direct_resource = await asyncio.to_thread(
-            service.start_chat_note_generation,
-            user_id=ctx.user_id,
-            project_id=ctx.project_id,
-            topic=resolved_topic,
-            custom_instructions=resolved_instructions,
-        )
-        package = {
-            "id": direct_resource.resource_package_id,
-            "status": direct_resource.status,
-            "completed_resource_count": 0,
-            "failed_resource_count": 0,
-        }
-    else:
-        package = await _start_resource_package_generation(
-            service=service,
-            user_id=ctx.user_id,
-            project_id=ctx.project_id,
-            payload=package_payload,
-        )
 
     package_id = package["id"]
     package_status = package["status"]
@@ -333,9 +318,7 @@ async def generate_resource_package(
             "personalization_basis": personalization_basis,
             "completed_resource_count": package["completed_resource_count"],
             "failed_resource_count": package["failed_resource_count"],
-            "preview_url": (
-                direct_resource.preview_url if direct_resource is not None else None
-            ),
+            "preview_url": None,
             "resource_package_url": (
                 f"/dashboard/p/{ctx.project_id}/resource-packages"
                 f"?packageId={package_id}"
