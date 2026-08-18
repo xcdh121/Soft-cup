@@ -94,7 +94,7 @@ const getKnowledgePoints = (resource: EvaluationResource) => {
   return [...new Set(points)].filter(Boolean)
 }
 
-const getProgrammingGrades = (
+const getProgrammingSubmissionScores = (
   projectId: string,
   resource: EvaluationResource,
 ) => {
@@ -106,23 +106,32 @@ const getProgrammingGrades = (
   }
   try {
     const value = window.localStorage.getItem(
-      `programming-grades:${projectId}:${resource.id}`,
+      `programming-submissions:${projectId}:${resource.id}`,
     )
     const parsed = value ? JSON.parse(value) : {}
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
       return []
-    return Object.values(parsed as Record<string, { score?: unknown }>).flatMap(
-      (grade) =>
-        typeof grade.score === 'number' && Number.isFinite(grade.score)
-          ? [grade.score]
-          : [],
+    const questionIds = new Set(
+      resource.questions.map((question) => question.id),
+    )
+    return Object.entries(
+      parsed as Record<string, { score?: unknown }>,
+    ).flatMap(([questionId, submission]) =>
+      questionIds.has(questionId) &&
+      typeof submission.score === 'number' &&
+      Number.isFinite(submission.score)
+        ? [submission.score]
+        : [],
     )
   } catch {
     return []
   }
 }
 
-const getResourceStats = (projectId: string, resource: EvaluationResource) => {
+export const getResourceStats = (
+  projectId: string,
+  resource: EvaluationResource,
+) => {
   const attemptCount = resource.questions.reduce(
     (sum, question) => sum + question.attemptCount,
     0,
@@ -131,8 +140,8 @@ const getResourceStats = (projectId: string, resource: EvaluationResource) => {
     (sum, question) => sum + question.correctCount,
     0,
   )
-  const programmingGrades = getProgrammingGrades(projectId, resource)
-  const submittedCount = programmingGrades.length
+  const programmingScores = getProgrammingSubmissionScores(projectId, resource)
+  const submittedCount = programmingScores.length
   const completed =
     resource.type === 'programming_questions'
       ? resource.itemCount > 0 && submittedCount >= resource.itemCount
@@ -143,10 +152,10 @@ const getResourceStats = (projectId: string, resource: EvaluationResource) => {
       resource.type === 'programming_questions' ? submittedCount : attemptCount,
     accuracy:
       resource.type === 'programming_questions'
-        ? programmingGrades.length
+        ? programmingScores.length
           ? Math.round(
-              programmingGrades.reduce((sum, score) => sum + score, 0) /
-                programmingGrades.length,
+              programmingScores.reduce((sum, score) => sum + score, 0) /
+                programmingScores.length,
             )
           : null
         : attemptCount
@@ -322,14 +331,14 @@ const ResourceList = ({
                     <span>
                       {stats.accuracy === null
                         ? resource.type === 'programming_questions'
-                          ? '待评阅'
+                          ? '待运行'
                           : '暂无作答'
                         : `${stats.accuracy}%`}
                     </span>
                     {stats.accuracy !== null ? (
                       <span className="text-muted-foreground">
                         {resource.type === 'programming_questions'
-                          ? '(AI 平均分)'
+                          ? '(代码运行平均分)'
                           : `(${resource.questions.reduce(
                               (sum, question) => sum + question.correctCount,
                               0,
