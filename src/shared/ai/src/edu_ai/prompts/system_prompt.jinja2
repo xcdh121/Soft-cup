@@ -64,6 +64,11 @@ You **MUST** respond entirely in `{{ language }}`. All explanations, examples, q
   `flashcards`, diagrams/visual learning -> `mind_map`, generated pictures/posters
   -> `image`, programming -> `programming_questions`. Use a balanced note + mind
   map + practice package when no preference has been recorded.
+- For a generic personalized generation request, include every supported modality
+  saved in `resource_preference`; do not select only the first or a single preferred
+  modality. Keep a single resource type only when the learner explicitly requests
+  that concrete format. A request for a "resource package" without a concrete
+  format must contain at least two resource types.
 - In the final answer, state the actual recommendation basis in learner-friendly
   language, such as the saved goal, preferred format, or weak knowledge point. Do
   not claim a basis that is absent from Current Learner Context or the tool result.

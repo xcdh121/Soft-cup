@@ -72,6 +72,15 @@ _PROGRAMMING_GENERATION_TERMS = (
     "create",
     "write",
 )
+_RESOURCE_PACKAGE_TERMS = ("资源包", "resource package")
+_RESOURCE_PACKAGE_GENERATION_TERMS = (
+    "生成",
+    "创建",
+    "制作",
+    "generate",
+    "create",
+    "make",
+)
 
 
 @dataclass(frozen=True)
@@ -312,6 +321,55 @@ def extract_programming_topic(messages: list[Any]) -> str | None:
     return None
 
 
+def should_force_resource_package_generation(messages: list[Any]) -> bool:
+    """Recognize an explicit package request without relying on model tool choice."""
+    if _resource_package_called_since_last_user_message(messages):
+        return False
+    last_user_message = next(
+        (
+            message
+            for message in reversed(messages)
+            if _message_role(message) == "user"
+        ),
+        None,
+    )
+    if last_user_message is None:
+        return False
+    user_text = _message_text(last_user_message)
+    return any(term in user_text for term in _RESOURCE_PACKAGE_TERMS) and any(
+        term in user_text for term in _RESOURCE_PACKAGE_GENERATION_TERMS
+    )
+
+
+def extract_resource_package_topic(messages: list[Any]) -> str | None:
+    """Extract the subject named in an explicit resource-package request."""
+    last_user_message = next(
+        (
+            message
+            for message in reversed(messages)
+            if _message_role(message) == "user"
+        ),
+        None,
+    )
+    if last_user_message is None:
+        return None
+    user_text = _message_text(last_user_message)
+    patterns = (
+        r"(?:生成|创建|制作)(?:一份|一个|一套)?(?:关于|有关)\s*(.+?)的?资源包",
+        r"(?:生成|创建|制作)(?:一份|一个|一套)?(?:学习)?\s*(.+?)的?资源包",
+        r"(?:generate|create|make)(?:\s+a)?\s+resource package\s+(?:about|on|for)\s+(.+?)(?:[?.!]|$)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, user_text, flags=re.IGNORECASE)
+        if match:
+            topic = match.group(1).strip(
+                " \t\r\n,.!?\uff0c\u3002\uff01\uff1f"
+            )
+            if topic:
+                return topic
+    return None
+
+
 def resolve_forced_resource_generation(
     messages: list[Any],
 ) -> ForcedResourceGeneration | None:
@@ -325,5 +383,12 @@ def resolve_forced_resource_generation(
         return ForcedResourceGeneration(
             resource_types=("programming_questions",),
             topic=extract_programming_topic(messages),
+        )
+    if should_force_resource_package_generation(messages):
+        return ForcedResourceGeneration(
+            # An empty tuple means that the package tool must derive every saved
+            # preference instead of accepting a model-selected single modality.
+            resource_types=(),
+            topic=extract_resource_package_topic(messages),
         )
     return None

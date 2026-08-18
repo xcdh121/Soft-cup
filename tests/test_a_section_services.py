@@ -401,7 +401,12 @@ class ASectionServiceTests(unittest.TestCase):
                         profile_data={
                             "current_course": {"value": "数据库系统"},
                             "learning_goal": {"value": "准备期末考试"},
-                            "resource_preference": {"value": ["笔记", "刷题"]},
+                            "resource_preference": {
+                                "value": ["资源包", "笔记", "刷题"]
+                            },
+                            "preferred_knowledge_points": {
+                                "value": ["数据结构中二叉树的知识点", "二叉树"]
+                            },
                         },
                     ),
                     StudentKnowledgeState(
@@ -443,6 +448,7 @@ class ASectionServiceTests(unittest.TestCase):
         self.assertEqual(project["course_name"], "Databases")
         self.assertEqual(profile["fields"]["learning_goal"], "准备期末考试")
         self.assertEqual(profile["fields"]["resource_preference"], ["笔记", "刷题"])
+        self.assertEqual(profile["fields"]["preferred_knowledge_points"], ["二叉树"])
         self.assertEqual(evidence["weak_points"][0]["name"], "Transactions")
         self.assertEqual(evidence["overall_mastery"], 35)
         self.assertEqual(evidence["recent_accuracy"], 0)
@@ -514,6 +520,32 @@ class ASectionServiceTests(unittest.TestCase):
             ["编程题", "学习笔记", "选择题"],
         )
 
+    def test_resource_package_is_not_stored_as_a_resource_preference(self):
+        service = LearnerProfileService()
+        with self.session_factory() as db:
+            db.add(
+                LearnerProfile(
+                    id="profile-invalid-resource-preference",
+                    project_id="project-1",
+                    user_id="user-1",
+                    profile_data={
+                        "resource_preference": {
+                            "value": ["资源包", "学习笔记", "resource package"],
+                            "confidence": 1.0,
+                            "status": "confirmed",
+                        }
+                    },
+                )
+            )
+            db.commit()
+
+        profile = service.get_profile("project-1", "user-1")
+
+        self.assertEqual(
+            profile.profile_data["resource_preference"]["value"],
+            ["学习笔记"],
+        )
+
     def test_explicit_learning_goal_is_extracted_without_waiting_for_llm(self):
         fields = LearnerProfileService.extract_explicit_chat_fields(
             "我想学习最短路径"
@@ -552,6 +584,32 @@ class ASectionServiceTests(unittest.TestCase):
         self.assertEqual(
             profile.profile_data["preferred_knowledge_points"]["value"],
             ["图的遍历", "最短路径"],
+        )
+
+    def test_equivalent_scoped_knowledge_points_are_merged(self):
+        service = LearnerProfileService()
+        with self.session_factory() as db:
+            db.add(
+                LearnerProfile(
+                    id="profile-duplicate-knowledge-points",
+                    project_id="project-1",
+                    user_id="user-1",
+                    profile_data={
+                        "preferred_knowledge_points": {
+                            "value": ["数据结构中二叉树的知识点", "二叉树"],
+                            "confidence": 1.0,
+                            "status": "confirmed",
+                        }
+                    },
+                )
+            )
+            db.commit()
+
+        profile = service.get_profile("project-1", "user-1")
+
+        self.assertEqual(
+            profile.profile_data["preferred_knowledge_points"]["value"],
+            ["二叉树"],
         )
 
     def test_profile_refresh_backfills_goal_from_existing_chat(self):

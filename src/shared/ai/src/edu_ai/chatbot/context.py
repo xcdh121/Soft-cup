@@ -25,6 +25,7 @@ class ChatbotContext(BaseModel):
     project_context: dict[str, Any] = Field(default_factory=dict)
     learner_profile: dict[str, Any] = Field(default_factory=dict)
     learning_evidence: dict[str, Any] = Field(default_factory=dict)
+    current_query: str = ""
 
 
 class ChatbotState(AgentState):

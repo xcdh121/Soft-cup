@@ -1197,7 +1197,11 @@ class ChatService:
             )
             profile_fields: dict[str, Any] = {}
             if profile is not None:
-                raw_profile = profile.profile_data or {}
+                from edu_core.services.learner_profiles import LearnerProfileService
+
+                raw_profile = LearnerProfileService.normalize_profile_data(
+                    profile.profile_data or {}
+                )
                 for field_key in cls.TUTOR_PROFILE_FIELDS:
                     value = cls._profile_field_value(raw_profile.get(field_key))
                     if value not in (None, "", [], {}):
@@ -1415,6 +1419,7 @@ class ChatService:
             project_context=project_context,
             learner_profile=learner_profile,
             learning_evidence=learning_evidence,
+            current_query=query,
         )
 
         # Send initial "thinking" status with start message
@@ -1715,11 +1720,13 @@ class ChatService:
         from edu_ai.tools.resource_package import generate_resource_package
 
         tool_call_id = str(uuid4())
-        tool_input: dict[str, Any] = {"resource_types": resource_types}
+        tool_input: dict[str, Any] = {}
+        if resource_types:
+            tool_input["resource_types"] = resource_types
         if topic:
             tool_input["topic"] = topic
 
-        primary_type = resource_types[0]
+        primary_type = resource_types[0] if resource_types else "resource_package"
         resource_label = {
             "image": "AI 图片",
             "programming_questions": "编程题",

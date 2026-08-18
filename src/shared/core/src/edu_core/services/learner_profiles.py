@@ -52,6 +52,22 @@ CHAT_PROFILE_FIELDS = frozenset(
 
 RESOURCE_PREFERENCE_LIMIT = 3
 PREFERRED_KNOWLEDGE_POINT_LIMIT = 5
+RESOURCE_PREFERENCE_CONTAINER_KEYS = frozenset(
+    {
+        "资源",
+        "学习资源",
+        "资源包",
+        "学习资源包",
+        "资源合集",
+        "学习资源合集",
+        "资源集合",
+        "resource",
+        "learningresource",
+        "resourcepackage",
+        "learningresourcepackage",
+        "resourcecollection",
+    }
+)
 
 
 class LearnerProfileService:
@@ -63,6 +79,12 @@ class LearnerProfileService:
         with self._get_db_session() as db:
             self._get_owned_project(db, project_id, user_id)
             profile = self._get_profile(db, project_id, user_id)
+            normalized_data = self.normalize_profile_data(profile.profile_data or {})
+            if normalized_data != (profile.profile_data or {}):
+                profile.profile_data = normalized_data
+                self._update_completeness(profile)
+                db.commit()
+                db.refresh(profile)
             return LearnerProfileDto.model_validate(profile)
 
     def replace_profile(
@@ -87,8 +109,8 @@ class LearnerProfileService:
                 db.add(profile)
 
             old_data = dict(profile.profile_data or {})
-            profile.profile_data = profile_data
-            self._record_revisions(db, profile, old_data, profile_data)
+            profile.profile_data = self.normalize_profile_data(profile_data)
+            self._record_revisions(db, profile, old_data, profile.profile_data)
             self._update_completeness(profile)
             db.commit()
             db.refresh(profile)
@@ -101,10 +123,12 @@ class LearnerProfileService:
             self._get_owned_project(db, project_id, user_id)
             profile = self._get_profile(db, project_id, user_id)
             old_data = dict(profile.profile_data or {})
-            profile.profile_data = {
-                **old_data,
-                **profile_data,
-            }
+            profile.profile_data = self.normalize_profile_data(
+                {
+                    **old_data,
+                    **profile_data,
+                }
+            )
             self._record_revisions(
                 db, profile, old_data, profile.profile_data
             )
@@ -136,10 +160,12 @@ class LearnerProfileService:
 
             old_data = dict(profile.profile_data or {})
             inferred_data = self._infer_profile_data(db, project, user_id)
-            profile.profile_data = {
-                **old_data,
-                **inferred_data,
-            }
+            profile.profile_data = self.normalize_profile_data(
+                {
+                    **old_data,
+                    **inferred_data,
+                }
+            )
             profile.last_refreshed_at = datetime.now(timezone.utc)
             self._record_revisions(
                 db,
@@ -178,9 +204,10 @@ class LearnerProfileService:
                 .first()
             )
 
-            old_data = dict(profile.profile_data or {}) if profile else {}
+            raw_old_data = dict(profile.profile_data or {}) if profile else {}
+            old_data = self.normalize_profile_data(raw_old_data)
             new_data = dict(old_data)
-            changed = False
+            changed = old_data != raw_old_data
             now = datetime.now(timezone.utc).isoformat()
 
             for field_key, candidate in inferred_fields.items():
@@ -211,10 +238,9 @@ class LearnerProfileService:
                 if field_key == "resource_preference":
                     value = self._merge_resource_preferences(existing_value, value)
                 elif field_key == "preferred_knowledge_points":
-                    value = self._merge_distinct_values(
+                    value = self._merge_knowledge_points(
                         existing_value,
                         value,
-                        limit=PREFERRED_KNOWLEDGE_POINT_LIMIT,
                     )
                 # Values written manually before field metadata was introduced are
                 # treated as confirmed so an LLM inference cannot silently replace them.
@@ -288,12 +314,92 @@ class LearnerProfileService:
     @staticmethod
     def _merge_resource_preferences(existing, candidate) -> list[str]:
         """Keep stable resource-format preferences without unbounded growth."""
+        merged = LearnerProfileService._merge_distinct_values(
+            existing, candidate, limit=RESOURCE_PREFERENCE_LIMIT * 2
+        )
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in merged:
+            key = LearnerProfileService._profile_value_key(item)
+            if (
+                not key
+                or key in RESOURCE_PREFERENCE_CONTAINER_KEYS
+                or "资源包" in key
+                or "resourcepackage" in key
+                or key in seen
+            ):
+                continue
+            seen.add(key)
+            normalized.append(item.strip())
+        return normalized[-RESOURCE_PREFERENCE_LIMIT:]
 
-        return LearnerProfileService._merge_distinct_values(
+    @staticmethod
+    def _merge_knowledge_points(existing, candidate) -> list[str]:
+        """Canonicalize equivalent knowledge-point phrases before merging."""
+        merged = LearnerProfileService._merge_distinct_values(
             existing,
             candidate,
-            limit=RESOURCE_PREFERENCE_LIMIT,
+            limit=PREFERRED_KNOWLEDGE_POINT_LIMIT * 2,
         )
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in merged:
+            canonical = LearnerProfileService._normalize_knowledge_point(item)
+            key = LearnerProfileService._profile_value_key(canonical)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            normalized.append(canonical)
+        return normalized[-PREFERRED_KNOWLEDGE_POINT_LIMIT:]
+
+    @staticmethod
+    def _normalize_knowledge_point(value: str) -> str:
+        text = " ".join(str(value or "").strip().split()).strip(
+            " \t\r\n,.;:!?\uff0c\u3002\uff1b\uff1a\uff01\uff1f"
+        )
+        if not text:
+            return ""
+
+        contextual_match = re.fullmatch(
+            r"(?:关于)?(.+?)(?:的)?(?:相关)?知识点",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if contextual_match:
+            text = contextual_match.group(1).strip()
+            # Course-scoped prose such as “数据结构中二叉树的知识点” carries
+            # the course as context, not as part of the knowledge-point name.
+            if "中" in text:
+                scoped_topic = text.rsplit("中", 1)[-1].lstrip("的").strip()
+                if scoped_topic:
+                    text = scoped_topic
+        return text.removesuffix("的").strip()
+
+    @staticmethod
+    def _profile_value_key(value: str) -> str:
+        punctuation = "\u2014\u2013\u00b7\uff0c\u3002\uff1b\uff1a\uff01\uff1f\uff08\uff09"
+        return re.sub(rf"[\s\-_,.;:!?(){punctuation}]+", "", value).casefold()
+
+    @classmethod
+    def normalize_profile_data(cls, profile_data: dict) -> dict:
+        """Normalize bounded list fields, including previously persisted values."""
+        normalized = dict(profile_data or {})
+        for field_key, merge in (
+            ("resource_preference", cls._merge_resource_preferences),
+            ("preferred_knowledge_points", cls._merge_knowledge_points),
+        ):
+            raw_field = normalized.get(field_key)
+            if raw_field is None:
+                continue
+            field = dict(raw_field) if isinstance(raw_field, dict) else None
+            raw_value = field.get("value") if field is not None else raw_field
+            value = merge([], raw_value)
+            if field is not None:
+                field["value"] = value
+                normalized[field_key] = field
+            else:
+                normalized[field_key] = value
+        return normalized
 
     @staticmethod
     def _merge_distinct_values(existing, candidate, *, limit: int) -> list[str]:

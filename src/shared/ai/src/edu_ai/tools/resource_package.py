@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 from typing import Any, Literal
 
 from edu_ai.chatbot.context import ChatbotContext
@@ -26,6 +27,44 @@ ResourceType = Literal[
 DifficultyLevel = Literal["beginner", "intermediate", "advanced"]
 logger = logging.getLogger(__name__)
 _BACKGROUND_GENERATION_TASKS: set[asyncio.Task[Any]] = set()
+
+_RESOURCE_PREFERENCE_MAPPINGS: tuple[
+    tuple[tuple[str, ...], ResourceType], ...
+] = (
+    (("视频", "video"), "video_recommendations"),
+    (("思维导图", "图解", "visual", "diagram", "mind map"), "mind_map"),
+    (("图片", "插图", "配图", "海报", "image", "illustration"), "image"),
+    (("闪卡", "卡片", "flashcard"), "flashcards"),
+    (("刷题", "练习", "题目", "practice", "quiz", "exercise"), "practice_set"),
+    (("编程", "代码", "实操", "programming", "coding"), "programming_questions"),
+    (
+        ("笔记", "教材", "阅读", "文档", "note", "reading", "document"),
+        "lecture_note",
+    ),
+    (("ppt", "演示"), "pptx"),
+)
+
+_EXPLICIT_RESOURCE_MAPPINGS: tuple[
+    tuple[tuple[str, ...], ResourceType], ...
+] = (
+    (("视频", "video"), "video_recommendations"),
+    (("思维导图", "图解", "mind map", "diagram"), "mind_map"),
+    (("图片", "插图", "配图", "海报", "image", "illustration"), "image"),
+    (("闪卡", "flashcard"), "flashcards"),
+    (("刷题", "练习题", "测验", "题库", "quiz", "exercise"), "practice_set"),
+    (("编程题", "代码题", "代码练习", "coding exercise"), "programming_questions"),
+    (("笔记", "讲义", "阅读材料", "note", "reading material"), "lecture_note"),
+    (("ppt", "演示文稿", "幻灯片", "slides"), "pptx"),
+)
+_RESOURCE_REQUEST_VERBS = (
+    "生成|创建|制作|整理|推荐|做|写|给我|来一份|来一个|"
+    "generate|create|make|write|recommend"
+)
+_BALANCED_RESOURCE_PACKAGE_TYPES: tuple[ResourceType, ...] = (
+    "lecture_note",
+    "mind_map",
+    "practice_set",
+)
 
 
 def _track_background_generation(task: asyncio.Task[Any]) -> None:
@@ -109,28 +148,69 @@ def _preference_resource_types(fields: dict[str, Any]) -> list[ResourceType]:
     preference = fields.get("resource_preference")
     values = preference if isinstance(preference, list) else [preference]
     preference_text = " ".join(str(value).lower() for value in values if value)
-    mappings: tuple[tuple[tuple[str, ...], ResourceType], ...] = (
-        (("视频", "video"), "video_recommendations"),
-        (("思维导图", "图解", "visual", "diagram", "mind map"), "mind_map"),
-        (("图片", "插图", "配图", "海报", "image", "illustration"), "image"),
-        (("闪卡", "卡片", "flashcard"), "flashcards"),
-        (("刷题", "练习", "题目", "practice", "quiz", "exercise"), "practice_set"),
-        (("编程", "代码", "实操", "programming", "coding"), "programming_questions"),
-        (
-            ("笔记", "教材", "阅读", "文档", "note", "reading", "document"),
-            "lecture_note",
-        ),
-        (("ppt", "演示"), "pptx"),
-    )
     selected = [
         resource_type
-        for keywords, resource_type in mappings
+        for keywords, resource_type in _RESOURCE_PREFERENCE_MAPPINGS
         if any(keyword in preference_text for keyword in keywords)
     ]
     if selected:
         return list(dict.fromkeys(selected))
 
     return ["lecture_note", "mind_map", "practice_set"]
+
+
+def _explicit_resource_types(query: str) -> list[ResourceType]:
+    """Extract modalities the learner explicitly named in the current request."""
+    query_text = query.lower().strip()
+    if not query_text:
+        return []
+    return list(
+        dict.fromkeys(
+            resource_type
+            for keywords, resource_type in _EXPLICIT_RESOURCE_MAPPINGS
+            if any(
+                re.search(
+                    rf"(?:{_RESOURCE_REQUEST_VERBS}).{{0,12}}{re.escape(keyword)}"
+                    rf"|{re.escape(keyword)}.{{0,8}}(?:{_RESOURCE_REQUEST_VERBS})",
+                    query_text,
+                )
+                for keyword in keywords
+            )
+        )
+    )
+
+
+def _resolve_resource_types(
+    resource_types: list[ResourceType] | None,
+    fields: dict[str, Any],
+    current_query: str,
+) -> list[ResourceType]:
+    """Prefer all saved modalities unless the learner named a concrete format."""
+    requested_types = list(dict.fromkeys(resource_types or []))
+    explicit_types = _explicit_resource_types(current_query)
+    if explicit_types:
+        # The model's typed arguments remain authoritative for an explicit format
+        # request, while the query-derived values guard against it dropping one of
+        # several formats named by the learner.
+        return list(dict.fromkeys([*explicit_types, *requested_types]))
+
+    preference_types = _preference_resource_types(fields)
+    if current_query:
+        # In a real tutor turn, a generic resource request should use the complete
+        # saved preference list even when the model supplied only one modality.
+        if len(preference_types) >= 2:
+            return preference_types
+        # A request for a package, rather than a concrete format, must never
+        # collapse to one resource when only one saved value could be mapped.
+        return list(
+            dict.fromkeys(
+                [*preference_types, *_BALANCED_RESOURCE_PACKAGE_TYPES]
+            )
+        )[:2]
+
+    # Direct callers and older integrations have no current query. Preserve their
+    # explicitly supplied arguments for backwards compatibility.
+    return requested_types or preference_types
 
 
 def _resolve_topic(
@@ -226,9 +306,12 @@ def _personalization_basis(
         "single note, mind map, quiz/practice set, flashcard set, PPT/PPTX, PPT "
         "outline, generated image/illustration, video recommendation, or several "
         "resource types together. "
-        "For requests based on the learner's situation, omit topic, resource_types, "
-        "goal, and difficulty_level when they are not explicitly supplied; the tool "
-        "will derive them from the saved profile and learning evidence."
+        "For generic requests based on the learner's situation, omit topic, "
+        "resource_types, goal, and difficulty_level when they are not explicitly "
+        "supplied; never choose only a subset of saved resource preferences. The "
+        "tool will derive them from the saved profile and learning evidence. Supply "
+        "resource_types only when the learner explicitly names concrete formats. "
+        "A generic resource package must contain at least two resource types."
     ),
 )
 async def generate_resource_package(
@@ -246,8 +329,10 @@ async def generate_resource_package(
         raise RuntimeError("Resource package generation is not configured")
 
     fields = _profile_fields(ctx)
-    requested_types = list(
-        dict.fromkeys(resource_types or _preference_resource_types(fields))
+    requested_types = _resolve_resource_types(
+        resource_types,
+        fields,
+        str(getattr(ctx, "current_query", "") or ""),
     )
     resolved_topic = _resolve_topic(topic, ctx, fields)
     resolved_goal = goal or fields.get("learning_goal")

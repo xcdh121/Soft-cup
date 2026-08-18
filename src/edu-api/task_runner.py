@@ -279,7 +279,7 @@ Allowed field keys:
 - major_background: academic discipline or professional background
 - education_level: education stage or year
 - learning_goal: an explicit learning objective
-- resource_preference: reusable learning resource formats or methods as a JSON array; never include the current subject or topic in an item
+- resource_preference: reusable learning formats or methods as a JSON array; never include the current subject, topic, or a container such as "资源包"/"resource package" in an item
 - preferred_knowledge_points: subjects or knowledge points the student explicitly wants or prefers to learn, as a JSON array
 - available_study_time: stated schedule or available study duration
 
@@ -291,6 +291,8 @@ Rules:
 - Do not invent missing details. If there are no supported facts, return {{"fields": {{}}}}.
 - Preserve the student's language in values.
 - When the message supports multiple resource preferences, return 2-3 distinct items.
+- A request to generate or view a resource package does not by itself express a resource preference.
+- Canonicalize preferred knowledge points to their shortest standalone name; for example, "数据结构中二叉树的知识点" must be returned as "二叉树".
 - A statement like "我想学习最短路径" supports learning_goal="学习最短路径" and preferred_knowledge_points=["最短路径"].
 
 Student message:

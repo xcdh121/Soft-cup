@@ -3,9 +3,11 @@ import unittest
 from edu_ai.chatbot.image_generation_routing import (
     extract_image_topic,
     extract_programming_topic,
+    extract_resource_package_topic,
     resolve_forced_resource_generation,
     should_force_image_generation,
     should_force_programming_generation,
+    should_force_resource_package_generation,
 )
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -143,6 +145,17 @@ class ChatbotImageGenerationRoutingTests(unittest.TestCase):
         intent = resolve_forced_resource_generation(messages)
         self.assertIsNotNone(intent)
         self.assertEqual(intent.resource_types, ("programming_questions",))
+        self.assertEqual(intent.topic, "递归")
+
+    def test_generic_resource_package_request_derives_all_preferences(self):
+        messages = [HumanMessage(content="帮我生成一份学习递归的资源包")]
+
+        self.assertTrue(should_force_resource_package_generation(messages))
+        self.assertEqual(extract_resource_package_topic(messages), "递归")
+        intent = resolve_forced_resource_generation(messages)
+
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.resource_types, ())
         self.assertEqual(intent.topic, "递归")
 
 

@@ -87,6 +87,46 @@ class ChatDirectImagePackageTests(unittest.IsolatedAsyncioTestCase):
             calls[0]["payload"]["resource_types"], ["programming_questions"]
         )
 
+    async def test_generic_package_request_uses_all_saved_preferences(self):
+        calls: list[dict] = []
+
+        class FakeResourcePackageService:
+            async def generate_resource_package(self, **kwargs):
+                calls.append(kwargs)
+                return SimpleNamespace(
+                    id="personalized-package-1",
+                    status="generating",
+                    completed_resource_count=0,
+                    failed_resource_count=0,
+                )
+
+        context = SimpleNamespace(
+            user_id="user-1",
+            project_id="project-1",
+            resource_packages=FakeResourcePackageService(),
+            learner_profile={
+                "fields": {"resource_preference": ["笔记", "刷题"]}
+            },
+            project_context={"course_name": "数据结构"},
+            learning_evidence={},
+            current_query="帮我生成一份学习递归的资源包",
+        )
+        service = ChatService.__new__(ChatService)
+
+        response = await service._create_direct_resource_package_response(
+            context=context,
+            assistant_message_id="assistant-1",
+            chat_id="chat-1",
+            topic="递归",
+            resource_types=[],
+        )
+
+        tool_output = json.loads(response.parts[1].tool_output)
+        self.assertEqual(
+            tool_output["resource_types"], ["practice_set", "lecture_note"]
+        )
+        self.assertEqual(calls[0]["payload"]["resource_types"], tool_output["resource_types"])
+
 
 if __name__ == "__main__":
     unittest.main()

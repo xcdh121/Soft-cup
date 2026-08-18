@@ -190,6 +190,110 @@ class ResourcePackageToolTests(unittest.IsolatedAsyncioTestCase):
             ["视频", "刷题"],
         )
 
+    async def test_generic_request_does_not_let_model_drop_saved_preferences(self):
+        calls: list[dict] = []
+
+        class FakeResourcePackageService:
+            async def generate_resource_package(self, **kwargs):
+                calls.append(kwargs)
+                return SimpleNamespace(
+                    id="package-all-preferences",
+                    status="completed",
+                    completed_resource_count=2,
+                    failed_resource_count=0,
+                )
+
+        context = SimpleNamespace(
+            user_id="user-1",
+            project_id="project-1",
+            resource_packages=FakeResourcePackageService(),
+            learner_profile={
+                "fields": {"resource_preference": ["笔记", "刷题"]}
+            },
+            learning_evidence={},
+            project_context={"course_name": "数据结构"},
+            current_query="请根据我的情况生成关于代码优化的学习资源",
+        )
+
+        result_text = await generate_resource_package.coroutine(
+            resource_types=["lecture_note"],
+            runtime=SimpleNamespace(context=context),
+        )
+        result = json.loads(result_text)
+
+        self.assertEqual(
+            calls[0]["payload"]["resource_types"],
+            ["practice_set", "lecture_note"],
+        )
+        self.assertEqual(result["resource_count"], 2)
+
+    async def test_explicit_format_request_remains_single_resource(self):
+        calls: list[dict] = []
+
+        class FakeResourcePackageService:
+            async def generate_resource_package(self, **kwargs):
+                calls.append(kwargs)
+                return SimpleNamespace(
+                    id="package-explicit-note",
+                    status="completed",
+                    completed_resource_count=1,
+                    failed_resource_count=0,
+                )
+
+        context = SimpleNamespace(
+            user_id="user-1",
+            project_id="project-1",
+            resource_packages=FakeResourcePackageService(),
+            learner_profile={
+                "fields": {"resource_preference": ["笔记", "刷题"]}
+            },
+            learning_evidence={},
+            project_context={"course_name": "数据结构"},
+            current_query="请给我生成一份学习笔记",
+        )
+
+        await generate_resource_package.coroutine(
+            resource_types=["lecture_note"],
+            runtime=SimpleNamespace(context=context),
+        )
+
+        self.assertEqual(calls[0]["payload"]["resource_types"], ["lecture_note"])
+
+    async def test_generic_package_with_one_mapped_preference_still_has_two_types(self):
+        calls: list[dict] = []
+
+        class FakeResourcePackageService:
+            async def generate_resource_package(self, **kwargs):
+                calls.append(kwargs)
+                return SimpleNamespace(
+                    id="package-minimum-two",
+                    status="completed",
+                    completed_resource_count=2,
+                    failed_resource_count=0,
+                )
+
+        context = SimpleNamespace(
+            user_id="user-1",
+            project_id="project-1",
+            resource_packages=FakeResourcePackageService(),
+            learner_profile={"fields": {"resource_preference": ["笔记"]}},
+            learning_evidence={},
+            project_context={"course_name": "数据结构"},
+            current_query="帮我生成一份学习递归的资源包",
+        )
+
+        result_text = await generate_resource_package.coroutine(
+            resource_types=["lecture_note"],
+            runtime=SimpleNamespace(context=context),
+        )
+        result = json.loads(result_text)
+
+        self.assertEqual(
+            calls[0]["payload"]["resource_types"],
+            ["lecture_note", "mind_map"],
+        )
+        self.assertEqual(result["resource_count"], 2)
+
     def test_runtime_is_hidden_from_model_tool_schema(self):
         fields = generate_resource_package.tool_call_schema.model_fields
 
