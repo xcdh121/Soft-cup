@@ -43,6 +43,7 @@ class Settings(BaseSettings):
 
     # LLM / embedding providers (OpenAI-compatible endpoints or local servers)
     llm_model: str = "gpt-4o-mini"
+    quiz_llm_model: str = "deepseek-v4-flash"
     llm_api_key: str = ""
     llm_base_url: str | None = None
     # Provider price in CNY per one million tokens. Keep zero when unknown;

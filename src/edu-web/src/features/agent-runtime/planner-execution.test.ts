@@ -23,7 +23,7 @@ describe('getPlannerExecution', () => {
         phase: 'completed',
         reason_codes: ['learning_path_generated', 'llm'],
         fallback_used: false,
-        model_name: 'deepseek-v4-pro',
+        model_name: 'deepseek-v4-flash',
         input_tokens: 120,
         output_tokens: 45,
       }),
@@ -31,7 +31,7 @@ describe('getPlannerExecution', () => {
 
     expect(execution).toEqual({
       mode: 'llm',
-      modelName: 'deepseek-v4-pro',
+      modelName: 'deepseek-v4-flash',
       inputTokens: 120,
       outputTokens: 45,
     })
@@ -46,12 +46,12 @@ describe('getPlannerExecution', () => {
         phase: 'completed',
         reason_codes: ['learning_path_generated', 'rule_fallback'],
         fallback_used: true,
-        model_name: 'deepseek-v4-pro',
+        model_name: 'deepseek-v4-flash',
       }),
     ])
 
     expect(execution.mode).toBe('rule_fallback')
-    expect(execution.modelName).toBe('deepseek-v4-pro')
+    expect(execution.modelName).toBe('deepseek-v4-flash')
   })
 
   it('recovers usage from a persisted completed run', () => {
@@ -60,7 +60,7 @@ describe('getPlannerExecution', () => {
         agents: [
           {
             agent_name: 'PlannerAgent',
-            model_name: 'deepseek-v4-pro',
+            model_name: 'deepseek-v4-flash',
             input_tokens: 4520,
             output_tokens: 2409,
           },

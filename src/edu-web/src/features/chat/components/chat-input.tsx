@@ -23,8 +23,8 @@ import {
 
 const models = [
   {
-    id: 'deepseek-v4-pro',
-    name: 'DeepSeek V4',
+    id: 'deepseek-v4-flash',
+    name: 'DeepSeek V4 Flash',
     provider: 'deepseek',
   },
 ]

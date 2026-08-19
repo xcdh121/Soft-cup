@@ -146,8 +146,8 @@ const OCR_STATUS_PROGRESS: Partial<
 
 const models = [
   {
-    name: 'DeepSeek V4',
-    value: 'deepseek-v4-pro',
+    name: 'DeepSeek V4 Flash',
+    value: 'deepseek-v4-flash',
   },
 ]
 

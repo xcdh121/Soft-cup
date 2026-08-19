@@ -21,6 +21,7 @@ services:
       TASK_JOB_TIMEOUT_SECONDS: "900"
       TASK_JOB_MAX_TRIES: "3"
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      QUIZ_LLM_MODEL: ${QUIZ_LLM_MODEL:-deepseek-v4-flash}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_INPUT_COST_PER_MILLION_CNY: ${LLM_INPUT_COST_PER_MILLION_CNY:-0}

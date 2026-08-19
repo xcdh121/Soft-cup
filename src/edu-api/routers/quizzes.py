@@ -402,7 +402,7 @@ async def generate_question_ai_explanation(
         )
         model = create_chat_model(
             LlmProviderConfig(
-                model=settings.llm_model,
+                model=settings.quiz_llm_model,
                 api_key=settings.llm_api_key,
                 base_url=settings.llm_base_url,
                 temperature=0.25,
@@ -434,7 +434,7 @@ D. {question.option_d}
         ]
 
         async def explanation_stream() -> AsyncGenerator[bytes]:
-            yield f"data: {json.dumps({'type': 'model', 'model': settings.llm_model}, ensure_ascii=False)}\n\n".encode()
+            yield f"data: {json.dumps({'type': 'model', 'model': settings.quiz_llm_model}, ensure_ascii=False)}\n\n".encode()
             yield f"data: {json.dumps({'type': 'status', 'message': f'正在解析当前题目 {question_id}'}, ensure_ascii=False)}\n\n".encode()
             try:
                 async for chunk in model.astream(messages):
@@ -503,7 +503,7 @@ async def stream_quiz_result_analysis(
 {json.dumps(attempts, ensure_ascii=False)}"""
         model = create_chat_model(
             LlmProviderConfig(
-                model=settings.llm_model,
+                model=settings.quiz_llm_model,
                 api_key=settings.llm_api_key,
                 base_url=settings.llm_base_url,
                 temperature=0.2,
@@ -513,7 +513,7 @@ async def stream_quiz_result_analysis(
 
         async def analysis_stream() -> AsyncGenerator[bytes]:
             initial_events = [
-                {"type": "model", "model": settings.llm_model},
+                {"type": "model", "model": settings.quiz_llm_model},
                 {
                     "type": "meta",
                     "total": total,
@@ -596,7 +596,7 @@ async def analyze_quiz_result(
 {json.dumps(attempts, ensure_ascii=False)}"""
         model = create_chat_model(
             LlmProviderConfig(
-                model=settings.llm_model,
+                model=settings.quiz_llm_model,
                 api_key=settings.llm_api_key,
                 base_url=settings.llm_base_url,
                 temperature=0.2,

@@ -7,13 +7,18 @@ from unittest.mock import patch
 from config import Settings
 from edu_core.schemas.quizzes import QuizQuestionDto
 from routers.quizzes import (
+    AiExplanationRequest,
     QuizAnalysisRequest,
     QuizAnswer,
+    generate_question_ai_explanation,
     stream_quiz_result_analysis,
 )
 
 
 class _QuizService:
+    def get_quiz_question(self, *, question_id: str, quiz_id: str, project_id: str):
+        return self.list_quiz_questions(quiz_id=quiz_id, project_id=project_id)[0]
+
     def list_quiz_questions(self, *, quiz_id: str, project_id: str):
         return [
             QuizQuestionDto(
@@ -50,7 +55,9 @@ class _StreamingModel:
 class QuizAnalysisStreamTest(unittest.IsolatedAsyncioTestCase):
     async def test_stream_emits_meta_and_text_deltas(self):
         model = _StreamingModel()
-        with patch("routers.quizzes.create_chat_model", return_value=model):
+        with patch(
+            "routers.quizzes.create_chat_model", return_value=model
+        ) as create_model:
             response = await stream_quiz_result_analysis(
                 project_id="project_1",
                 quiz_id="quiz_1",
@@ -59,7 +66,11 @@ class QuizAnalysisStreamTest(unittest.IsolatedAsyncioTestCase):
                 ),
                 current_user=SimpleNamespace(id="student_1"),
                 service=_QuizService(),
-                settings=Settings(llm_api_key="test-key", llm_model="test-model"),
+                settings=Settings(
+                    llm_api_key="test-key",
+                    llm_model="test-pro-model",
+                    quiz_llm_model="test-flash-model",
+                ),
             )
 
         body = b"".join([chunk async for chunk in response.body_iterator]).decode()
@@ -68,7 +79,8 @@ class QuizAnalysisStreamTest(unittest.IsolatedAsyncioTestCase):
             for block in body.strip().split("\n\n")
         ]
 
-        self.assertEqual(events[0], {"type": "model", "model": "test-model"})
+        self.assertEqual(events[0], {"type": "model", "model": "test-flash-model"})
+        self.assertEqual(create_model.call_args.args[0].model, "test-flash-model")
         self.assertEqual(
             events[1],
             {"type": "meta", "total": 1, "correct": 1, "accuracy": 100},
@@ -79,6 +91,31 @@ class QuizAnalysisStreamTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(events[-1], {"type": "done"})
         self.assertIn("直接输出中文 Markdown", model.prompt)
+
+    async def test_question_explanation_uses_quiz_flash_model(self):
+        model = _StreamingModel()
+        with patch(
+            "routers.quizzes.create_chat_model", return_value=model
+        ) as create_model:
+            response = await generate_question_ai_explanation(
+                project_id="project_1",
+                quiz_id="quiz_1",
+                question_id="question_1",
+                request=AiExplanationRequest(),
+                current_user=SimpleNamespace(id="student_1"),
+                service=_QuizService(),
+                settings=Settings(
+                    llm_api_key="test-key",
+                    llm_model="test-pro-model",
+                    quiz_llm_model="test-flash-model",
+                ),
+            )
+
+        body = b"".join([chunk async for chunk in response.body_iterator]).decode()
+        first_event = json.loads(body.split("\n\n", 1)[0].removeprefix("data: "))
+
+        self.assertEqual(first_event, {"type": "model", "model": "test-flash-model"})
+        self.assertEqual(create_model.call_args.args[0].model, "test-flash-model")
 
 
 if __name__ == "__main__":
