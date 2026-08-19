@@ -8,18 +8,19 @@ import {
 import { quizQuestionsAtom } from './quiz'
 import { knowledgeGraphAtom } from './knowledge-graph'
 import { closedLoopOverviewAtom } from './learning-closed-loop'
+import { learningEvaluationAtom } from './learning-evaluation'
 import {
   latestStudyPlanRemoteAtom,
   studyPlansHistoryRemoteAtom,
 } from './study-plan'
 import type { PracticeRecordCreate, QuizQuestionDto } from '@/integrations/api'
+import type { LearningVerificationContext } from '@/lib/learning-verification-context'
 import { ApiClientService } from '@/integrations/api/http'
 import { makeAtomRuntime } from '@/lib/make-atom-runtime'
 import {
   consumeLearningVerification,
   readLearningVerification,
 } from '@/lib/learning-verification-context'
-import type { LearningVerificationContext } from '@/lib/learning-verification-context'
 
 const runtime = makeAtomRuntime(
   Layer.mergeAll(
@@ -441,6 +442,14 @@ export const submitQuizQuestionAtom = runtime.fn(
       quizDetailStateAtom(input.quizId),
       QuizDetailAction.MarkQuestionSubmitted({ questionId: question.id }),
     )
+    const completesQuiz = questionsResult.value.every(
+      (candidate) =>
+        candidate.id === question.id ||
+        state.submittedByQuestionId[candidate.id] === true,
+    )
+    if (completesQuiz) {
+      registry.refresh(learningEvaluationAtom(input.projectId))
+    }
     registry.refresh(practiceRecordsRemoteAtom(input.projectId))
     registry.refresh(knowledgeGraphAtom(input.projectId))
     return true

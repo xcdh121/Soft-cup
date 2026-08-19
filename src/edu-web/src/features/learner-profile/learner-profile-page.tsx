@@ -1,5 +1,10 @@
-import { useMemo } from 'react'
-import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import { useEffect, useMemo } from 'react'
+import {
+  Result,
+  useAtomRefresh,
+  useAtomSet,
+  useAtomValue,
+} from '@effect-atom/atom-react'
 import {
   ActivityIcon,
   AlertCircleIcon,
@@ -25,7 +30,7 @@ import {
   learnerProfileRevisionsAtom,
   refreshLearnerProfileAtom,
 } from '@/data-acess/learner-profile'
-import { practiceRecordsAtom } from '@/data-acess/practice'
+import { practiceRecordsRemoteAtom } from '@/data-acess/practice'
 import { ProjectHeader } from '@/features/project/components/project-header'
 import { resolveAvatarUrl } from '@/lib/auth-client'
 
@@ -244,6 +249,54 @@ const formatDateTime = (value?: string | null) => {
 
 const localDateKey = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+
+type PracticeSummaryRecord = {
+  created_at: string
+  was_correct: boolean
+}
+
+export const buildRecentPracticeSummary = (
+  practiceRecords: ReadonlyArray<PracticeSummaryRecord>,
+  now = new Date(),
+) => {
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(now)
+    date.setHours(0, 0, 0, 0)
+    date.setDate(date.getDate() - (6 - index))
+    return {
+      key: localDateKey(date),
+      label: `${date.getMonth() + 1}/${date.getDate()}`,
+      attempts: 0,
+      correct: 0,
+    }
+  })
+  const dayMap = new Map(days.map((day) => [day.key, day]))
+  for (const record of practiceRecords) {
+    const day = dayMap.get(localDateKey(new Date(record.created_at)))
+    if (!day) continue
+    day.attempts += 1
+    if (record.was_correct) day.correct += 1
+  }
+
+  const dailyPractice: Array<DailyPractice> = days.map((day) => ({
+    key: day.key,
+    label: day.label,
+    attempts: day.attempts,
+    accuracy: day.attempts
+      ? Math.round((day.correct / day.attempts) * 100)
+      : null,
+  }))
+  const recentAttempts = days.reduce((sum, day) => sum + day.attempts, 0)
+  const recentCorrect = days.reduce((sum, day) => sum + day.correct, 0)
+
+  return {
+    dailyPractice,
+    recentAttempts,
+    recentAccuracy: recentAttempts
+      ? Math.round((recentCorrect / recentAttempts) * 100)
+      : null,
+  }
+}
 
 const MetricCard = ({
   label,
@@ -502,10 +555,16 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
   const profileResult = useAtomValue(learnerProfileAtom(projectId))
   const revisionsResult = useAtomValue(learnerProfileRevisionsAtom(projectId))
   const graphResult = useAtomValue(knowledgeGraphAtom(projectId))
-  const practiceResult = useAtomValue(practiceRecordsAtom(projectId))
+  const practiceRecordsRemote = practiceRecordsRemoteAtom(projectId)
+  const practiceResult = useAtomValue(practiceRecordsRemote)
+  const refreshPracticeRecords = useAtomRefresh(practiceRecordsRemote)
   const refreshProfile = useAtomSet(refreshLearnerProfileAtom, {
     mode: 'promise',
   })
+
+  useEffect(() => {
+    refreshPracticeRecords()
+  }, [refreshPracticeRecords])
 
   const currentUser = Result.isSuccess(currentUserResult)
     ? currentUserResult.value
@@ -518,6 +577,9 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
   const practiceRecords = Result.isSuccess(practiceResult)
     ? practiceResult.value
     : []
+  const practiceLoading =
+    Result.isInitial(practiceResult) || Result.isWaiting(practiceResult)
+  const practiceFailed = Result.isFailure(practiceResult)
   const profileData = profile?.profile_data ?? {}
 
   const fields = useMemo(() => {
@@ -540,48 +602,10 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
     : null
   const weakNodes = nodes.filter((node) => node.mastery_score < 60)
 
-  const dailyPractice = useMemo<Array<DailyPractice>>(() => {
-    const days = Array.from({ length: 7 }, (_, index) => {
-      const date = new Date()
-      date.setHours(0, 0, 0, 0)
-      date.setDate(date.getDate() - (6 - index))
-      return {
-        key: localDateKey(date),
-        label: `${date.getMonth() + 1}/${date.getDate()}`,
-        attempts: 0,
-        correct: 0,
-      }
-    })
-    const dayMap = new Map(days.map((day) => [day.key, day]))
-    for (const record of practiceRecords) {
-      const day = dayMap.get(localDateKey(new Date(record.created_at)))
-      if (!day) continue
-      day.attempts += 1
-      if (record.was_correct) day.correct += 1
-    }
-    return days.map((day) => ({
-      key: day.key,
-      label: day.label,
-      attempts: day.attempts,
-      accuracy: day.attempts
-        ? Math.round((day.correct / day.attempts) * 100)
-        : null,
-    }))
-  }, [practiceRecords])
-
-  const recentAttempts = dailyPractice.reduce(
-    (sum, item) => sum + item.attempts,
-    0,
+  const { dailyPractice, recentAttempts, recentAccuracy } = useMemo(
+    () => buildRecentPracticeSummary(practiceRecords),
+    [practiceRecords],
   )
-  const recentDayKeys = new Set(dailyPractice.map((item) => item.key))
-  const recentCorrect = practiceRecords.filter(
-    (record) =>
-      recentDayKeys.has(localDateKey(new Date(record.created_at))) &&
-      record.was_correct,
-  ).length
-  const recentAccuracy = recentAttempts
-    ? Math.round((recentCorrect / recentAttempts) * 100)
-    : null
 
   const errorTopics = useMemo(() => {
     const counts = new Map<string, number>()
@@ -749,9 +773,21 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                 <MetricCard
                   label="近 7 天正确率"
                   value={
-                    recentAccuracy === null ? '暂无' : `${recentAccuracy}%`
+                    practiceFailed
+                      ? '加载失败'
+                      : practiceLoading
+                        ? '加载中…'
+                        : recentAccuracy === null
+                          ? '暂无'
+                          : `${recentAccuracy}%`
                   }
-                  hint={`共完成 ${recentAttempts} 次练习`}
+                  hint={
+                    practiceFailed
+                      ? '练习记录暂时无法读取'
+                      : practiceLoading
+                        ? '正在同步练习记录'
+                        : `共完成 ${recentAttempts} 次练习`
+                  }
                   icon={<ActivityIcon className="size-5 text-[#5483B3]" />}
                   tone="bg-[#C1E8FF]/50"
                 />
@@ -817,9 +853,36 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                         正确率来自实际答题记录，柱形表示每天的练习量。
                       </p>
                     </div>
-                    <Badge variant="outline">{recentAttempts} 次练习</Badge>
+                    <Badge variant="outline">
+                      {practiceLoading || practiceFailed
+                        ? '--'
+                        : `${recentAttempts} 次练习`}
+                    </Badge>
                   </div>
-                  <PracticeTrendChart data={dailyPractice} />
+                  {practiceFailed ? (
+                    <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                      <div className="flex items-center gap-2">
+                        <AlertCircleIcon className="size-4" />
+                        <span>练习记录加载失败，近七天统计暂时不可用。</span>
+                      </div>
+                      <Button
+                        className="mt-3"
+                        size="sm"
+                        variant="outline"
+                        onClick={refreshPracticeRecords}
+                      >
+                        <RefreshCwIcon className="size-4" />
+                        重新加载
+                      </Button>
+                    </div>
+                  ) : practiceLoading ? (
+                    <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <Loader2Icon className="size-4 animate-spin" />
+                      正在加载练习记录…
+                    </div>
+                  ) : (
+                    <PracticeTrendChart data={dailyPractice} />
+                  )}
                 </div>
 
                 <div className="rounded-[24px] border bg-card p-6 text-card-foreground shadow-sm">
@@ -881,7 +944,16 @@ export const LearnerProfilePage = ({ projectId }: { projectId: string }) => {
                       汇总全部练习记录，定位最常出现错误的内容。
                     </p>
                   </div>
-                  {errorTopics.length ? (
+                  {practiceFailed ? (
+                    <ChartEmpty>
+                      练习记录加载失败，请在上方重新加载。
+                    </ChartEmpty>
+                  ) : practiceLoading ? (
+                    <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <Loader2Icon className="size-4 animate-spin" />
+                      正在加载练习记录…
+                    </div>
+                  ) : errorTopics.length ? (
                     <div className="space-y-4">
                       {errorTopics.map((item, index) => (
                         <div

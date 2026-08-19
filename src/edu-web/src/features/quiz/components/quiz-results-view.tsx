@@ -69,7 +69,9 @@ const CompletionHeader = ({ total }: CompletionHeaderProps) => (
       <Trophy className="h-8 w-8 text-[#5483B3]" />
       <h2 className="text-3xl font-bold">测验已完成！</h2>
     </div>
-    <p className="text-muted-foreground">你已完成全部 {total} 道题</p>
+    <p className="text-muted-foreground">
+      你已完成全部 {total} 道题，完成状态无需等待 AI 分析
+    </p>
   </div>
 )
 
@@ -645,15 +647,15 @@ export const QuizResultsView = ({
 
           <Separator />
 
+          <CompletionActions quizId={quizId} projectId={projectId} />
+
+          <Separator />
+
           <AiQuizAnalysis
             projectId={projectId}
             quizId={quizId}
             answers={analysisAnswers}
           />
-
-          <Separator />
-
-          <CompletionActions quizId={quizId} projectId={projectId} />
         </div>
       </div>
     ))

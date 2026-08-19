@@ -1,6 +1,7 @@
 import { Result, useAtomValue } from '@effect-atom/atom-react'
 import { Link } from '@tanstack/react-router'
 import {
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Lightbulb,
@@ -715,7 +716,7 @@ export const ProgrammingPracticePage = ({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm text-muted-foreground">
                   {submission
-                    ? `${submission.judge_verdict} · 通过 ${submission.passed_cases}/${submission.total_cases} 个测试案例`
+                    ? `本题已完成 · ${submission.judge_verdict} · 通过 ${submission.passed_cases}/${submission.total_cases} 个测试案例`
                     : '提交只运行测试案例；提交完成后可另行请求 AI 解析。'}
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -896,6 +897,45 @@ export const ProgrammingPracticePage = ({
                 </div>
               ) : null}
 
+              {submission ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+                  <div className="flex items-start gap-2 text-sm">
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-700" />
+                    <div>
+                      <div className="font-semibold text-emerald-800">
+                        本题已完成
+                      </div>
+                      <div className="mt-1 text-muted-foreground">
+                        完成状态已记录，无需等待 AI 解析；AI
+                        解析可按需单独查看。
+                      </div>
+                    </div>
+                  </div>
+                  {activeIndex < questions.length - 1 ? (
+                    <Button
+                      type="button"
+                      onClick={() =>
+                        setActiveIndex((index) =>
+                          Math.min(questions.length - 1, index + 1),
+                        )
+                      }
+                    >
+                      继续下一题
+                      <ChevronRight className="ml-2 size-4" />
+                    </Button>
+                  ) : (
+                    <Button asChild>
+                      <Link
+                        to="/dashboard/p/$projectId/learning-evaluation/practice"
+                        params={{ projectId }}
+                      >
+                        本组练习已完成，返回题目练习
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              ) : null}
+
               {analysisError ? (
                 <div className="flex gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
                   <TriangleAlert className="mt-0.5 size-4 shrink-0" />
@@ -962,31 +1002,6 @@ export const ProgrammingPracticePage = ({
                       </Response>
                     </div>
                   ) : null}
-
-                  <div className="flex justify-end border-t pt-4">
-                    {activeIndex < questions.length - 1 ? (
-                      <Button
-                        type="button"
-                        onClick={() =>
-                          setActiveIndex((index) =>
-                            Math.min(questions.length - 1, index + 1),
-                          )
-                        }
-                      >
-                        分析完成，继续下一题
-                        <ChevronRight className="ml-2 size-4" />
-                      </Button>
-                    ) : (
-                      <Button asChild>
-                        <Link
-                          to="/dashboard/p/$projectId/learning-evaluation/history"
-                          params={{ projectId }}
-                        >
-                          查看历史错题分析
-                        </Link>
-                      </Button>
-                    )}
-                  </div>
                 </div>
               ) : null}
 
